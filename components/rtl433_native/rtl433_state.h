@@ -67,6 +67,7 @@ class GatewayState {
   void set_discovery_enabled(bool enabled) { discovery_enabled_ = enabled; }
   bool discovery_enabled() const { return discovery_enabled_; }
   void set_candidate_limit(std::size_t limit) { candidate_limit_ = limit; }
+  std::size_t candidate_limit() const { return candidate_limit_; }
   void set_stale_after_ms(uint32_t stale_after_ms) { stale_after_ms_ = stale_after_ms; }
   void clear_candidates() { candidates_.clear(); }
   const std::vector<CandidateRow> &candidates() const { return candidates_; }
