@@ -276,8 +276,49 @@ void test_stale_detection_uses_last_seen() {
   packet.seen_ms = 1000;
   state.process_packet(packet);
 
+  require(!state.is_stale("garage_combo_freezer", 601000), "exact threshold should not be stale");
   require(!state.is_stale("garage_combo_freezer", 600999), "sensor should not be stale yet");
   require(state.is_stale("garage_combo_freezer", 601001), "sensor should be stale after threshold");
+}
+
+void test_stale_detection_wraps_with_uint32_delta() {
+  rtl433_native::GatewayState state;
+  state.set_stale_after_ms(1000);
+  state.set_mapping("garage_combo_freezer", "Noise/0/1");
+
+  rtl433_native::DecodedPacket packet;
+  packet.model = "Noise";
+  packet.channel = "0";
+  packet.id = "1";
+  packet.seen_ms = 0xFFFFFF00;
+  state.process_packet(packet);
+
+  require(!state.is_stale("garage_combo_freezer", 0xFFFFFF80), "post-wrap packets before threshold should not be stale");
+  require(state.is_stale("garage_combo_freezer", 0x00000500), "post-wrap packets after threshold should be stale");
+}
+
+void test_candidate_order_is_deterministic_for_equal_seen_time() {
+  rtl433_native::GatewayState state;
+  state.set_discovery_enabled(true);
+
+  rtl433_native::DecodedPacket apple;
+  apple.model = "Apple";
+  apple.channel = "1";
+  apple.id = "10";
+  apple.seen_ms = 5000;
+  state.process_packet(apple);
+
+  rtl433_native::DecodedPacket zebra;
+  zebra.model = "Zebra";
+  zebra.channel = "0";
+  zebra.id = "1";
+  zebra.seen_ms = 5000;
+  state.process_packet(zebra);
+
+  require(state.candidates().size() == 2, "candidate table should capture both equal-time rows");
+  require(state.candidates().front().key.model == "Apple", "earlier alpha model should sort first for equal last_seen");
+  require(state.candidates().front().key.channel == "1", "expected deterministic model order");
+  require(state.candidates()[1].key.model == "Zebra", "later alpha model should sort after with equal last_seen");
 }
 
 }  // namespace
@@ -295,5 +336,7 @@ int main() {
   test_duplicate_mappings_record_matched_candidate_once();
   test_mapping_override_replaces_default_key();
   test_stale_detection_uses_last_seen();
+  test_stale_detection_wraps_with_uint32_delta();
+  test_candidate_order_is_deterministic_for_equal_seen_time();
   return 0;
 }

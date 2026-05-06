@@ -6,6 +6,27 @@
 
 namespace rtl433_native {
 
+namespace {
+
+bool same_key(const SensorKey &left, const SensorKey &right) {
+  return left.model == right.model && left.channel == right.channel && left.id == right.id;
+}
+
+bool candidate_less(const CandidateRow &left, const CandidateRow &right) {
+  if (left.last_seen_ms != right.last_seen_ms) {
+    return left.last_seen_ms > right.last_seen_ms;
+  }
+  if (left.key.model != right.key.model) {
+    return left.key.model < right.key.model;
+  }
+  if (left.key.channel != right.key.channel) {
+    return left.key.channel < right.key.channel;
+  }
+  return left.key.id < right.key.id;
+}
+
+}  // namespace
+
 std::optional<SensorKey> parse_sensor_key(const std::string &value) {
   std::stringstream stream(value);
   std::string model;
@@ -101,14 +122,13 @@ bool GatewayState::is_stale(const std::string &logical_key, uint32_t now_ms) con
   if (state == nullptr || !state->has_value) {
     return true;
   }
-  return now_ms > state->last_seen_ms && now_ms - state->last_seen_ms > stale_after_ms_;
+  return static_cast<uint32_t>(now_ms - state->last_seen_ms) > stale_after_ms_;
 }
 
 void GatewayState::record_candidate(const DecodedPacket &packet, bool matched_known) {
   SensorKey key{packet.model, packet.channel, packet.id};
-  const std::string formatted = format_sensor_key(key);
   auto existing = std::find_if(candidates_.begin(), candidates_.end(), [&](const CandidateRow &row) {
-    return format_sensor_key(row.key) == formatted;
+    return same_key(row.key, key);
   });
 
   if (existing == candidates_.end()) {
@@ -127,9 +147,7 @@ void GatewayState::record_candidate(const DecodedPacket &packet, bool matched_kn
   existing->packet_count += 1;
   existing->matched_known = matched_known;
 
-  std::sort(candidates_.begin(), candidates_.end(), [](const CandidateRow &left, const CandidateRow &right) {
-    return left.last_seen_ms > right.last_seen_ms;
-  });
+  std::sort(candidates_.begin(), candidates_.end(), candidate_less);
 
   if (candidates_.size() > candidate_limit_) {
     candidates_.resize(candidate_limit_);
