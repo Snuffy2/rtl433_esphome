@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -24,6 +25,15 @@ def compile_and_run_cpp(tmp_path: Path) -> Callable[[Path], subprocess.Completed
 
     repo_root = Path(__file__).resolve().parents[1]
     compiler = os.environ.get("CXX", "c++")
+    if shutil.which(compiler) is None:
+        pytest.skip(f"C++ compiler '{compiler}' is not available on PATH.", allow_module_level=True)
+
+    state_source = repo_root / "components/rtl433_native/rtl433_state.cpp"
+    if not state_source.exists():
+        pytest.fail(
+            f"Missing expected C++ source file: {state_source}. "
+            "Create components/rtl433_native/rtl433_state.cpp before running C++ tests."
+        )
 
     def _compile_and_run(source: Path) -> subprocess.CompletedProcess[str]:
         binary = tmp_path / source.stem
@@ -36,7 +46,7 @@ def compile_and_run_cpp(tmp_path: Path) -> Callable[[Path], subprocess.Completed
             "-I",
             str(repo_root),
             str(source),
-            str(repo_root / "components/rtl433_native/rtl433_state.cpp"),
+            str(state_source),
             "-o",
             str(binary),
         ]

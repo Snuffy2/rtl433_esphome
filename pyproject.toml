@@ -22,4 +22,4 @@ select = ["B", "E", "F", "I", "N", "UP"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["tests"]
+files = ["tests", "components"]
