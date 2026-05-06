@@ -21,3 +21,12 @@
   table for discovering replacement IDs after battery changes.
 - Implementation plan written at
   `docs/superpowers/plans/2026-05-06-rtl433-esphome-hybrid.md`.
+
+## Implementation Notes
+
+- Firmware config file is `garage-rtl433.yaml`.
+- External component source lives in `components/rtl433_native/`.
+- Runtime mapping overrides use ESPHome template text entities with
+  `restore_value: true`.
+- Unknown packet discovery is intentionally bounded to ten candidate text
+  sensors and requires `Garage RTL433 Discovery Mode`.
