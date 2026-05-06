@@ -33,10 +33,12 @@ bool matches_key(const DecodedPacket &packet, const SensorKey &key) {
 void GatewayState::set_mapping(const std::string &logical_key, const std::string &sensor_key) {
   auto parsed = parse_sensor_key(sensor_key);
   if (!parsed.has_value()) {
+    mappings_.erase(logical_key);
+    logical_states_.erase(logical_key);
     return;
   }
   mappings_[logical_key] = *parsed;
-  logical_states_.try_emplace(logical_key);
+  logical_states_[logical_key] = LogicalSensorState{};
 }
 
 const LogicalSensorState *GatewayState::logical_sensor(const std::string &logical_key) const {
@@ -52,6 +54,7 @@ PacketResult GatewayState::process_packet(const DecodedPacket &packet) {
     return PacketResult::REJECTED_INVALID;
   }
 
+  bool matched = false;
   for (const auto &[logical_key, sensor_key] : mappings_) {
     if (!matches_key(packet, sensor_key)) {
       continue;
@@ -63,10 +66,10 @@ PacketResult GatewayState::process_packet(const DecodedPacket &packet) {
     state.battery = packet.battery;
     state.rssi = packet.rssi;
     state.last_seen_ms = packet.seen_ms;
-    return PacketResult::MATCHED_KNOWN;
+    matched = true;
   }
 
-  return PacketResult::IGNORED_UNKNOWN;
+  return matched ? PacketResult::MATCHED_KNOWN : PacketResult::IGNORED_UNKNOWN;
 }
 
 }  // namespace rtl433_native
