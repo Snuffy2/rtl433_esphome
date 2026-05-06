@@ -1,0 +1,25 @@
+[project]
+name = "rtl433-esphome"
+version = "0.1.0"
+description = "ESPHome rtl_433 native gateway for garage fridge and freezer sensors"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "mypy>=1.18.0",
+  "pytest>=8.4.0",
+  "ruff>=0.15.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "N", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["tests"]
