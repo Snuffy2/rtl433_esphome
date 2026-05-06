@@ -84,19 +84,28 @@ class Gateway : public Component {
 template <typename... Ts>
 class StatusAction : public Action<Ts...>, public Parented<Gateway> {
  public:
-  void play(Ts... x) override { this->parent_->status(); }
+  void play(Ts... x) override {
+    (void) sizeof...(x);
+    this->parent_->status();
+  }
 };
 
 template <typename... Ts>
 class StopAction : public Action<Ts...>, public Parented<Gateway> {
  public:
-  void play(Ts... x) override { this->parent_->stop(); }
+  void play(Ts... x) override {
+    (void) sizeof...(x);
+    this->parent_->stop();
+  }
 };
 
 template <typename... Ts>
 class ClearCandidatesAction : public Action<Ts...>, public Parented<Gateway> {
  public:
-  void play(Ts... x) override { this->parent_->clear_candidates(); }
+  void play(Ts... x) override {
+    (void) sizeof...(x);
+    this->parent_->clear_candidates();
+  }
 };
 
 }  // namespace esphome::rtl433_native

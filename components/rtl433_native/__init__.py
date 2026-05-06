@@ -21,7 +21,7 @@ candidate_limit = "candidate_limit"
 candidates = "candidates"
 battery = "battery"
 channel = "channel"
-discovery_enabled = "discovery_enabled"
+discovery_enabled_sensor = "discovery_enabled_sensor"
 humidity = "humidity"
 key = "key"
 known_sensors = "known_sensors"
@@ -39,7 +39,7 @@ CONF_CANDIDATE_LIMIT = candidate_limit
 CONF_CANDIDATES = candidates
 CONF_BATTERY = battery
 CONF_CHANNEL = channel
-CONF_DISCOVERY_ENABLED = discovery_enabled
+CONF_DISCOVERY_ENABLED_SENSOR = discovery_enabled_sensor
 CONF_HUMIDITY = humidity
 CONF_KEY = key
 CONF_KNOWN_SENSORS = known_sensors
@@ -58,6 +58,28 @@ Gateway = rtl433_native_ns.class_("Gateway", cg.Component)
 StatusAction = rtl433_native_ns.class_("StatusAction", automation.Action)
 StopAction = rtl433_native_ns.class_("StopAction", automation.Action)
 ClearCandidatesAction = rtl433_native_ns.class_("ClearCandidatesAction", automation.Action)
+
+UINT32_MAX_MILLISECONDS = 4_294_967_295
+
+
+def _validate_known_sensor_keys(value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ensure logical sensor keys are unique."""
+
+    seen: set[str] = set()
+    for entry in value:
+        key_value = entry[CONF_KEY]
+        if key_value in seen:
+            raise cv.Invalid(f"Duplicate known sensor key '{key_value}'")
+        seen.add(key_value)
+    return value
+
+
+def _validate_stale_after(value: Any) -> Any:
+    result = cv.positive_time_period_milliseconds(value)
+    if result.total_milliseconds > UINT32_MAX_MILLISECONDS:
+        raise cv.Invalid(f"stale_after exceeds uint32_t limit: {result.total_milliseconds}ms")
+    return result
+
 
 SENSOR_ENTRY_SCHEMA = cv.Schema(
     {
@@ -99,9 +121,10 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_KNOWN_SENSORS): cv.All(
             cv.ensure_list(SENSOR_ENTRY_SCHEMA),
             cv.Length(min=1),
+            _validate_known_sensor_keys,
         ),
         cv.Optional(CONF_CANDIDATE_LIMIT, default=10): cv.int_range(min=1, max=20),
-        cv.Optional(CONF_STALE_AFTER, default="1h"): cv.positive_time_period_milliseconds,
+        cv.Optional(CONF_STALE_AFTER, default="1h"): _validate_stale_after,
         cv.Optional(CONF_CANDIDATES, default=[]): cv.All(
             cv.ensure_list(text_sensor.text_sensor_schema(icon="mdi:radio-tower")),
             cv.Length(max=20),
@@ -115,7 +138,7 @@ CONFIG_SCHEMA = cv.Schema(
             accuracy_decimals=0,
             state_class="total_increasing",
         ),
-        cv.Optional(CONF_DISCOVERY_ENABLED): binary_sensor.binary_sensor_schema(
+        cv.Optional(CONF_DISCOVERY_ENABLED_SENSOR): binary_sensor.binary_sensor_schema(
             entity_category="diagnostic",
         ),
     }
@@ -169,9 +192,9 @@ async def to_code(config: dict[str, Any]) -> None:
     if CONF_UNKNOWN_PACKET_COUNT in config:
         unknown_packet_count_sensor = await sensor.new_sensor(config[CONF_UNKNOWN_PACKET_COUNT])
         cg.add(var.set_unknown_packet_count_sensor(unknown_packet_count_sensor))
-    if CONF_DISCOVERY_ENABLED in config:
+    if CONF_DISCOVERY_ENABLED_SENSOR in config:
         discovery_enabled_sensor = await binary_sensor.new_binary_sensor(
-            config[CONF_DISCOVERY_ENABLED]
+            config[CONF_DISCOVERY_ENABLED_SENSOR]
         )
         cg.add(var.set_discovery_enabled_sensor(discovery_enabled_sensor))
 
