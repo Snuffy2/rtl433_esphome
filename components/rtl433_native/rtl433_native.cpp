@@ -131,6 +131,8 @@ void Gateway::process_message(char *message) {
       packet.channel = root["channel"].as<const char *>();
     } else if (root["channel"].is<int>()) {
       packet.channel = std::to_string(root["channel"].as<int>());
+    } else if (root["subtype"].is<int>()) {
+      packet.channel = std::to_string(root["subtype"].as<int>());
     } else if (root["subtype"].is<const char *>()) {
       packet.channel = root["subtype"].as<const char *>();
     } else {
@@ -190,7 +192,7 @@ void Gateway::publish_state(const std::string &logical_key) {
   }
 
   const EntitySet &entities = entities_item->second;
-  if (entities.temperature != nullptr) {
+  if (entities.temperature != nullptr && !std::isnan(logical->temperature_f)) {
     entities.temperature->publish_state(logical->temperature_f);
   }
   if (entities.humidity != nullptr && !std::isnan(logical->humidity)) {
