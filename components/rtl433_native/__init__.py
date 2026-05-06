@@ -21,7 +21,7 @@ candidate_limit = "candidate_limit"
 candidates = "candidates"
 battery = "battery"
 channel = "channel"
-discovery_enabled_sensor = "discovery_enabled_sensor"
+discovery_enabled = "discovery_enabled"
 humidity = "humidity"
 key = "key"
 known_sensors = "known_sensors"
@@ -39,7 +39,7 @@ CONF_CANDIDATE_LIMIT = candidate_limit
 CONF_CANDIDATES = candidates
 CONF_BATTERY = battery
 CONF_CHANNEL = channel
-CONF_DISCOVERY_ENABLED_SENSOR = discovery_enabled_sensor
+CONF_DISCOVERY_ENABLED = discovery_enabled
 CONF_HUMIDITY = humidity
 CONF_KEY = key
 CONF_KNOWN_SENSORS = known_sensors
@@ -138,7 +138,8 @@ CONFIG_SCHEMA = cv.Schema(
             accuracy_decimals=0,
             state_class="total_increasing",
         ),
-        cv.Optional(CONF_DISCOVERY_ENABLED_SENSOR): binary_sensor.binary_sensor_schema(
+        cv.Optional(CONF_DISCOVERY_ENABLED): binary_sensor.binary_sensor_schema(
+            # Diagnostic read-only binary sensor mirroring runtime discovery enable state.
             entity_category="diagnostic",
         ),
     }
@@ -192,9 +193,9 @@ async def to_code(config: dict[str, Any]) -> None:
     if CONF_UNKNOWN_PACKET_COUNT in config:
         unknown_packet_count_sensor = await sensor.new_sensor(config[CONF_UNKNOWN_PACKET_COUNT])
         cg.add(var.set_unknown_packet_count_sensor(unknown_packet_count_sensor))
-    if CONF_DISCOVERY_ENABLED_SENSOR in config:
+    if CONF_DISCOVERY_ENABLED in config:
         discovery_enabled_sensor = await binary_sensor.new_binary_sensor(
-            config[CONF_DISCOVERY_ENABLED_SENSOR]
+            config[CONF_DISCOVERY_ENABLED]
         )
         cg.add(var.set_discovery_enabled_sensor(discovery_enabled_sensor))
 
