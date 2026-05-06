@@ -1,6 +1,7 @@
 #include "rtl433_native.h"
 
 #include <cmath>
+#include <limits>
 
 #include "esphome/components/json/json_util.h"
 #include "esphome/core/log.h"
@@ -56,6 +57,7 @@ void Gateway::add_mapping(const std::string &logical_key, const std::string &mod
 }
 
 void Gateway::set_override(const std::string &logical_key, const std::string &sensor_key) {
+  this->entities_.try_emplace(logical_key);
   this->state_.set_mapping(logical_key, sensor_key);
 }
 
@@ -103,6 +105,9 @@ void Gateway::set_unknown_packet_count_sensor(sensor::Sensor *sensor) {
 
 void Gateway::set_discovery_enabled_sensor(binary_sensor::BinarySensor *sensor) {
   this->discovery_enabled_sensor_ = sensor;
+  if (this->discovery_enabled_sensor_ != nullptr) {
+    this->discovery_enabled_sensor_->publish_state(this->state_.discovery_enabled());
+  }
 }
 
 void Gateway::process_dispatch(char *message) {
@@ -125,6 +130,10 @@ void Gateway::process_message(char *message) {
       packet.id = root["id"].as<const char *>();
     } else if (root["id"].is<int>()) {
       packet.id = std::to_string(root["id"].as<int>());
+    } else if (root["id"].is<unsigned int>()) {
+      packet.id = std::to_string(root["id"].as<unsigned int>());
+    } else if (root["id"].is<uint32_t>()) {
+      packet.id = std::to_string(root["id"].as<uint32_t>());
     }
 
     if (root["channel"].is<const char *>()) {
@@ -139,7 +148,17 @@ void Gateway::process_message(char *message) {
       packet.channel = "0";
     }
 
-    packet.temperature_f = root["temperature_F"] | root["temperature_1_F"] | NAN;
+    if (root["temperature_F"].is<float>()) {
+      packet.temperature_f = root["temperature_F"].as<float>();
+    } else if (root["temperature_1_F"].is<float>()) {
+      packet.temperature_f = root["temperature_1_F"].as<float>();
+    } else if (root["temperature_F"].is<int>()) {
+      packet.temperature_f = static_cast<float>(root["temperature_F"].as<int>());
+    } else if (root["temperature_1_F"].is<int>()) {
+      packet.temperature_f = static_cast<float>(root["temperature_1_F"].as<int>());
+    } else {
+      packet.temperature_f = std::numeric_limits<float>::quiet_NaN();
+    }
     packet.humidity = root["humidity"] | NAN;
     if (root["battery_ok"].is<bool>()) {
       packet.battery = root["battery_ok"].as<bool>() ? 100.0f : 0.0f;
@@ -152,12 +171,17 @@ void Gateway::process_message(char *message) {
     packet.rssi = root["rssi"] | 0;
     packet.seen_ms = millis();
 
+    const ::rtl433_native::PacketResult result = this->state_.process_packet(packet);
+    if (result == ::rtl433_native::PacketResult::REJECTED_INVALID) {
+      ESP_LOGW(TAG, "Rejected invalid rtl_433 packet: %s", packet.model.c_str());
+      return true;
+    }
+
     this->packet_count_ += 1;
     if (this->packet_count_sensor_ != nullptr) {
       this->packet_count_sensor_->publish_state(this->packet_count_);
     }
 
-    const ::rtl433_native::PacketResult result = this->state_.process_packet(packet);
     if (this->last_packet_sensor_ != nullptr) {
       this->last_packet_sensor_->publish_state(
           ::rtl433_native::format_sensor_key({packet.model, packet.channel, packet.id}));
@@ -216,10 +240,16 @@ void Gateway::publish_candidates() {
     if (sensor == nullptr) {
       continue;
     }
+    const std::string next_value =
+        (index < candidates.size()) ? ::rtl433_native::format_candidate(candidates[index]) : "";
+    if (this->last_candidate_values_[index] == next_value) {
+      continue;
+    }
+    this->last_candidate_values_[index] = next_value;
     if (index < candidates.size()) {
-      sensor->publish_state(::rtl433_native::format_candidate(candidates[index]));
+      sensor->publish_state(next_value);
     } else {
-      sensor->publish_state("");
+      sensor->publish_state(next_value);
     }
   }
 }
@@ -228,7 +258,12 @@ void Gateway::publish_stale_states() {
   const uint32_t now = millis();
   for (auto &[logical_key, entities] : this->entities_) {
     if (entities.stale != nullptr) {
-      entities.stale->publish_state(this->state_.is_stale(logical_key, now));
+      const bool stale = this->state_.is_stale(logical_key, now);
+      if (!entities.stale_initialized || entities.last_stale != stale) {
+        entities.last_stale = stale;
+        entities.stale_initialized = true;
+        entities.stale->publish_state(stale);
+      }
     }
   }
 }

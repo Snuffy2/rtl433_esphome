@@ -30,6 +30,8 @@ struct EntitySet {
   sensor::Sensor *battery{nullptr};
   sensor::Sensor *rssi{nullptr};
   binary_sensor::BinarySensor *stale{nullptr};
+  bool stale_initialized{false};
+  bool last_stale{false};
 };
 
 class Gateway : public Component {
@@ -66,6 +68,7 @@ class Gateway : public Component {
   ::rtl433_native::GatewayState state_{};
   std::unordered_map<std::string, EntitySet> entities_{};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};
+  std::array<std::string, 20> last_candidate_values_{};
   text_sensor::TextSensor *last_packet_sensor_{nullptr};
   sensor::Sensor *packet_count_sensor_{nullptr};
   sensor::Sensor *unknown_packet_count_sensor_{nullptr};
