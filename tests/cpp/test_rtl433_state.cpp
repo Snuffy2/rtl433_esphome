@@ -321,6 +321,52 @@ void test_candidate_order_is_deterministic_for_equal_seen_time() {
   require(state.candidates()[1].key.model == "Zebra", "later alpha model should sort after with equal last_seen");
 }
 
+void test_candidates_pruned_by_age() {
+  rtl433_native::GatewayState state;
+  state.set_discovery_enabled(true);
+  state.set_stale_after_ms(1000);
+
+  rtl433_native::DecodedPacket old_candidate;
+  old_candidate.model = "OldSensor";
+  old_candidate.channel = "0";
+  old_candidate.id = "111";
+  old_candidate.seen_ms = 1000;
+  state.process_packet(old_candidate);
+
+  rtl433_native::DecodedPacket recent_candidate;
+  recent_candidate.model = "NewSensor";
+  recent_candidate.channel = "0";
+  recent_candidate.id = "222";
+  recent_candidate.seen_ms = 3000;
+  state.process_packet(recent_candidate);
+
+  require(state.candidates().size() == 1, "candidate age window should remove stale rows");
+  require(state.candidates().front().key.model == "NewSensor", "only the recent candidate should remain");
+}
+
+void test_candidate_age_pruning_is_uint32_wrap_safe() {
+  rtl433_native::GatewayState state;
+  state.set_discovery_enabled(true);
+  state.set_stale_after_ms(200);
+
+  rtl433_native::DecodedPacket pre_wrap_candidate;
+  pre_wrap_candidate.model = "Rollover";
+  pre_wrap_candidate.channel = "0";
+  pre_wrap_candidate.id = "001";
+  pre_wrap_candidate.seen_ms = 0xFFFFFF80;
+  state.process_packet(pre_wrap_candidate);
+
+  rtl433_native::DecodedPacket post_wrap_candidate;
+  post_wrap_candidate.model = "Fresh";
+  post_wrap_candidate.channel = "0";
+  post_wrap_candidate.id = "002";
+  post_wrap_candidate.seen_ms = 0x00000110;
+  state.process_packet(post_wrap_candidate);
+
+  require(state.candidates().size() == 1, "uint32 wrap should not prevent age pruning");
+  require(state.candidates().front().key.id == "002", "newer wrapped candidate should be retained");
+}
+
 }  // namespace
 
 int main() {
@@ -338,5 +384,7 @@ int main() {
   test_stale_detection_uses_last_seen();
   test_stale_detection_wraps_with_uint32_delta();
   test_candidate_order_is_deterministic_for_equal_seen_time();
+  test_candidates_pruned_by_age();
+  test_candidate_age_pruning_is_uint32_wrap_safe();
   return 0;
 }

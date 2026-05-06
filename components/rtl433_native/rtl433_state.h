@@ -72,6 +72,7 @@ class GatewayState {
   void clear_candidates() { candidates_.clear(); }
   const std::vector<CandidateRow> &candidates() const { return candidates_; }
   bool is_stale(const std::string &logical_key, uint32_t now_ms) const;
+  uint32_t candidate_max_age_ms() const { return stale_after_ms_; }
 
  private:
   std::unordered_map<std::string, SensorKey> mappings_{};
@@ -81,6 +82,7 @@ class GatewayState {
   uint32_t stale_after_ms_{3600000};
   std::vector<CandidateRow> candidates_{};
   void record_candidate(const DecodedPacket &packet, bool matched_known);
+  void prune_candidates(uint32_t now_ms);
 };
 
 }  // namespace esphome::rtl433_native

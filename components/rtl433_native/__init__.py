@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
-import esphome.codegen as cg  # type: ignore[import-not-found]
-import esphome.config_validation as cv  # type: ignore[import-not-found]
+import esphome.codegen as cg  # type: ignore[import-untyped]
+import esphome.config_validation as cv  # type: ignore[import-untyped]
 from esphome import automation
-from esphome.components import (  # type: ignore[import-not-found]
+from esphome.components import (  # type: ignore[import-untyped]
     binary_sensor,
     sensor,
     text_sensor,
 )
-from esphome.const import CONF_ID  # type: ignore[import-not-found]
+from esphome.const import CONF_ID  # type: ignore[import-untyped]
 
 AUTO_LOAD = ["binary_sensor", "json", "sensor", "text_sensor"]
 CODEOWNERS = ["@snuffy2"]
@@ -25,6 +25,7 @@ discovery_enabled = "discovery_enabled"
 humidity = "humidity"
 key = "key"
 known_sensors = "known_sensors"
+known_packet_count = "known_packet_count"
 last_packet = "last_packet"
 model = "model"
 packet_count = "packet_count"
@@ -43,6 +44,7 @@ CONF_DISCOVERY_ENABLED = discovery_enabled
 CONF_HUMIDITY = humidity
 CONF_KEY = key
 CONF_KNOWN_SENSORS = known_sensors
+CONF_KNOWN_PACKET_COUNT = known_packet_count
 CONF_LAST_PACKET = last_packet
 CONF_MODEL = model
 CONF_PACKET_COUNT = packet_count
@@ -134,6 +136,10 @@ CONFIG_SCHEMA = cv.Schema(
             accuracy_decimals=0,
             state_class="total_increasing",
         ),
+        cv.Optional(CONF_KNOWN_PACKET_COUNT): sensor.sensor_schema(
+            accuracy_decimals=0,
+            state_class="total_increasing",
+        ),
         cv.Optional(CONF_UNKNOWN_PACKET_COUNT): sensor.sensor_schema(
             accuracy_decimals=0,
             state_class="total_increasing",
@@ -190,6 +196,9 @@ async def to_code(config: dict[str, Any]) -> None:
     if CONF_PACKET_COUNT in config:
         packet_count_sensor = await sensor.new_sensor(config[CONF_PACKET_COUNT])
         cg.add(var.set_packet_count_sensor(packet_count_sensor))
+    if CONF_KNOWN_PACKET_COUNT in config:
+        known_packet_count_sensor = await sensor.new_sensor(config[CONF_KNOWN_PACKET_COUNT])
+        cg.add(var.set_known_packet_count_sensor(known_packet_count_sensor))
     if CONF_UNKNOWN_PACKET_COUNT in config:
         unknown_packet_count_sensor = await sensor.new_sensor(config[CONF_UNKNOWN_PACKET_COUNT])
         cg.add(var.set_unknown_packet_count_sensor(unknown_packet_count_sensor))
@@ -204,16 +213,19 @@ async def to_code(config: dict[str, Any]) -> None:
     "rtl433_native.status",
     StatusAction,
     automation.maybe_simple_id(GATEWAY_ID_SCHEMA),
+    synchronous=True,
 )  # type: ignore[untyped-decorator]
 @automation.register_action(
     "rtl433_native.stop",
     StopAction,
     automation.maybe_simple_id(GATEWAY_ID_SCHEMA),
+    synchronous=True,
 )  # type: ignore[untyped-decorator]
 @automation.register_action(
     "rtl433_native.clear_candidates",
     ClearCandidatesAction,
     automation.maybe_simple_id(GATEWAY_ID_SCHEMA),
+    synchronous=True,
 )  # type: ignore[untyped-decorator]
 async def action_to_code(
     config: dict[str, Any], action_id: Any, template_arg: Any, args: Any

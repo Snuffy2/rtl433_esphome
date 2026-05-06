@@ -25,6 +25,10 @@ bool candidate_less(const CandidateRow &left, const CandidateRow &right) {
   return left.key.id < right.key.id;
 }
 
+bool is_older_than(uint32_t now_ms, uint32_t seen_ms, uint32_t age_ms) {
+  return static_cast<uint32_t>(now_ms - seen_ms) > age_ms;
+}
+
 }  // namespace
 
 std::optional<SensorKey> parse_sensor_key(const std::string &value) {
@@ -126,6 +130,8 @@ bool GatewayState::is_stale(const std::string &logical_key, uint32_t now_ms) con
 }
 
 void GatewayState::record_candidate(const DecodedPacket &packet, bool matched_known) {
+  prune_candidates(packet.seen_ms);
+
   SensorKey key{packet.model, packet.channel, packet.id};
   auto existing = std::find_if(candidates_.begin(), candidates_.end(), [&](const CandidateRow &row) {
     return same_key(row.key, key);
@@ -152,6 +158,15 @@ void GatewayState::record_candidate(const DecodedPacket &packet, bool matched_kn
   if (candidates_.size() > candidate_limit_) {
     candidates_.resize(candidate_limit_);
   }
+}
+
+void GatewayState::prune_candidates(uint32_t now_ms) {
+  candidates_.erase(
+      std::remove_if(
+          candidates_.begin(),
+          candidates_.end(),
+          [&](const CandidateRow &row) { return is_older_than(now_ms, row.last_seen_ms, stale_after_ms_); }),
+      candidates_.end());
 }
 
 }  // namespace esphome::rtl433_native

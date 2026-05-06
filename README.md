@@ -40,7 +40,8 @@ automatically rebinds a freezer/fridge mapping.
 
 1. Flash as `garage-rtl433-native`, leaving `OMG_Garage` in place.
 2. Compare the four native ESPHome entities with the existing MQTT/template
-   entities for several update cycles.
+   entities for several update cycles. This comparison remains pending for a
+   hardware/HA rollout gate and has not been completed in this batch.
 3. Rename the native entities to the existing public entity IDs after the new
    values are stable.
 4. Disable the OpenMQTTGateway smart-plug restart automations in a separate Home

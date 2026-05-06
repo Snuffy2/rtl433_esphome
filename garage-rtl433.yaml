@@ -137,6 +137,9 @@ rtl433_native:
   packet_count:
     name: "Garage RTL433 Packet Count"
     entity_category: diagnostic
+  known_packet_count:
+    name: "Garage RTL433 Known Packet Count"
+    entity_category: diagnostic
   unknown_packet_count:
     name: "Garage RTL433 Unknown Packet Count"
     entity_category: diagnostic
@@ -164,6 +167,22 @@ rtl433_native:
       entity_category: diagnostic
     - name: "Garage RTL433 Candidate 10"
       entity_category: diagnostic
+
+sensor:
+  - platform: uptime
+    name: "Garage RTL433 Uptime"
+    entity_category: diagnostic
+  - platform: wifi_signal
+    name: "Garage RTL433 Wi-Fi RSSI"
+    update_interval: 120s
+    entity_category: diagnostic
+  - platform: template
+    name: "Garage RTL433 Free Heap"
+    accuracy_decimals: 0
+    unit_of_measurement: "B"
+    update_interval: 120s
+    lambda: return ESP.getFreeHeap();
+    entity_category: diagnostic
 
 switch:
   - platform: template

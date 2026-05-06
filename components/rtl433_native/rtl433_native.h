@@ -59,6 +59,7 @@ class Gateway : public Component {
   void set_candidate_text_sensor(std::size_t index, text_sensor::TextSensor *sensor);
   void set_last_packet_sensor(text_sensor::TextSensor *sensor);
   void set_packet_count_sensor(sensor::Sensor *sensor);
+  void set_known_packet_count_sensor(sensor::Sensor *sensor);
   void set_unknown_packet_count_sensor(sensor::Sensor *sensor);
   void set_discovery_enabled_sensor(binary_sensor::BinarySensor *sensor);
 
@@ -71,9 +72,11 @@ class Gateway : public Component {
   std::array<std::string, 20> last_candidate_values_{};
   text_sensor::TextSensor *last_packet_sensor_{nullptr};
   sensor::Sensor *packet_count_sensor_{nullptr};
+  sensor::Sensor *known_packet_count_sensor_{nullptr};
   sensor::Sensor *unknown_packet_count_sensor_{nullptr};
   binary_sensor::BinarySensor *discovery_enabled_sensor_{nullptr};
   uint32_t packet_count_{0};
+  uint32_t known_packet_count_{0};
   uint32_t unknown_packet_count_{0};
   static Gateway *instance_;
 

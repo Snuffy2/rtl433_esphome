@@ -19,6 +19,8 @@
 - Design direction approved: hybrid ESPHome native entities using
   `rtl_433_ESP`, with strict known-sensor mappings plus a bounded candidate
   table for discovering replacement IDs after battery changes.
+- Host-side validation and static checks are complete, but the requested Task 8
+  live flash/HA comparison remains pending until a hardware rollout is performed.
 - Implementation plan written at
   `docs/superpowers/plans/2026-05-06-rtl433-esphome-hybrid.md`.
 

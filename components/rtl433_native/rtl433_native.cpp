@@ -100,6 +100,10 @@ void Gateway::set_last_packet_sensor(text_sensor::TextSensor *sensor) {
 
 void Gateway::set_packet_count_sensor(sensor::Sensor *sensor) { this->packet_count_sensor_ = sensor; }
 
+void Gateway::set_known_packet_count_sensor(sensor::Sensor *sensor) {
+  this->known_packet_count_sensor_ = sensor;
+}
+
 void Gateway::set_unknown_packet_count_sensor(sensor::Sensor *sensor) {
   this->unknown_packet_count_sensor_ = sensor;
 }
@@ -181,6 +185,12 @@ void Gateway::process_message(char *message) {
     this->packet_count_ += 1;
     if (this->packet_count_sensor_ != nullptr) {
       this->packet_count_sensor_->publish_state(this->packet_count_);
+    }
+    if (result == ::esphome::rtl433_native::PacketResult::MATCHED_KNOWN) {
+      this->known_packet_count_ += 1;
+      if (this->known_packet_count_sensor_ != nullptr) {
+        this->known_packet_count_sensor_->publish_state(this->known_packet_count_);
+      }
     }
 
     if (this->last_packet_sensor_ != nullptr) {
