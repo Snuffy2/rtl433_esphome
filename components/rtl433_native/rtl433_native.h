@@ -65,7 +65,7 @@ class Gateway : public Component {
  protected:
   rtl_433_ESP rf_{};
   char buffer_[512]{};
-  ::rtl433_native::GatewayState state_{};
+  esphome::rtl433_native::GatewayState state_{};
   std::unordered_map<std::string, EntitySet> entities_{};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};
   std::array<std::string, 20> last_candidate_values_{};

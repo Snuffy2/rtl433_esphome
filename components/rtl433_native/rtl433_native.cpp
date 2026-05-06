@@ -1,4 +1,5 @@
 #include "rtl433_native.h"
+#include "ledc_compat.h"
 
 #include <cmath>
 #include <limits>
@@ -124,7 +125,7 @@ void Gateway::process_message(char *message) {
       return true;
     }
 
-    ::rtl433_native::DecodedPacket packet;
+    ::esphome::rtl433_native::DecodedPacket packet;
     packet.model = model;
     if (root["id"].is<const char *>()) {
       packet.id = root["id"].as<const char *>();
@@ -171,8 +172,8 @@ void Gateway::process_message(char *message) {
     packet.rssi = root["rssi"] | 0;
     packet.seen_ms = millis();
 
-    const ::rtl433_native::PacketResult result = this->state_.process_packet(packet);
-    if (result == ::rtl433_native::PacketResult::REJECTED_INVALID) {
+    const ::esphome::rtl433_native::PacketResult result = this->state_.process_packet(packet);
+    if (result == ::esphome::rtl433_native::PacketResult::REJECTED_INVALID) {
       ESP_LOGW(TAG, "Rejected invalid rtl_433 packet: %s", packet.model.c_str());
       return true;
     }
@@ -184,10 +185,10 @@ void Gateway::process_message(char *message) {
 
     if (this->last_packet_sensor_ != nullptr) {
       this->last_packet_sensor_->publish_state(
-          ::rtl433_native::format_sensor_key({packet.model, packet.channel, packet.id}));
+          ::esphome::rtl433_native::format_sensor_key({packet.model, packet.channel, packet.id}));
     }
 
-    if (result == ::rtl433_native::PacketResult::MATCHED_KNOWN) {
+    if (result == ::esphome::rtl433_native::PacketResult::MATCHED_KNOWN) {
       for (const auto &entry : this->entities_) {
         const auto &logical_key = entry.first;
         const auto *logical = this->state_.logical_sensor(logical_key);
@@ -195,8 +196,8 @@ void Gateway::process_message(char *message) {
           this->publish_state(logical_key);
         }
       }
-    } else if (result == ::rtl433_native::PacketResult::RECORDED_CANDIDATE ||
-               result == ::rtl433_native::PacketResult::IGNORED_UNKNOWN) {
+    } else if (result == ::esphome::rtl433_native::PacketResult::RECORDED_CANDIDATE ||
+               result == ::esphome::rtl433_native::PacketResult::IGNORED_UNKNOWN) {
       this->unknown_packet_count_ += 1;
       if (this->unknown_packet_count_sensor_ != nullptr) {
         this->unknown_packet_count_sensor_->publish_state(this->unknown_packet_count_);
@@ -241,7 +242,7 @@ void Gateway::publish_candidates() {
       continue;
     }
     const std::string next_value =
-        (index < candidates.size()) ? ::rtl433_native::format_candidate(candidates[index]) : "";
+        (index < candidates.size()) ? ::esphome::rtl433_native::format_candidate(candidates[index]) : "";
     if (this->last_candidate_values_[index] == next_value) {
       continue;
     }

@@ -4,7 +4,7 @@
 #include <cmath>
 #include <sstream>
 
-namespace rtl433_native {
+namespace esphome::rtl433_native {
 
 namespace {
 
@@ -154,4 +154,4 @@ void GatewayState::record_candidate(const DecodedPacket &packet, bool matched_kn
   }
 }
 
-}  // namespace rtl433_native
+}  // namespace esphome::rtl433_native

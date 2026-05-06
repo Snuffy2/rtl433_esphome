@@ -7,14 +7,22 @@ esphome:
   friendly_name: ${friendly_name}
   comment: "Heltec WiFi LoRa 32 V2-style 433 MHz rtl_433 ESPHome gateway"
   libraries:
-    - rtl_433_ESP=https://github.com/NorthernMan54/rtl_433_ESP.git
+    - "rtl_433_ESP=git+https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"
     - RadioLib@6.2.0
+    - SPI
+    - EEPROM
   platformio_options:
     lib_ldf_mode: "chain+"
     build_flags:
-      - "-DONBOARD_LED=LED_BUILTIN"
+      - "-DONBOARD_LED=25"
       - "-DRF_SX1278"
       - "-DRF_MODULE_FREQUENCY=433.92"
+      - "-DRF_MODULE_DIO0=26"
+      - "-DRF_MODULE_DIO1=35"
+      - "-DRF_MODULE_DIO2=34"
+      - "-DRF_MODULE_RST=14"
+      - "-DRF_MODULE_CS=18"
+      - "-include src/esphome/components/rtl433_native/ledc_compat.h"
   on_boot:
     priority: -100
     then:

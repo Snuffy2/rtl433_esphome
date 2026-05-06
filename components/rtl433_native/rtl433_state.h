@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace rtl433_native {
+namespace esphome::rtl433_native {
 
 struct SensorKey {
   std::string model;
@@ -83,4 +83,8 @@ class GatewayState {
   void record_candidate(const DecodedPacket &packet, bool matched_known);
 };
 
-}  // namespace rtl433_native
+}  // namespace esphome::rtl433_native
+
+// Backward-compatible alias for existing include users/tests still expecting the
+// historical top-level namespace name.
+namespace rtl433_native = esphome::rtl433_native;
