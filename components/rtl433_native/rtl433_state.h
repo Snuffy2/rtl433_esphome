@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace rtl433_native {
 
@@ -34,6 +35,18 @@ struct LogicalSensorState {
   uint32_t last_seen_ms{0};
 };
 
+struct CandidateRow {
+  SensorKey key;
+  float temperature_f{NAN};
+  float humidity{NAN};
+  float battery{NAN};
+  int rssi{0};
+  uint32_t first_seen_ms{0};
+  uint32_t last_seen_ms{0};
+  uint32_t packet_count{0};
+  bool matched_known{false};
+};
+
 enum class PacketResult {
   MATCHED_KNOWN,
   RECORDED_CANDIDATE,
@@ -43,6 +56,7 @@ enum class PacketResult {
 
 std::optional<SensorKey> parse_sensor_key(const std::string &value);
 std::string format_sensor_key(const SensorKey &key);
+std::string format_candidate(const CandidateRow &candidate);
 bool matches_key(const DecodedPacket &packet, const SensorKey &key);
 
 class GatewayState {
@@ -50,10 +64,22 @@ class GatewayState {
   void set_mapping(const std::string &logical_key, const std::string &sensor_key);
   const LogicalSensorState *logical_sensor(const std::string &logical_key) const;
   PacketResult process_packet(const DecodedPacket &packet);
+  void set_discovery_enabled(bool enabled) { discovery_enabled_ = enabled; }
+  bool discovery_enabled() const { return discovery_enabled_; }
+  void set_candidate_limit(std::size_t limit) { candidate_limit_ = limit; }
+  void set_stale_after_ms(uint32_t stale_after_ms) { stale_after_ms_ = stale_after_ms; }
+  void clear_candidates() { candidates_.clear(); }
+  const std::vector<CandidateRow> &candidates() const { return candidates_; }
+  bool is_stale(const std::string &logical_key, uint32_t now_ms) const;
 
  private:
   std::unordered_map<std::string, SensorKey> mappings_{};
   std::unordered_map<std::string, LogicalSensorState> logical_states_{};
+  bool discovery_enabled_{false};
+  std::size_t candidate_limit_{10};
+  uint32_t stale_after_ms_{3600000};
+  std::vector<CandidateRow> candidates_{};
+  void record_candidate(const DecodedPacket &packet, bool matched_known);
 };
 
 }  // namespace rtl433_native

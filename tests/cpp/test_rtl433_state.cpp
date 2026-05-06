@@ -154,6 +154,92 @@ void test_unmatched_packet_is_ignored() {
           "expected unmatched packet to be ignored");
 }
 
+void test_unknowns_only_record_when_discovery_enabled() {
+  rtl433_native::GatewayState state;
+  state.set_candidate_limit(10);
+
+  rtl433_native::DecodedPacket packet;
+  packet.model = "Acurite-986";
+  packet.channel = "1R";
+  packet.id = "11932";
+  packet.temperature_f = 75.0f;
+  packet.battery = 100.0f;
+  packet.rssi = -88;
+  packet.seen_ms = 2000;
+
+  require(state.process_packet(packet) == rtl433_native::PacketResult::IGNORED_UNKNOWN,
+          "unknown packet should be ignored while discovery is disabled");
+  require(state.candidates().empty(), "candidate table should be empty");
+
+  state.set_discovery_enabled(true);
+  require(state.process_packet(packet) == rtl433_native::PacketResult::RECORDED_CANDIDATE,
+          "unknown packet should be recorded while discovery is enabled");
+  require(state.candidates().size() == 1, "candidate table should have one row");
+  require(state.candidates().front().packet_count == 1, "candidate count should start at one");
+}
+
+void test_candidates_are_grouped_capped_and_clearable() {
+  rtl433_native::GatewayState state;
+  state.set_discovery_enabled(true);
+  state.set_candidate_limit(2);
+
+  for (int index = 0; index < 3; ++index) {
+    rtl433_native::DecodedPacket packet;
+    packet.model = "Noise";
+    packet.channel = std::to_string(index);
+    packet.id = std::to_string(100 + index);
+    packet.temperature_f = static_cast<float>(index);
+    packet.rssi = -60 - index;
+    packet.seen_ms = 1000 + static_cast<uint32_t>(index);
+    state.process_packet(packet);
+  }
+
+  require(state.candidates().size() == 2, "candidate table should honor limit");
+  require(state.candidates().front().last_seen_ms == 1002, "newest candidate should sort first");
+
+  state.clear_candidates();
+  require(state.candidates().empty(), "clear should empty candidate table");
+}
+
+void test_mapping_override_replaces_default_key() {
+  rtl433_native::GatewayState state;
+  state.set_mapping("garage_freezer_1", "Acurite-986/1R/11932");
+  state.set_mapping("garage_freezer_1", "Acurite-986/1R/55555");
+
+  rtl433_native::DecodedPacket old_packet;
+  old_packet.model = "Acurite-986";
+  old_packet.channel = "1R";
+  old_packet.id = "11932";
+  old_packet.temperature_f = 75.0f;
+  old_packet.seen_ms = 1000;
+  require(state.process_packet(old_packet) == rtl433_native::PacketResult::IGNORED_UNKNOWN,
+          "old mapping should no longer match");
+
+  rtl433_native::DecodedPacket new_packet = old_packet;
+  new_packet.id = "55555";
+  new_packet.temperature_f = 10.0f;
+  new_packet.seen_ms = 2000;
+  require(state.process_packet(new_packet) == rtl433_native::PacketResult::MATCHED_KNOWN,
+          "new mapping should match");
+}
+
+void test_stale_detection_uses_last_seen() {
+  rtl433_native::GatewayState state;
+  state.set_stale_after_ms(600000);
+  state.set_mapping("garage_combo_freezer", "TFA-303221/2/88");
+
+  rtl433_native::DecodedPacket packet;
+  packet.model = "TFA-303221";
+  packet.channel = "2";
+  packet.id = "88";
+  packet.temperature_f = 1.22f;
+  packet.seen_ms = 1000;
+  state.process_packet(packet);
+
+  require(!state.is_stale("garage_combo_freezer", 600999), "sensor should not be stale yet");
+  require(state.is_stale("garage_combo_freezer", 601001), "sensor should be stale after threshold");
+}
+
 }  // namespace
 
 int main() {
@@ -164,5 +250,9 @@ int main() {
   test_duplicate_mappings_update_both();
   test_invalid_packet_is_rejected();
   test_unmatched_packet_is_ignored();
+  test_unknowns_only_record_when_discovery_enabled();
+  test_candidates_are_grouped_capped_and_clearable();
+  test_mapping_override_replaces_default_key();
+  test_stale_detection_uses_last_seen();
   return 0;
 }
