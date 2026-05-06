@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
-import esphome.codegen as cg
-import esphome.config_validation as cv
+import esphome.codegen as cg  # type: ignore[import-not-found]
+import esphome.config_validation as cv  # type: ignore[import-not-found]
 from esphome import automation
-from esphome.components import binary_sensor, sensor, text_sensor
-from esphome.const import CONF_ID
+from esphome.components import (  # type: ignore[import-not-found]
+    binary_sensor,
+    sensor,
+    text_sensor,
+)
+from esphome.const import CONF_ID  # type: ignore[import-not-found]
 
 AUTO_LOAD = ["binary_sensor", "json", "sensor", "text_sensor"]
 CODEOWNERS = ["@snuffy2"]
@@ -176,17 +180,17 @@ async def to_code(config: dict[str, Any]) -> None:
     "rtl433_native.status",
     StatusAction,
     automation.maybe_simple_id(GATEWAY_ID_SCHEMA),
-)
+)  # type: ignore[untyped-decorator]
 @automation.register_action(
     "rtl433_native.stop",
     StopAction,
     automation.maybe_simple_id(GATEWAY_ID_SCHEMA),
-)
+)  # type: ignore[untyped-decorator]
 @automation.register_action(
     "rtl433_native.clear_candidates",
     ClearCandidatesAction,
     automation.maybe_simple_id(GATEWAY_ID_SCHEMA),
-)
+)  # type: ignore[untyped-decorator]
 async def action_to_code(
     config: dict[str, Any], action_id: Any, template_arg: Any, args: Any
 ) -> Any:
