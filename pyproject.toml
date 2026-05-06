@@ -7,6 +7,7 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+  "esphome>=2026.4.5",
   "mypy>=1.18.0",
   "pytest>=8.4.0",
   "ruff>=0.15.0",

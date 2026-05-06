@@ -1,0 +1,232 @@
+substitutions:
+  device_name: garage-rtl433-native
+  friendly_name: Garage RTL433 Native
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  comment: "Heltec WiFi LoRa 32 V2-style 433 MHz rtl_433 ESPHome gateway"
+  libraries:
+    - rtl_433_ESP=https://github.com/NorthernMan54/rtl_433_ESP.git
+    - RadioLib@6.2.0
+  platformio_options:
+    lib_ldf_mode: "chain+"
+    build_flags:
+      - "-DONBOARD_LED=LED_BUILTIN"
+      - "-DRF_SX1278"
+      - "-DRF_MODULE_FREQUENCY=433.92"
+  on_boot:
+    priority: -100
+    then:
+      - lambda: |-
+          id(rtl433_gateway).set_override("garage_combo_fridge", id(garage_combo_fridge_mapping).state);
+          id(rtl433_gateway).set_override("garage_combo_freezer", id(garage_combo_freezer_mapping).state);
+          id(rtl433_gateway).set_override("garage_freezer_1", id(garage_freezer_1_mapping).state);
+          id(rtl433_gateway).set_override("garage_freezer_2", id(garage_freezer_2_mapping).state);
+
+esp32:
+  board: heltec_wifi_kit_32_v2
+  framework:
+    type: arduino
+
+logger:
+
+api:
+
+ota:
+  - platform: esphome
+    on_begin:
+      - rtl433_native.stop: rtl433_gateway
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: !secret fallback_ap_password
+
+captive_portal:
+
+external_components:
+  - source:
+      type: local
+      path: components
+
+rtl433_native:
+  id: rtl433_gateway
+  candidate_limit: 10
+  stale_after: 1h
+  known_sensors:
+    - key: garage_combo_fridge
+      model: "LaCrosse-TX141THBv2"
+      channel: "0"
+      rf_id: "203"
+      temperature:
+        name: "Garage Combo Fridge"
+      humidity:
+        name: "Garage Combo Fridge Humidity"
+        entity_category: diagnostic
+      battery:
+        name: "Garage Combo Fridge Battery"
+        entity_category: diagnostic
+      rssi:
+        name: "Garage Combo Fridge RSSI"
+        entity_category: diagnostic
+      stale:
+        name: "Garage Combo Fridge Stale"
+        entity_category: diagnostic
+    - key: garage_combo_freezer
+      model: "TFA-303221"
+      channel: "2"
+      rf_id: "88"
+      temperature:
+        name: "Garage Combo Freezer"
+      humidity:
+        name: "Garage Combo Freezer Humidity"
+        entity_category: diagnostic
+      battery:
+        name: "Garage Combo Freezer Battery"
+        entity_category: diagnostic
+      rssi:
+        name: "Garage Combo Freezer RSSI"
+        entity_category: diagnostic
+      stale:
+        name: "Garage Combo Freezer Stale"
+        entity_category: diagnostic
+    - key: garage_freezer_1
+      model: "Acurite-986"
+      channel: "1R"
+      rf_id: "11932"
+      temperature:
+        name: "Garage Freezer 1"
+      battery:
+        name: "Garage Freezer 1 Battery"
+        entity_category: diagnostic
+      rssi:
+        name: "Garage Freezer 1 RSSI"
+        entity_category: diagnostic
+      stale:
+        name: "Garage Freezer 1 Stale"
+        entity_category: diagnostic
+    - key: garage_freezer_2
+      model: "Acurite-986"
+      channel: "2F"
+      rf_id: "31274"
+      temperature:
+        name: "Garage Freezer 2"
+      battery:
+        name: "Garage Freezer 2 Battery"
+        entity_category: diagnostic
+      rssi:
+        name: "Garage Freezer 2 RSSI"
+        entity_category: diagnostic
+      stale:
+        name: "Garage Freezer 2 Stale"
+        entity_category: diagnostic
+  last_packet:
+    name: "Garage RTL433 Last Packet"
+    entity_category: diagnostic
+  packet_count:
+    name: "Garage RTL433 Packet Count"
+    entity_category: diagnostic
+  unknown_packet_count:
+    name: "Garage RTL433 Unknown Packet Count"
+    entity_category: diagnostic
+  discovery_enabled:
+    name: "Garage RTL433 Discovery Enabled"
+    entity_category: diagnostic
+  candidates:
+    - name: "Garage RTL433 Candidate 1"
+      entity_category: diagnostic
+    - name: "Garage RTL433 Candidate 2"
+      entity_category: diagnostic
+    - name: "Garage RTL433 Candidate 3"
+      entity_category: diagnostic
+    - name: "Garage RTL433 Candidate 4"
+      entity_category: diagnostic
+    - name: "Garage RTL433 Candidate 5"
+      entity_category: diagnostic
+    - name: "Garage RTL433 Candidate 6"
+      entity_category: diagnostic
+    - name: "Garage RTL433 Candidate 7"
+      entity_category: diagnostic
+    - name: "Garage RTL433 Candidate 8"
+      entity_category: diagnostic
+    - name: "Garage RTL433 Candidate 9"
+      entity_category: diagnostic
+    - name: "Garage RTL433 Candidate 10"
+      entity_category: diagnostic
+
+switch:
+  - platform: template
+    name: "Garage RTL433 Discovery Mode"
+    id: rtl433_discovery_mode
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    turn_on_action:
+      - lambda: id(rtl433_gateway).set_discovery_enabled(true);
+    turn_off_action:
+      - lambda: id(rtl433_gateway).set_discovery_enabled(false);
+
+button:
+  - platform: template
+    name: "Garage RTL433 Clear Candidates"
+    entity_category: config
+    on_press:
+      - rtl433_native.clear_candidates: rtl433_gateway
+  - platform: template
+    name: "Garage RTL433 Radio Status"
+    entity_category: diagnostic
+    on_press:
+      - rtl433_native.status: rtl433_gateway
+
+text:
+  - platform: template
+    name: "Garage Combo Fridge Mapping"
+    id: garage_combo_fridge_mapping
+    optimistic: true
+    restore_value: true
+    mode: text
+    initial_value: "LaCrosse-TX141THBv2/0/203"
+    min_length: 3
+    max_length: 80
+    entity_category: config
+    set_action:
+      - lambda: id(rtl433_gateway).set_override("garage_combo_fridge", x);
+  - platform: template
+    name: "Garage Combo Freezer Mapping"
+    id: garage_combo_freezer_mapping
+    optimistic: true
+    restore_value: true
+    mode: text
+    initial_value: "TFA-303221/2/88"
+    min_length: 3
+    max_length: 80
+    entity_category: config
+    set_action:
+      - lambda: id(rtl433_gateway).set_override("garage_combo_freezer", x);
+  - platform: template
+    name: "Garage Freezer 1 Mapping"
+    id: garage_freezer_1_mapping
+    optimistic: true
+    restore_value: true
+    mode: text
+    initial_value: "Acurite-986/1R/11932"
+    min_length: 3
+    max_length: 80
+    entity_category: config
+    set_action:
+      - lambda: id(rtl433_gateway).set_override("garage_freezer_1", x);
+  - platform: template
+    name: "Garage Freezer 2 Mapping"
+    id: garage_freezer_2_mapping
+    optimistic: true
+    restore_value: true
+    mode: text
+    initial_value: "Acurite-986/2F/31274"
+    min_length: 3
+    max_length: 80
+    entity_category: config
+    set_action:
+      - lambda: id(rtl433_gateway).set_override("garage_freezer_2", x);
