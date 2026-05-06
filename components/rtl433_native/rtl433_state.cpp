@@ -80,13 +80,13 @@ PacketResult GatewayState::process_packet(const DecodedPacket &packet) {
     state.battery = packet.battery;
     state.rssi = packet.rssi;
     state.last_seen_ms = packet.seen_ms;
-    if (discovery_enabled_) {
-      record_candidate(packet, true);
-    }
     matched = true;
   }
 
   if (matched) {
+    if (discovery_enabled_) {
+      record_candidate(packet, true);
+    }
     return PacketResult::MATCHED_KNOWN;
   }
   if (discovery_enabled_) {

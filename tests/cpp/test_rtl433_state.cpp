@@ -183,11 +183,16 @@ void test_candidates_are_grouped_capped_and_clearable() {
   state.set_discovery_enabled(true);
   state.set_candidate_limit(2);
 
-  for (int index = 0; index < 3; ++index) {
+  for (int index = 0; index < 4; ++index) {
     rtl433_native::DecodedPacket packet;
     packet.model = "Noise";
-    packet.channel = std::to_string(index);
-    packet.id = std::to_string(100 + index);
+    if (index == 2) {
+      packet.channel = "1";
+      packet.id = "101";
+    } else {
+      packet.channel = std::to_string(index);
+      packet.id = std::to_string(100 + index);
+    }
     packet.temperature_f = static_cast<float>(index);
     packet.rssi = -60 - index;
     packet.seen_ms = 1000 + static_cast<uint32_t>(index);
@@ -195,10 +200,45 @@ void test_candidates_are_grouped_capped_and_clearable() {
   }
 
   require(state.candidates().size() == 2, "candidate table should honor limit");
-  require(state.candidates().front().last_seen_ms == 1002, "newest candidate should sort first");
+  require(state.candidates().front().last_seen_ms == 1003, "newest candidate should sort first");
+  for (const auto &candidate : state.candidates()) {
+    if (candidate.key.channel == "1" && candidate.key.id == "101") {
+      require(candidate.packet_count == 2, "duplicate packet keys should group into one row");
+      require(candidate.last_seen_ms == 1002, "grouped row should hold the latest seen timestamp");
+    }
+  }
 
   state.clear_candidates();
   require(state.candidates().empty(), "clear should empty candidate table");
+}
+
+void test_duplicate_mappings_record_matched_candidate_once() {
+  rtl433_native::GatewayState state;
+  state.set_discovery_enabled(true);
+  state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
+  state.set_mapping("garage_combo_freezer", "LaCrosse-TX141THBv2/0/203");
+
+  rtl433_native::DecodedPacket packet;
+  packet.model = "LaCrosse-TX141THBv2";
+  packet.channel = "0";
+  packet.id = "203";
+  packet.temperature_f = 55.55f;
+  packet.humidity = 11.0f;
+  packet.battery = 99.0f;
+  packet.rssi = -55;
+  packet.seen_ms = 1500;
+
+  auto result = state.process_packet(packet);
+  require(result == rtl433_native::PacketResult::MATCHED_KNOWN, "expected duplicate matches to succeed");
+
+  const auto *fridge = state.logical_sensor("garage_combo_fridge");
+  const auto *freezer = state.logical_sensor("garage_combo_freezer");
+  require(fridge != nullptr && freezer != nullptr, "expected both logical sensor states");
+  require(fridge->has_value && freezer->has_value, "expected both logical sensors to update");
+  require(fridge->temperature_f == freezer->temperature_f, "logical sensor temperatures should match");
+
+  require(state.candidates().size() == 1, "duplicate mapped packet should create one matched candidate row");
+  require(state.candidates().front().packet_count == 1, "duplicate mapped packet should count as one packet");
 }
 
 void test_mapping_override_replaces_default_key() {
@@ -252,6 +292,7 @@ int main() {
   test_unmatched_packet_is_ignored();
   test_unknowns_only_record_when_discovery_enabled();
   test_candidates_are_grouped_capped_and_clearable();
+  test_duplicate_mappings_record_matched_candidate_once();
   test_mapping_override_replaces_default_key();
   test_stale_detection_uses_last_seen();
   return 0;
