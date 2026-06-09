@@ -31,6 +31,15 @@ bool key_less(const SensorKey &left, const SensorKey &right) {
   return left.id < right.id;
 }
 
+std::string trim_ascii_whitespace(const std::string &value) {
+  const auto first = value.find_first_not_of(" \t\n\r\f\v");
+  if (first == std::string::npos) {
+    return "";
+  }
+  const auto last = value.find_last_not_of(" \t\n\r\f\v");
+  return value.substr(first, last - first + 1);
+}
+
 void canonicalize_mapping(SensorMapping &mapping) {
   std::vector<SensorKey> keys{mapping.primary};
   keys.insert(keys.end(), mapping.synonyms.begin(), mapping.synonyms.end());
@@ -89,7 +98,8 @@ std::optional<SensorMapping> parse_sensor_mapping(const std::string &value) {
   bool has_primary = false;
 
   while (std::getline(stream, segment, ';')) {
-    auto parsed = parse_sensor_key(segment);
+    auto trimmed_segment = trim_ascii_whitespace(segment);
+    auto parsed = parse_sensor_key(trimmed_segment);
     if (!parsed.has_value()) {
       ESP_LOGW(TAG, "parse_sensor_mapping rejected invalid segment '%s' in '%s'", segment.c_str(), value.c_str());
       return std::nullopt;

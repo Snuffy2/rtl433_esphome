@@ -40,7 +40,7 @@ ClearCandidatesAction = rtl433_native_ns.class_("ClearCandidatesAction", automat
 
 UINT32_MAX_MILLISECONDS = 4_294_967_295
 ARDUINO_NETWORK_INCLUDE_FLAG = (
-    "-I${platformio.packages_dir}/framework-arduinoespressif32/libraries/Network/src"
+    '-I"${platformio.packages_dir}/framework-arduinoespressif32/libraries/Network/src"'
 )
 
 
@@ -69,12 +69,13 @@ def _validate_sensor_key(value: Any) -> str:
 def _validate_mapping(value: Any) -> str:
     """Validate a semicolon-delimited rtl_433 mapping string."""
 
-    mapping_value = str(cv.string_strict(value))
+    mapping_value = str(cv.string_strict(value)).strip()
     if mapping_value == "":
         raise cv.Invalid("Expected at least one sensor key in model/channel/id format")
-    for sensor_key in mapping_value.split(";"):
+    sensor_keys = [sensor_key.strip() for sensor_key in mapping_value.split(";")]
+    for sensor_key in sensor_keys:
         _validate_sensor_key(sensor_key)
-    return mapping_value
+    return ";".join(sensor_keys)
 
 
 def _validate_stale_after(value: Any) -> Any:

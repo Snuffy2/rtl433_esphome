@@ -102,6 +102,25 @@ void test_mapping_list_updates_from_primary_and_synonym() {
   require(logical->last_seen_ms == 2000, "wrong mapping list last seen timestamp");
 }
 
+void test_spaced_mapping_list_updates_from_synonym() {
+  rtl433::GatewayState state;
+  state.set_mapping("garage_combo_freezer", " TFA-303221/2/88 ; LaCrosse-TX141THBv2/1/88 ");
+
+  rtl433::DecodedPacket packet;
+  packet.model = "LaCrosse-TX141THBv2";
+  packet.channel = "1";
+  packet.id = "88";
+  packet.temperature_f = 14.75f;
+  packet.seen_ms = 3000;
+
+  require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
+          "expected whitespace-padded synonym mapping to match");
+  const auto *logical = state.logical_sensor("garage_combo_freezer");
+  require(logical != nullptr, "expected logical state for spaced mapping");
+  require(logical->has_value, "expected spaced synonym packet to update logical sensor");
+  require(std::fabs(logical->temperature_f - 14.75f) < 0.001f, "wrong spaced mapping temperature");
+}
+
 void test_remapping_clears_old_reading() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
@@ -189,6 +208,24 @@ void test_reordered_primary_preserves_restored_reading() {
   require(after != nullptr, "expected logical sensor state after reordered primary");
   require(after->has_value, "expected reordered primary to preserve restored reading");
   require(after->last_seen_ms == 5000, "expected reordered primary to preserve last seen timestamp");
+}
+
+void test_spaced_reordered_mapping_preserves_restored_reading() {
+  rtl433::GatewayState state;
+  state.set_mapping("garage_combo_freezer", "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88");
+
+  rtl433::LogicalSensorState restored;
+  restored.has_value = true;
+  restored.temperature_f = 8.25f;
+  restored.last_seen_ms = 5000;
+  state.restore_logical_state("garage_combo_freezer", restored);
+
+  state.set_mapping("garage_combo_freezer", " LaCrosse-TX141THBv2/1/88 ; TFA-303221/2/88 ");
+
+  const auto *after = state.logical_sensor("garage_combo_freezer");
+  require(after != nullptr, "expected logical sensor state after spaced mapping");
+  require(after->has_value, "expected spaced reordered mapping to preserve restored reading");
+  require(after->last_seen_ms == 5000, "expected spaced mapping to preserve last seen timestamp");
 }
 
 void test_invalid_mapping_input_clears_state_and_mapping() {
@@ -486,10 +523,12 @@ int main() {
   test_known_packet_updates_logical_sensor();
   test_synonym_key_updates_logical_sensor();
   test_mapping_list_updates_from_primary_and_synonym();
+  test_spaced_mapping_list_updates_from_synonym();
   test_remapping_clears_old_reading();
   test_reapplying_same_mapping_preserves_restored_reading();
   test_reordered_synonyms_preserve_restored_reading();
   test_reordered_primary_preserves_restored_reading();
+  test_spaced_reordered_mapping_preserves_restored_reading();
   test_invalid_mapping_input_clears_state_and_mapping();
   test_duplicate_mappings_update_both();
   test_invalid_packet_is_rejected();
