@@ -69,6 +69,14 @@ def test_validate_known_sensor_keys_rejects_duplicates() -> None:
         )
 
 
+def test_validate_known_sensor_keys_accepts_unique_keys() -> None:
+    """Accept unique logical sensor keys and return the original config."""
+
+    config = [{CONF_KEY: "garage_freezer_1"}, {CONF_KEY: "garage_freezer_2"}]
+
+    assert _validate_known_sensor_keys(config) is config
+
+
 @pytest.mark.parametrize(
     "sensor_key",
     [
