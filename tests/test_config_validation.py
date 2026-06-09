@@ -24,6 +24,15 @@ def test_validate_mapping_normalizes_spaced_sensor_keys() -> None:
     )
 
 
+def test_validate_mapping_normalizes_slash_spaced_fields() -> None:
+    """Trim whitespace around model, channel, and id fields."""
+
+    assert (
+        _validate_mapping("TFA-303221 / 2 / 88 ; LaCrosse-TX141THBv2 / 1 / 88")
+        == "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88"
+    )
+
+
 def test_arduino_network_include_flag_quotes_platformio_path() -> None:
     """Keep PlatformIO package paths with spaces as one include flag."""
 

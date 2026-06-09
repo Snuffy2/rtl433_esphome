@@ -60,10 +60,10 @@ def _validate_sensor_key(value: Any) -> str:
     """Validate a rtl_433 sensor key in model/channel/id format."""
 
     sensor_key = str(cv.string_strict(value))
-    parts = sensor_key.split("/")
+    parts = [part.strip() for part in sensor_key.split("/")]
     if len(parts) != 3 or any(part == "" for part in parts):
         raise cv.Invalid("Expected sensor key in model/channel/id format")
-    return sensor_key
+    return "/".join(parts)
 
 
 def _validate_mapping(value: Any) -> str:
@@ -73,9 +73,7 @@ def _validate_mapping(value: Any) -> str:
     if mapping_value == "":
         raise cv.Invalid("Expected at least one sensor key in model/channel/id format")
     sensor_keys = [sensor_key.strip() for sensor_key in mapping_value.split(";")]
-    for sensor_key in sensor_keys:
-        _validate_sensor_key(sensor_key)
-    return ";".join(sensor_keys)
+    return ";".join(_validate_sensor_key(sensor_key) for sensor_key in sensor_keys)
 
 
 def _validate_stale_after(value: Any) -> Any:

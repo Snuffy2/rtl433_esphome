@@ -121,6 +121,25 @@ void test_spaced_mapping_list_updates_from_synonym() {
   require(std::fabs(logical->temperature_f - 14.75f) < 0.001f, "wrong spaced mapping temperature");
 }
 
+void test_slash_spaced_mapping_list_updates_from_synonym() {
+  rtl433::GatewayState state;
+  state.set_mapping("garage_combo_freezer", "TFA-303221 / 2 / 88 ; LaCrosse-TX141THBv2 / 1 / 88");
+
+  rtl433::DecodedPacket packet;
+  packet.model = "LaCrosse-TX141THBv2";
+  packet.channel = "1";
+  packet.id = "88";
+  packet.temperature_f = 15.75f;
+  packet.seen_ms = 3500;
+
+  require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
+          "expected slash-padded synonym mapping to match");
+  const auto *logical = state.logical_sensor("garage_combo_freezer");
+  require(logical != nullptr, "expected logical state for slash-spaced mapping");
+  require(logical->has_value, "expected slash-spaced synonym packet to update logical sensor");
+  require(std::fabs(logical->temperature_f - 15.75f) < 0.001f, "wrong slash-spaced mapping temperature");
+}
+
 void test_remapping_clears_old_reading() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
@@ -524,6 +543,7 @@ int main() {
   test_synonym_key_updates_logical_sensor();
   test_mapping_list_updates_from_primary_and_synonym();
   test_spaced_mapping_list_updates_from_synonym();
+  test_slash_spaced_mapping_list_updates_from_synonym();
   test_remapping_clears_old_reading();
   test_reapplying_same_mapping_preserves_restored_reading();
   test_reordered_synonyms_preserve_restored_reading();

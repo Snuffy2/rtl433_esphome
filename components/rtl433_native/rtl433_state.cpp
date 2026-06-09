@@ -88,6 +88,12 @@ std::optional<SensorKey> parse_sensor_key(const std::string &value) {
   if (model.empty() || channel.empty() || id.empty()) {
     return std::nullopt;
   }
+  model = trim_ascii_whitespace(model);
+  channel = trim_ascii_whitespace(channel);
+  id = trim_ascii_whitespace(id);
+  if (model.empty() || channel.empty() || id.empty()) {
+    return std::nullopt;
+  }
   return SensorKey{model, channel, id};
 }
 
