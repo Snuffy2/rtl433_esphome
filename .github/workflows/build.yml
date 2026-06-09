@@ -55,7 +55,7 @@ jobs:
           mv "${{ steps.esphome-build.outputs.name }}"/* "output/${{ steps.version.outputs.version }}/"
 
       - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: garage-rtl433-${{ steps.version.outputs.version }}
           path: output
