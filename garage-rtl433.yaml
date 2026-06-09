@@ -76,11 +76,7 @@ rtl433_native:
   stale_after: 1h
   known_sensors:
     - key: garage_combo_fridge
-      model: "LaCrosse-TX141THBv2"
-      channel: "0"
-      rf_id: "203"
-      aliases:
-        - "TFA-303221/1/203"
+      mapping: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203"
       temperature:
         name: "Garage Combo Fridge"
       humidity:
@@ -99,11 +95,7 @@ rtl433_native:
         name: "Garage Combo Fridge Last Updated"
         entity_category: diagnostic
     - key: garage_combo_freezer
-      model: "TFA-303221"
-      channel: "2"
-      rf_id: "88"
-      aliases:
-        - "LaCrosse-TX141THBv2/1/88"
+      mapping: "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88"
       temperature:
         name: "Garage Combo Freezer"
       humidity:
@@ -122,9 +114,7 @@ rtl433_native:
         name: "Garage Combo Freezer Last Updated"
         entity_category: diagnostic
     - key: garage_freezer_1
-      model: "Acurite-986"
-      channel: "1R"
-      rf_id: "11932"
+      mapping: "Acurite-986/1R/11932"
       temperature:
         name: "Garage Freezer 1"
       battery:
@@ -140,9 +130,7 @@ rtl433_native:
         name: "Garage Freezer 1 Last Updated"
         entity_category: diagnostic
     - key: garage_freezer_2
-      model: "Acurite-986"
-      channel: "2F"
-      rf_id: "31274"
+      mapping: "Acurite-986/2F/31274"
       temperature:
         name: "Garage Freezer 2"
       battery:
@@ -258,9 +246,9 @@ text:
     optimistic: true
     restore_value: true
     mode: text
-    initial_value: "LaCrosse-TX141THBv2/0/203"
+    initial_value: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203"
     min_length: 3
-    max_length: 80
+    max_length: 240
     entity_category: config
     set_action:
       - lambda: id(rtl433_gateway).set_override("garage_combo_fridge", x);
@@ -270,9 +258,9 @@ text:
     optimistic: true
     restore_value: true
     mode: text
-    initial_value: "TFA-303221/2/88"
+    initial_value: "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88"
     min_length: 3
-    max_length: 80
+    max_length: 240
     entity_category: config
     set_action:
       - lambda: id(rtl433_gateway).set_override("garage_combo_freezer", x);
@@ -284,7 +272,7 @@ text:
     mode: text
     initial_value: "Acurite-986/1R/11932"
     min_length: 3
-    max_length: 80
+    max_length: 240
     entity_category: config
     set_action:
       - lambda: id(rtl433_gateway).set_override("garage_freezer_1", x);
@@ -296,7 +284,7 @@ text:
     mode: text
     initial_value: "Acurite-986/2F/31274"
     min_length: 3
-    max_length: 80
+    max_length: 240
     entity_category: config
     set_action:
       - lambda: id(rtl433_gateway).set_override("garage_freezer_2", x);

@@ -15,9 +15,7 @@ CODEOWNERS = ["@Snuffy2"]
 
 candidate_limit = "candidate_limit"
 candidates = "candidates"
-aliases = "aliases"
 battery = "battery"
-channel = "channel"
 discovery_enabled = "discovery_enabled"
 humidity = "humidity"
 key = "key"
@@ -25,9 +23,8 @@ known_sensors = "known_sensors"
 known_packet_count = "known_packet_count"
 last_packet = "last_packet"
 last_updated = "last_updated"
-model = "model"
+mapping = "mapping"
 packet_count = "packet_count"
-rf_id = "rf_id"
 rssi = "rssi"
 stale = "stale"
 stale_after = "stale_after"
@@ -37,9 +34,7 @@ unknown_packet_count = "unknown_packet_count"
 
 CONF_CANDIDATE_LIMIT = candidate_limit
 CONF_CANDIDATES = candidates
-CONF_ALIASES = aliases
 CONF_BATTERY = battery
-CONF_CHANNEL = channel
 CONF_DISCOVERY_ENABLED = discovery_enabled
 CONF_HUMIDITY = humidity
 CONF_KEY = key
@@ -47,9 +42,8 @@ CONF_KNOWN_SENSORS = known_sensors
 CONF_KNOWN_PACKET_COUNT = known_packet_count
 CONF_LAST_PACKET = last_packet
 CONF_LAST_UPDATED = last_updated
-CONF_MODEL = model
+CONF_MAPPING = mapping
 CONF_PACKET_COUNT = packet_count
-CONF_RF_ID = rf_id
 CONF_RSSI = rssi
 CONF_STALE = stale
 CONF_STALE_AFTER = stale_after
@@ -88,6 +82,17 @@ def _validate_sensor_key(value: Any) -> str:
     return sensor_key
 
 
+def _validate_mapping(value: Any) -> str:
+    """Validate a semicolon-delimited rtl_433 mapping string."""
+
+    mapping_value = str(cv.string_strict(value))
+    if mapping_value == "":
+        raise cv.Invalid("Expected at least one sensor key in model/channel/id format")
+    for sensor_key in mapping_value.split(";"):
+        _validate_sensor_key(sensor_key)
+    return mapping_value
+
+
 def _validate_stale_after(value: Any) -> Any:
     """Validate stale duration fits the C++ millisecond storage type."""
 
@@ -100,10 +105,7 @@ def _validate_stale_after(value: Any) -> Any:
 SENSOR_ENTRY_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_KEY): cv.string_strict,
-        cv.Required(CONF_MODEL): cv.string_strict,
-        cv.Required(CONF_CHANNEL): cv.string_strict,
-        cv.Required(CONF_RF_ID): cv.string_strict,
-        cv.Optional(CONF_ALIASES, default=[]): cv.ensure_list(_validate_sensor_key),
+        cv.Required(CONF_MAPPING): _validate_mapping,
         cv.Required(CONF_TEMPERATURE): sensor.sensor_schema(
             unit_of_measurement="°F",
             accuracy_decimals=2,
@@ -184,13 +186,9 @@ async def to_code(config: dict[str, Any]) -> None:
         cg.add(
             var.add_mapping(
                 entry[CONF_KEY],
-                entry[CONF_MODEL],
-                entry[CONF_CHANNEL],
-                entry[CONF_RF_ID],
+                entry[CONF_MAPPING],
             )
         )
-        for alias in entry[CONF_ALIASES]:
-            cg.add(var.add_mapping_alias(entry[CONF_KEY], alias))
         temperature = await sensor.new_sensor(entry[CONF_TEMPERATURE])
         cg.add(var.set_temperature_sensor(entry[CONF_KEY], temperature))
         if CONF_HUMIDITY in entry:

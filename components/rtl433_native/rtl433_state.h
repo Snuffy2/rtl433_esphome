@@ -17,7 +17,7 @@ struct SensorKey {
 
 struct SensorMapping {
   SensorKey primary;
-  std::vector<SensorKey> aliases{};
+  std::vector<SensorKey> synonyms{};
 };
 
 struct DecodedPacket {
@@ -60,14 +60,14 @@ enum class PacketResult {
 };
 
 std::optional<SensorKey> parse_sensor_key(const std::string &value);
+std::optional<SensorMapping> parse_sensor_mapping(const std::string &value);
 std::string format_sensor_key(const SensorKey &key);
 std::string format_candidate(const CandidateRow &candidate);
 bool matches_key(const DecodedPacket &packet, const SensorKey &key);
 
 class GatewayState {
  public:
-  void set_mapping(const std::string &logical_key, const std::string &sensor_key);
-  void add_mapping_alias(const std::string &logical_key, const std::string &sensor_key);
+  void set_mapping(const std::string &logical_key, const std::string &mapping);
   void restore_logical_state(const std::string &logical_key, const LogicalSensorState &state);
   const LogicalSensorState *logical_sensor(const std::string &logical_key) const;
   PacketResult process_packet(const DecodedPacket &packet);
@@ -93,7 +93,3 @@ class GatewayState {
 };
 
 }  // namespace esphome::rtl433_native
-
-// Backward-compatible alias for existing include users/tests still expecting the
-// historical top-level namespace name.
-namespace rtl433_native = esphome::rtl433_native;

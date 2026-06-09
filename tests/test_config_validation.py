@@ -3,13 +3,16 @@
 import pytest
 from esphome import config_validation as cv
 
-from components.rtl433_native import _validate_sensor_key
+from components.rtl433_native import _validate_mapping
 
 
-def test_validate_sensor_key_accepts_model_channel_id() -> None:
-    """Accept full rtl_433 sensor keys used by mapping aliases."""
+def test_validate_mapping_accepts_semicolon_delimited_sensor_keys() -> None:
+    """Accept mapping strings with one primary key and synonyms."""
 
-    assert _validate_sensor_key("LaCrosse-TX141THBv2/1/88") == "LaCrosse-TX141THBv2/1/88"
+    assert (
+        _validate_mapping("TFA-303221/2/88;LaCrosse-TX141THBv2/1/88")
+        == "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88"
+    )
 
 
 @pytest.mark.parametrize(
@@ -20,8 +23,24 @@ def test_validate_sensor_key_accepts_model_channel_id() -> None:
         "LaCrosse-TX141THBv2/1/88/extra",
     ],
 )
-def test_validate_sensor_key_rejects_malformed_key(sensor_key: str) -> None:
-    """Reject aliases that cannot be parsed as model/channel/id."""
+def test_validate_mapping_rejects_malformed_key(sensor_key: str) -> None:
+    """Reject mappings that cannot be parsed as model/channel/id entries."""
 
     with pytest.raises(cv.Invalid):
-        _validate_sensor_key(sensor_key)
+        _validate_mapping(sensor_key)
+
+
+@pytest.mark.parametrize(
+    "mapping",
+    [
+        "",
+        "TFA-303221/2/88;",
+        ";TFA-303221/2/88",
+        "TFA-303221/2/88;;LaCrosse-TX141THBv2/1/88",
+    ],
+)
+def test_validate_mapping_rejects_empty_segments(mapping: str) -> None:
+    """Reject blank mapping strings and empty semicolon-delimited entries."""
+
+    with pytest.raises(cv.Invalid):
+        _validate_mapping(mapping)

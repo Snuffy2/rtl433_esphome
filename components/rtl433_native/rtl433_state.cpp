@@ -12,8 +12,16 @@ bool same_key(const SensorKey &left, const SensorKey &right) {
   return left.model == right.model && left.channel == right.channel && left.id == right.id;
 }
 
-bool same_mapping_primary(const SensorMapping &mapping, const SensorKey &key) {
-  return same_key(mapping.primary, key);
+bool same_mapping(const SensorMapping &left, const SensorMapping &right) {
+  if (!same_key(left.primary, right.primary) || left.synonyms.size() != right.synonyms.size()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < left.synonyms.size(); ++index) {
+    if (!same_key(left.synonyms[index], right.synonyms[index])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool candidate_less(const CandidateRow &left, const CandidateRow &right) {
@@ -52,6 +60,39 @@ std::optional<SensorKey> parse_sensor_key(const std::string &value) {
   return SensorKey{model, channel, id};
 }
 
+std::optional<SensorMapping> parse_sensor_mapping(const std::string &value) {
+  std::stringstream stream(value);
+  std::string segment;
+  SensorMapping mapping;
+  bool has_primary = false;
+
+  while (std::getline(stream, segment, ';')) {
+    auto parsed = parse_sensor_key(segment);
+    if (!parsed.has_value()) {
+      return std::nullopt;
+    }
+    if (!has_primary) {
+      mapping.primary = *parsed;
+      has_primary = true;
+      continue;
+    }
+    if (same_key(mapping.primary, *parsed)) {
+      continue;
+    }
+    if (std::any_of(mapping.synonyms.begin(), mapping.synonyms.end(), [&](const SensorKey &synonym) {
+          return same_key(synonym, *parsed);
+        })) {
+      continue;
+    }
+    mapping.synonyms.push_back(*parsed);
+  }
+
+  if (!has_primary || (!value.empty() && value.back() == ';')) {
+    return std::nullopt;
+  }
+  return mapping;
+}
+
 std::string format_sensor_key(const SensorKey &key) {
   return key.model + "/" + key.channel + "/" + key.id;
 }
@@ -77,44 +118,24 @@ bool matches_mapping(const DecodedPacket &packet, const SensorMapping &mapping) 
   if (matches_key(packet, mapping.primary)) {
     return true;
   }
-  return std::any_of(mapping.aliases.begin(), mapping.aliases.end(), [&](const SensorKey &alias) {
-    return matches_key(packet, alias);
+  return std::any_of(mapping.synonyms.begin(), mapping.synonyms.end(), [&](const SensorKey &synonym) {
+    return matches_key(packet, synonym);
   });
 }
 
-void GatewayState::set_mapping(const std::string &logical_key, const std::string &sensor_key) {
-  auto parsed = parse_sensor_key(sensor_key);
+void GatewayState::set_mapping(const std::string &logical_key, const std::string &mapping_value) {
+  auto parsed = parse_sensor_mapping(mapping_value);
   if (!parsed.has_value()) {
     mappings_.erase(logical_key);
     logical_states_.erase(logical_key);
     return;
   }
   const auto existing = mappings_.find(logical_key);
-  if (existing != mappings_.end() && same_mapping_primary(existing->second, *parsed)) {
+  if (existing != mappings_.end() && same_mapping(existing->second, *parsed)) {
     return;
   }
-  auto &mapping = mappings_[logical_key];
-  mapping.primary = *parsed;
+  mappings_[logical_key] = *parsed;
   logical_states_[logical_key] = LogicalSensorState{};
-}
-
-void GatewayState::add_mapping_alias(const std::string &logical_key, const std::string &sensor_key) {
-  auto parsed = parse_sensor_key(sensor_key);
-  if (!parsed.has_value()) {
-    return;
-  }
-  auto mapping = mappings_.find(logical_key);
-  if (mapping == mappings_.end()) {
-    return;
-  }
-  if (same_key(mapping->second.primary, *parsed)) {
-    return;
-  }
-  const auto &aliases = mapping->second.aliases;
-  if (std::any_of(aliases.begin(), aliases.end(), [&](const SensorKey &alias) { return same_key(alias, *parsed); })) {
-    return;
-  }
-  mapping->second.aliases.push_back(*parsed);
 }
 
 void GatewayState::restore_logical_state(const std::string &logical_key, const LogicalSensorState &state) {
