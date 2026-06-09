@@ -24,7 +24,7 @@ uv sync --group dev
 ./.venv/bin/python -m esphome compile garage-rtl433.yaml
 ```
 
-## Discovery Workflow After Battery Changes
+## Discovery Workflow
 
 1. Turn on `Garage RTL433 Discovery Mode`.
 2. Press `Garage RTL433 Clear Candidates`.
