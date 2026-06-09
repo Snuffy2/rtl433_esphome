@@ -1,0 +1,61 @@
+name: Build firmware
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      esphome_version:
+        description: ESPHome version to build with
+        required: false
+        default: latest
+      firmware_version:
+        description: Firmware version label for manual builds
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build garage-rtl433.yaml
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Prepare CI secrets
+        run: cp secrets.yaml.example secrets.yaml
+
+      - name: Generate build version
+        id: version
+        run: |
+          version="${{ github.event.release.tag_name || inputs.firmware_version }}"
+          if [ -z "$version" ]; then
+            version="dev-${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build firmware
+        id: esphome-build
+        uses: esphome/build-action@v7
+        with:
+          yaml-file: garage-rtl433.yaml
+          version: ${{ inputs.esphome_version || 'latest' }}
+          complete-manifest: true
+          release-summary: ${{ github.event.release.body || '' }}
+          release-url: ${{ github.event.release.html_url || '' }}
+
+      - name: Move files for versioning
+        run: |
+          mkdir -p "output/${{ steps.version.outputs.version }}"
+          mv "${{ steps.esphome-build.outputs.name }}"/* "output/${{ steps.version.outputs.version }}/"
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: garage-rtl433-${{ steps.version.outputs.version }}
+          path: output
