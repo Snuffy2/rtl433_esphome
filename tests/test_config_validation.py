@@ -3,7 +3,13 @@
 import pytest
 from esphome import config_validation as cv
 
-from components.rtl433_native import ARDUINO_NETWORK_INCLUDE_FLAG, _validate_mapping
+from components.rtl433_native import (
+    ARDUINO_NETWORK_INCLUDE_FLAG,
+    CONF_KEY,
+    _validate_known_sensor_keys,
+    _validate_mapping,
+    _validate_stale_after,
+)
 
 
 def test_validate_mapping_accepts_semicolon_delimited_sensor_keys() -> None:
@@ -39,6 +45,28 @@ def test_arduino_network_include_flag_quotes_platformio_path() -> None:
     assert ARDUINO_NETWORK_INCLUDE_FLAG == (
         '-I"${platformio.packages_dir}/framework-arduinoespressif32/libraries/Network/src"'
     )
+
+
+def test_validate_stale_after_accepts_uint32_millisecond_value() -> None:
+    """Accept stale durations that fit C++ uint32_t millisecond storage."""
+
+    assert _validate_stale_after("1h").total_milliseconds == 3_600_000
+
+
+def test_validate_stale_after_rejects_uint32_millisecond_overflow() -> None:
+    """Reject stale durations too large for C++ uint32_t millisecond storage."""
+
+    with pytest.raises(cv.Invalid):
+        _validate_stale_after("50d")
+
+
+def test_validate_known_sensor_keys_rejects_duplicates() -> None:
+    """Reject duplicated logical sensor keys before code generation."""
+
+    with pytest.raises(cv.Invalid):
+        _validate_known_sensor_keys(
+            [{CONF_KEY: "garage_freezer_1"}, {CONF_KEY: "garage_freezer_1"}]
+        )
 
 
 @pytest.mark.parametrize(
