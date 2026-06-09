@@ -15,11 +15,14 @@ authors = [
 
 [dependency-groups]
 dev = [
-  "esphome>=2026.4.5",
-  "mypy",
-  "pytest",
-  "ruff",
-  "prek",
+    "esphome>=2026.4.5",
+    "mypy",
+    "pytest",
+    "ruff",
+    "prek",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pytest-timeout",
 ]
 
 [tool.ruff]

@@ -1,8 +1,11 @@
 .venv/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 __pycache__/
 *.pyc
+.coverage
+htmlcov/
 
 .esphome/
 secrets.yaml
