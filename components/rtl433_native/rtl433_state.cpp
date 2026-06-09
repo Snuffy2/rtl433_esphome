@@ -3,13 +3,32 @@
 #include <algorithm>
 #include <cmath>
 #include <sstream>
+#include <utility>
+
+#if __has_include("esphome/core/log.h")
+#include "esphome/core/log.h"
+#else
+#define ESP_LOGW(tag, ...) ((void) (tag))
+#endif
 
 namespace esphome::rtl433_native {
 
 namespace {
 
+static const char *const TAG = "rtl433_state";
+
 bool same_key(const SensorKey &left, const SensorKey &right) {
   return left.model == right.model && left.channel == right.channel && left.id == right.id;
+}
+
+bool key_less(const SensorKey &left, const SensorKey &right) {
+  if (left.model != right.model) {
+    return left.model < right.model;
+  }
+  if (left.channel != right.channel) {
+    return left.channel < right.channel;
+  }
+  return left.id < right.id;
 }
 
 bool same_mapping(const SensorMapping &left, const SensorMapping &right) {
@@ -69,6 +88,7 @@ std::optional<SensorMapping> parse_sensor_mapping(const std::string &value) {
   while (std::getline(stream, segment, ';')) {
     auto parsed = parse_sensor_key(segment);
     if (!parsed.has_value()) {
+      ESP_LOGW(TAG, "parse_sensor_mapping rejected invalid segment '%s' in '%s'", segment.c_str(), value.c_str());
       return std::nullopt;
     }
     if (!has_primary) {
@@ -88,8 +108,10 @@ std::optional<SensorMapping> parse_sensor_mapping(const std::string &value) {
   }
 
   if (!has_primary || (!value.empty() && value.back() == ';')) {
+    ESP_LOGW(TAG, "parse_sensor_mapping rejected invalid mapping '%s'", value.c_str());
     return std::nullopt;
   }
+  std::sort(mapping.synonyms.begin(), mapping.synonyms.end(), key_less);
   return mapping;
 }
 
@@ -126,6 +148,7 @@ bool matches_mapping(const DecodedPacket &packet, const SensorMapping &mapping) 
 void GatewayState::set_mapping(const std::string &logical_key, const std::string &mapping_value) {
   auto parsed = parse_sensor_mapping(mapping_value);
   if (!parsed.has_value()) {
+    ESP_LOGW(TAG, "Removing mapping for '%s' due to invalid mapping '%s'", logical_key.c_str(), mapping_value.c_str());
     mappings_.erase(logical_key);
     logical_states_.erase(logical_key);
     return;
@@ -134,7 +157,7 @@ void GatewayState::set_mapping(const std::string &logical_key, const std::string
   if (existing != mappings_.end() && same_mapping(existing->second, *parsed)) {
     return;
   }
-  mappings_[logical_key] = *parsed;
+  mappings_[logical_key] = std::move(*parsed);
   logical_states_[logical_key] = LogicalSensorState{};
 }
 
