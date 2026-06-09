@@ -1,21 +1,62 @@
 #include "rtl433_native.h"
 #include "ledc_compat.h"
 
+#include <algorithm>
 #include <cmath>
+#include <ctime>
 #include <limits>
 
 #include "esphome/components/json/json_util.h"
 #include "esphome/core/log.h"
+#include "esphome/core/time.h"
 
 namespace esphome::rtl433_native {
 
 static const char *const TAG = "rtl433_native";
+
+float json_float_or_nan(JsonObject root, const char *key) {
+  if (root[key].is<float>()) {
+    return root[key].as<float>();
+  }
+  if (root[key].is<double>()) {
+    return static_cast<float>(root[key].as<double>());
+  }
+  if (root[key].is<int>()) {
+    return static_cast<float>(root[key].as<int>());
+  }
+  return std::numeric_limits<float>::quiet_NaN();
+}
+
+float celsius_to_fahrenheit(float value) { return value * 9.0f / 5.0f + 32.0f; }
+
+uint32_t preference_key(const std::string &logical_key) {
+  uint32_t hash = 2166136261UL;
+  for (char value : logical_key) {
+    hash ^= static_cast<uint8_t>(value);
+    hash *= 16777619UL;
+  }
+  return hash ^ 0xA4330E01UL;
+}
 
 Gateway *Gateway::instance_ = nullptr;
 
 Gateway::Gateway() { instance_ = this; }
 
 void Gateway::setup() {
+  if (this->time_ != nullptr) {
+    this->time_->add_on_time_sync_callback([this]() { this->sync_time_base(); });
+    this->sync_time_base();
+  }
+  if (this->packet_count_sensor_ != nullptr) {
+    this->packet_count_sensor_->publish_state(0);
+  }
+  if (this->known_packet_count_sensor_ != nullptr) {
+    this->known_packet_count_sensor_->publish_state(0);
+  }
+  if (this->unknown_packet_count_sensor_ != nullptr) {
+    this->unknown_packet_count_sensor_->publish_state(0);
+  }
+  this->restore_saved_states();
   this->rf_.initReceiver(RF_MODULE_RECEIVER_GPIO, RF_MODULE_FREQUENCY);
   this->rf_.setCallback(&Gateway::process_dispatch, this->buffer_, sizeof(this->buffer_));
   this->rf_.enableReceiver();
@@ -55,6 +96,10 @@ void Gateway::add_mapping(const std::string &logical_key, const std::string &mod
                          const std::string &channel, const std::string &id) {
   this->state_.set_mapping(logical_key, model + "/" + channel + "/" + id);
   this->entities_.try_emplace(logical_key);
+  if (std::find(this->logical_keys_.begin(), this->logical_keys_.end(), logical_key) ==
+      this->logical_keys_.end()) {
+    this->logical_keys_.push_back(logical_key);
+  }
 }
 
 void Gateway::set_override(const std::string &logical_key, const std::string &sensor_key) {
@@ -76,7 +121,7 @@ void Gateway::set_humidity_sensor(const std::string &logical_key, sensor::Sensor
   this->entities_[logical_key].humidity = sensor;
 }
 
-void Gateway::set_battery_sensor(const std::string &logical_key, sensor::Sensor *sensor) {
+void Gateway::set_battery_sensor(const std::string &logical_key, binary_sensor::BinarySensor *sensor) {
   this->entities_[logical_key].battery = sensor;
 }
 
@@ -86,6 +131,10 @@ void Gateway::set_rssi_sensor(const std::string &logical_key, sensor::Sensor *se
 
 void Gateway::set_stale_sensor(const std::string &logical_key, binary_sensor::BinarySensor *sensor) {
   this->entities_[logical_key].stale = sensor;
+}
+
+void Gateway::set_last_updated_sensor(const std::string &logical_key, sensor::Sensor *sensor) {
+  this->entities_[logical_key].last_updated = sensor;
 }
 
 void Gateway::set_candidate_text_sensor(std::size_t index, text_sensor::TextSensor *sensor) {
@@ -153,14 +202,15 @@ void Gateway::process_message(char *message) {
       packet.channel = "0";
     }
 
-    if (root["temperature_F"].is<float>()) {
-      packet.temperature_f = root["temperature_F"].as<float>();
-    } else if (root["temperature_1_F"].is<float>()) {
-      packet.temperature_f = root["temperature_1_F"].as<float>();
-    } else if (root["temperature_F"].is<int>()) {
-      packet.temperature_f = static_cast<float>(root["temperature_F"].as<int>());
-    } else if (root["temperature_1_F"].is<int>()) {
-      packet.temperature_f = static_cast<float>(root["temperature_1_F"].as<int>());
+    float temperature = json_float_or_nan(root, "temperature_F");
+    if (!std::isnan(temperature)) {
+      packet.temperature_f = temperature;
+    } else if (!std::isnan(temperature = json_float_or_nan(root, "temperature_1_F"))) {
+      packet.temperature_f = temperature;
+    } else if (!std::isnan(temperature = json_float_or_nan(root, "temperature_C"))) {
+      packet.temperature_f = celsius_to_fahrenheit(temperature);
+    } else if (!std::isnan(temperature = json_float_or_nan(root, "temperature_1_C"))) {
+      packet.temperature_f = celsius_to_fahrenheit(temperature);
     } else {
       packet.temperature_f = std::numeric_limits<float>::quiet_NaN();
     }
@@ -199,10 +249,12 @@ void Gateway::process_message(char *message) {
     }
 
     if (result == ::esphome::rtl433_native::PacketResult::MATCHED_KNOWN) {
+      const uint32_t last_updated = this->current_timestamp();
       for (const auto &entry : this->entities_) {
         const auto &logical_key = entry.first;
         const auto *logical = this->state_.logical_sensor(logical_key);
         if (logical != nullptr && logical->last_seen_ms == packet.seen_ms) {
+          this->save_state(logical_key, last_updated);
           this->publish_state(logical_key);
         }
       }
@@ -217,6 +269,122 @@ void Gateway::process_message(char *message) {
     this->publish_candidates();
     return true;
   });
+}
+
+void Gateway::restore_saved_states() {
+  bool restored_any = false;
+  for (const auto &logical_key : this->logical_keys_) {
+    auto preference = global_preferences->make_preference<SavedLogicalState>(preference_key(logical_key), true);
+    SavedLogicalState saved;
+    this->preferences_[logical_key] = preference;
+    if (!preference.load(&saved) || !saved.has_value) {
+      continue;
+    }
+
+    LogicalSensorState restored;
+    restored.has_value = true;
+    restored.temperature_f = saved.temperature_f;
+    restored.humidity = saved.humidity;
+    restored.battery = saved.battery;
+    restored.rssi = saved.rssi;
+    restored.last_seen_ms = millis();
+    this->state_.restore_logical_state(logical_key, restored);
+    this->last_updated_values_[logical_key] = saved.last_updated;
+    this->last_updated_ms_[logical_key] = millis();
+    this->publish_state(logical_key);
+    restored_any = true;
+  }
+
+  if (restored_any) {
+    this->set_timeout("publish_restored_states", 2000, [this]() {
+      for (const auto &logical_key : this->logical_keys_) {
+        this->publish_state(logical_key);
+      }
+    });
+  }
+}
+
+void Gateway::sync_time_base() {
+  if (this->time_ == nullptr) {
+    return;
+  }
+  ESPTime now = this->time_->utcnow();
+  if (!now.is_valid()) {
+    return;
+  }
+  const auto next_epoch = static_cast<uint32_t>(now.timestamp);
+  if (this->time_sync_epoch_ > 0) {
+    const uint32_t current_epoch = this->time_sync_epoch_ + ((millis() - this->time_sync_ms_) / 1000);
+    if (next_epoch <= current_epoch) {
+      return;
+    }
+  }
+  this->time_sync_epoch_ = next_epoch;
+  this->time_sync_ms_ = millis();
+}
+
+uint32_t Gateway::current_timestamp() {
+  if (this->time_sync_epoch_ > 0) {
+    return this->time_sync_epoch_ + ((millis() - this->time_sync_ms_) / 1000);
+  }
+  if (this->time_ != nullptr) {
+    ESPTime now = this->time_->utcnow();
+    if (now.is_valid()) {
+      return static_cast<uint32_t>(now.timestamp);
+    }
+  }
+  const time_t timestamp = ::time(nullptr);
+  ESPTime now = ESPTime::from_epoch_local(timestamp);
+  if (!now.is_valid()) {
+    return 0;
+  }
+  return static_cast<uint32_t>(timestamp);
+}
+
+void Gateway::save_state(const std::string &logical_key, uint32_t last_updated) {
+  const auto *logical = this->state_.logical_sensor(logical_key);
+  if (logical == nullptr || !logical->has_value) {
+    return;
+  }
+
+  auto preference_item = this->preferences_.find(logical_key);
+  if (preference_item == this->preferences_.end()) {
+    preference_item =
+        this->preferences_
+            .emplace(logical_key,
+                     global_preferences->make_preference<SavedLogicalState>(preference_key(logical_key), true))
+            .first;
+  }
+
+  SavedLogicalState saved;
+  saved.has_value = true;
+  saved.temperature_f = logical->temperature_f;
+  saved.humidity = logical->humidity;
+  saved.battery = logical->battery;
+  saved.rssi = logical->rssi;
+  uint32_t adjusted_last_updated = last_updated;
+  const auto previous_last_updated = this->last_updated_values_.find(logical_key);
+  if (previous_last_updated != this->last_updated_values_.end() &&
+      adjusted_last_updated <= previous_last_updated->second) {
+    uint32_t elapsed_seconds = 0;
+    const auto previous_ms = this->last_updated_ms_.find(logical_key);
+    if (previous_ms != this->last_updated_ms_.end()) {
+      elapsed_seconds = (millis() - previous_ms->second) / 1000;
+    }
+    if (elapsed_seconds == 0) {
+      elapsed_seconds = 1;
+    }
+    adjusted_last_updated = previous_last_updated->second + elapsed_seconds;
+  }
+  if (adjusted_last_updated > 0) {
+    this->last_updated_values_[logical_key] = adjusted_last_updated;
+    this->last_updated_ms_[logical_key] = millis();
+  }
+  const auto last_updated_item = this->last_updated_values_.find(logical_key);
+  if (last_updated_item != this->last_updated_values_.end()) {
+    saved.last_updated = last_updated_item->second;
+  }
+  preference_item->second.save(&saved);
 }
 
 void Gateway::publish_state(const std::string &logical_key) {
@@ -234,13 +402,18 @@ void Gateway::publish_state(const std::string &logical_key) {
     entities.humidity->publish_state(logical->humidity);
   }
   if (entities.battery != nullptr && !std::isnan(logical->battery)) {
-    entities.battery->publish_state(logical->battery);
+    entities.battery->publish_state(logical->battery <= 0.0f);
   }
   if (entities.rssi != nullptr) {
     entities.rssi->publish_state(logical->rssi);
   }
   if (entities.stale != nullptr) {
     entities.stale->publish_state(false);
+  }
+  const auto last_updated_item = this->last_updated_values_.find(logical_key);
+  if (entities.last_updated != nullptr && last_updated_item != this->last_updated_values_.end() &&
+      last_updated_item->second > 0) {
+    entities.last_updated->publish_state(last_updated_item->second);
   }
 }
 

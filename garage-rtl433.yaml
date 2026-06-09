@@ -1,6 +1,6 @@
 substitutions:
   device_name: garage-rtl433-native
-  friendly_name: Garage RTL433 Native
+  friendly_name: Garage RTL433
 
 esphome:
   name: ${device_name}
@@ -14,7 +14,6 @@ esphome:
   platformio_options:
     lib_ldf_mode: "chain+"
     build_flags:
-      - "-DONBOARD_LED=25"
       - "-DRF_SX1278"
       - "-DRF_MODULE_FREQUENCY=433.92"
       - "-DRF_MODULE_DIO0=26"
@@ -22,10 +21,16 @@ esphome:
       - "-DRF_MODULE_DIO2=34"
       - "-DRF_MODULE_RST=14"
       - "-DRF_MODULE_CS=18"
+      - "-DRF_MODULE_SCK=5"
+      - "-DRF_MODULE_MISO=19"
+      - "-DRF_MODULE_MOSI=27"
       - "-include src/esphome/components/rtl433_native/ledc_compat.h"
   on_boot:
     priority: -100
     then:
+      - lambda: |-
+          pinMode(25, OUTPUT);
+          digitalWrite(25, LOW);
       - lambda: |-
           id(rtl433_gateway).set_override("garage_combo_fridge", id(garage_combo_fridge_mapping).state);
           id(rtl433_gateway).set_override("garage_combo_freezer", id(garage_combo_freezer_mapping).state);
@@ -40,6 +45,10 @@ esp32:
 logger:
 
 api:
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
 
 ota:
   - platform: esphome
@@ -62,6 +71,7 @@ external_components:
 
 rtl433_native:
   id: rtl433_gateway
+  time_id: homeassistant_time
   candidate_limit: 10
   stale_after: 1h
   known_sensors:
@@ -83,6 +93,9 @@ rtl433_native:
       stale:
         name: "Garage Combo Fridge Stale"
         entity_category: diagnostic
+      last_updated:
+        name: "Garage Combo Fridge Last Updated"
+        entity_category: diagnostic
     - key: garage_combo_freezer
       model: "TFA-303221"
       channel: "2"
@@ -101,6 +114,9 @@ rtl433_native:
       stale:
         name: "Garage Combo Freezer Stale"
         entity_category: diagnostic
+      last_updated:
+        name: "Garage Combo Freezer Last Updated"
+        entity_category: diagnostic
     - key: garage_freezer_1
       model: "Acurite-986"
       channel: "1R"
@@ -115,6 +131,9 @@ rtl433_native:
         entity_category: diagnostic
       stale:
         name: "Garage Freezer 1 Stale"
+        entity_category: diagnostic
+      last_updated:
+        name: "Garage Freezer 1 Last Updated"
         entity_category: diagnostic
     - key: garage_freezer_2
       model: "Acurite-986"
@@ -131,62 +150,77 @@ rtl433_native:
       stale:
         name: "Garage Freezer 2 Stale"
         entity_category: diagnostic
+      last_updated:
+        name: "Garage Freezer 2 Last Updated"
+        entity_category: diagnostic
   last_packet:
-    name: "Garage RTL433 Last Packet"
+    name: "Last Packet"
     entity_category: diagnostic
   packet_count:
-    name: "Garage RTL433 Packet Count"
+    name: "Packet Count"
     entity_category: diagnostic
   known_packet_count:
-    name: "Garage RTL433 Known Packet Count"
+    name: "Known Packet Count"
     entity_category: diagnostic
   unknown_packet_count:
-    name: "Garage RTL433 Unknown Packet Count"
+    name: "Unknown Packet Count"
     entity_category: diagnostic
   discovery_enabled:
-    name: "Garage RTL433 Discovery Enabled"
+    name: "Discovery Enabled"
     entity_category: diagnostic
   candidates:
-    - name: "Garage RTL433 Candidate 1"
+    - name: "Candidate 1"
       entity_category: diagnostic
-    - name: "Garage RTL433 Candidate 2"
+    - name: "Candidate 2"
       entity_category: diagnostic
-    - name: "Garage RTL433 Candidate 3"
+    - name: "Candidate 3"
       entity_category: diagnostic
-    - name: "Garage RTL433 Candidate 4"
+    - name: "Candidate 4"
       entity_category: diagnostic
-    - name: "Garage RTL433 Candidate 5"
+    - name: "Candidate 5"
       entity_category: diagnostic
-    - name: "Garage RTL433 Candidate 6"
+    - name: "Candidate 6"
       entity_category: diagnostic
-    - name: "Garage RTL433 Candidate 7"
+    - name: "Candidate 7"
       entity_category: diagnostic
-    - name: "Garage RTL433 Candidate 8"
+    - name: "Candidate 8"
       entity_category: diagnostic
-    - name: "Garage RTL433 Candidate 9"
+    - name: "Candidate 9"
       entity_category: diagnostic
-    - name: "Garage RTL433 Candidate 10"
+    - name: "Candidate 10"
       entity_category: diagnostic
 
 sensor:
   - platform: uptime
-    name: "Garage RTL433 Uptime"
+    name: "Uptime"
     entity_category: diagnostic
   - platform: wifi_signal
-    name: "Garage RTL433 Wi-Fi RSSI"
+    name: "Wi-Fi RSSI"
     update_interval: 120s
     entity_category: diagnostic
   - platform: template
-    name: "Garage RTL433 Free Heap"
+    name: "Free Heap"
     accuracy_decimals: 0
     unit_of_measurement: "B"
     update_interval: 120s
     lambda: return ESP.getFreeHeap();
     entity_category: diagnostic
 
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: 'IP Address'
+      icon: mdi:ip-network
+      entity_category: diagnostic
+
+binary_sensor:
+  - platform: status
+    name: 'Status'
+    entity_category: diagnostic
+
 switch:
   - platform: template
-    name: "Garage RTL433 Discovery Mode"
+    name: "Discovery Mode"
     id: rtl433_discovery_mode
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
@@ -198,15 +232,20 @@ switch:
 
 button:
   - platform: template
-    name: "Garage RTL433 Clear Candidates"
+    name: "Clear Candidates"
     entity_category: config
     on_press:
       - rtl433_native.clear_candidates: rtl433_gateway
   - platform: template
-    name: "Garage RTL433 Radio Status"
-    entity_category: diagnostic
+    name: "Radio Status"
+    entity_category: config
     on_press:
       - rtl433_native.status: rtl433_gateway
+  - platform: restart
+    name: Restart
+    icon: mdi:restart
+    entity_category: config
+
 
 text:
   - platform: template

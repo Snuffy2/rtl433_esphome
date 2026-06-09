@@ -1,16 +1,20 @@
 #pragma once
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
+#include "esphome/components/time/real_time_clock.h"
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
+#include "esphome/core/preferences.h"
 
 #include "rtl433_state.h"
 
@@ -24,12 +28,22 @@
 
 namespace esphome::rtl433_native {
 
+struct SavedLogicalState {
+  bool has_value{false};
+  float temperature_f{NAN};
+  float humidity{NAN};
+  float battery{NAN};
+  int rssi{0};
+  uint32_t last_updated{0};
+};
+
 struct EntitySet {
   sensor::Sensor *temperature{nullptr};
   sensor::Sensor *humidity{nullptr};
-  sensor::Sensor *battery{nullptr};
+  binary_sensor::BinarySensor *battery{nullptr};
   sensor::Sensor *rssi{nullptr};
   binary_sensor::BinarySensor *stale{nullptr};
+  sensor::Sensor *last_updated{nullptr};
   bool stale_initialized{false};
   bool last_stale{false};
 };
@@ -53,21 +67,27 @@ class Gateway : public Component {
   void set_stale_after_ms(uint32_t stale_after_ms);
   void set_temperature_sensor(const std::string &logical_key, sensor::Sensor *sensor);
   void set_humidity_sensor(const std::string &logical_key, sensor::Sensor *sensor);
-  void set_battery_sensor(const std::string &logical_key, sensor::Sensor *sensor);
+  void set_battery_sensor(const std::string &logical_key, binary_sensor::BinarySensor *sensor);
   void set_rssi_sensor(const std::string &logical_key, sensor::Sensor *sensor);
   void set_stale_sensor(const std::string &logical_key, binary_sensor::BinarySensor *sensor);
+  void set_last_updated_sensor(const std::string &logical_key, sensor::Sensor *sensor);
   void set_candidate_text_sensor(std::size_t index, text_sensor::TextSensor *sensor);
   void set_last_packet_sensor(text_sensor::TextSensor *sensor);
   void set_packet_count_sensor(sensor::Sensor *sensor);
   void set_known_packet_count_sensor(sensor::Sensor *sensor);
   void set_unknown_packet_count_sensor(sensor::Sensor *sensor);
   void set_discovery_enabled_sensor(binary_sensor::BinarySensor *sensor);
+  void set_time(esphome::time::RealTimeClock *time) { this->time_ = time; }
 
  protected:
   rtl_433_ESP rf_{};
   char buffer_[512]{};
   esphome::rtl433_native::GatewayState state_{};
   std::unordered_map<std::string, EntitySet> entities_{};
+  std::vector<std::string> logical_keys_{};
+  std::unordered_map<std::string, ESPPreferenceObject> preferences_{};
+  std::unordered_map<std::string, uint32_t> last_updated_values_{};
+  std::unordered_map<std::string, uint32_t> last_updated_ms_{};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};
   std::array<std::string, 20> last_candidate_values_{};
   text_sensor::TextSensor *last_packet_sensor_{nullptr};
@@ -75,6 +95,9 @@ class Gateway : public Component {
   sensor::Sensor *known_packet_count_sensor_{nullptr};
   sensor::Sensor *unknown_packet_count_sensor_{nullptr};
   binary_sensor::BinarySensor *discovery_enabled_sensor_{nullptr};
+  esphome::time::RealTimeClock *time_{nullptr};
+  uint32_t time_sync_epoch_{0};
+  uint32_t time_sync_ms_{0};
   uint32_t packet_count_{0};
   uint32_t known_packet_count_{0};
   uint32_t unknown_packet_count_{0};
@@ -82,6 +105,10 @@ class Gateway : public Component {
 
   static void process_dispatch(char *message);
   void process_message(char *message);
+  void restore_saved_states();
+  void sync_time_base();
+  uint32_t current_timestamp();
+  void save_state(const std::string &logical_key, uint32_t last_updated);
   void publish_state(const std::string &logical_key);
   void publish_candidates();
   void publish_stale_states();

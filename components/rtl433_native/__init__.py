@@ -11,10 +11,11 @@ from esphome.components import (  # type: ignore[import-untyped]
     binary_sensor,
     sensor,
     text_sensor,
+    time,
 )
 from esphome.const import CONF_ID  # type: ignore[import-untyped]
 
-AUTO_LOAD = ["binary_sensor", "json", "sensor", "text_sensor"]
+AUTO_LOAD = ["binary_sensor", "json", "sensor", "text_sensor", "time"]
 CODEOWNERS = ["@snuffy2"]
 
 candidate_limit = "candidate_limit"
@@ -27,6 +28,7 @@ key = "key"
 known_sensors = "known_sensors"
 known_packet_count = "known_packet_count"
 last_packet = "last_packet"
+last_updated = "last_updated"
 model = "model"
 packet_count = "packet_count"
 rf_id = "rf_id"
@@ -34,6 +36,7 @@ rssi = "rssi"
 stale = "stale"
 stale_after = "stale_after"
 temperature = "temperature"
+time_id = "time_id"
 unknown_packet_count = "unknown_packet_count"
 
 CONF_CANDIDATE_LIMIT = candidate_limit
@@ -46,6 +49,7 @@ CONF_KEY = key
 CONF_KNOWN_SENSORS = known_sensors
 CONF_KNOWN_PACKET_COUNT = known_packet_count
 CONF_LAST_PACKET = last_packet
+CONF_LAST_UPDATED = last_updated
 CONF_MODEL = model
 CONF_PACKET_COUNT = packet_count
 CONF_RF_ID = rf_id
@@ -53,6 +57,7 @@ CONF_RSSI = rssi
 CONF_STALE = stale
 CONF_STALE_AFTER = stale_after
 CONF_TEMPERATURE = temperature
+CONF_TIME_ID = time_id
 CONF_UNKNOWN_PACKET_COUNT = unknown_packet_count
 
 rtl433_native_ns = cg.esphome_ns.namespace("rtl433_native")
@@ -101,12 +106,7 @@ SENSOR_ENTRY_SCHEMA = cv.Schema(
             device_class="humidity",
             state_class="measurement",
         ),
-        cv.Optional(CONF_BATTERY): sensor.sensor_schema(
-            unit_of_measurement="%",
-            accuracy_decimals=0,
-            device_class="battery",
-            state_class="measurement",
-        ),
+        cv.Optional(CONF_BATTERY): binary_sensor.binary_sensor_schema(device_class="battery"),
         cv.Optional(CONF_RSSI): sensor.sensor_schema(
             unit_of_measurement="dB",
             accuracy_decimals=0,
@@ -114,6 +114,10 @@ SENSOR_ENTRY_SCHEMA = cv.Schema(
             state_class="measurement",
         ),
         cv.Optional(CONF_STALE): binary_sensor.binary_sensor_schema(device_class="problem"),
+        cv.Optional(CONF_LAST_UPDATED): sensor.sensor_schema(
+            accuracy_decimals=0,
+            device_class="timestamp",
+        ),
     }
 )
 
@@ -127,6 +131,7 @@ CONFIG_SCHEMA = cv.Schema(
         ),
         cv.Optional(CONF_CANDIDATE_LIMIT, default=10): cv.int_range(min=1, max=20),
         cv.Optional(CONF_STALE_AFTER, default="1h"): _validate_stale_after,
+        cv.Optional(CONF_TIME_ID): cv.use_id(time.RealTimeClock),
         cv.Optional(CONF_CANDIDATES, default=[]): cv.All(
             cv.ensure_list(text_sensor.text_sensor_schema(icon="mdi:radio-tower")),
             cv.Length(max=20),
@@ -161,6 +166,9 @@ async def to_code(config: dict[str, Any]) -> None:
     await cg.register_component(var, config)
     cg.add(var.set_candidate_limit(config[CONF_CANDIDATE_LIMIT]))
     cg.add(var.set_stale_after_ms(config[CONF_STALE_AFTER].total_milliseconds))
+    if CONF_TIME_ID in config:
+        time_var = await cg.get_variable(config[CONF_TIME_ID])
+        cg.add(var.set_time(time_var))
 
     for entry in config[CONF_KNOWN_SENSORS]:
         cg.add(
@@ -177,7 +185,7 @@ async def to_code(config: dict[str, Any]) -> None:
             humidity = await sensor.new_sensor(entry[CONF_HUMIDITY])
             cg.add(var.set_humidity_sensor(entry[CONF_KEY], humidity))
         if CONF_BATTERY in entry:
-            battery = await sensor.new_sensor(entry[CONF_BATTERY])
+            battery = await binary_sensor.new_binary_sensor(entry[CONF_BATTERY])
             cg.add(var.set_battery_sensor(entry[CONF_KEY], battery))
         if CONF_RSSI in entry:
             rssi = await sensor.new_sensor(entry[CONF_RSSI])
@@ -185,6 +193,9 @@ async def to_code(config: dict[str, Any]) -> None:
         if CONF_STALE in entry:
             stale = await binary_sensor.new_binary_sensor(entry[CONF_STALE])
             cg.add(var.set_stale_sensor(entry[CONF_KEY], stale))
+        if CONF_LAST_UPDATED in entry:
+            last_updated_sensor = await sensor.new_sensor(entry[CONF_LAST_UPDATED])
+            cg.add(var.set_last_updated_sensor(entry[CONF_KEY], last_updated_sensor))
 
     for index, candidate_config in enumerate(config[CONF_CANDIDATES]):
         candidate = await text_sensor.new_text_sensor(candidate_config)

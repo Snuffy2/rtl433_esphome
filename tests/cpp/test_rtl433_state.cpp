@@ -79,6 +79,27 @@ void test_remapping_clears_old_reading() {
   require(!after_old_packet->has_value, "expected stale state to remain cleared after non-match");
 }
 
+void test_reapplying_same_mapping_preserves_restored_reading() {
+  rtl433_native::GatewayState state;
+  state.set_mapping("garage_freezer_2", "Acurite-986/2F/31274");
+
+  rtl433_native::LogicalSensorState restored;
+  restored.has_value = true;
+  restored.temperature_f = 11.0f;
+  restored.battery = 100.0f;
+  restored.rssi = -87;
+  restored.last_seen_ms = 2000;
+  state.restore_logical_state("garage_freezer_2", restored);
+
+  state.set_mapping("garage_freezer_2", "Acurite-986/2F/31274");
+
+  const auto *after = state.logical_sensor("garage_freezer_2");
+  require(after != nullptr, "expected logical sensor state after same mapping");
+  require(after->has_value, "expected same mapping to preserve restored reading");
+  require(after->last_seen_ms == 2000, "expected same mapping to preserve last seen timestamp");
+  require(!state.is_stale("garage_freezer_2", 3000), "expected restored reading to remain fresh");
+}
+
 void test_invalid_mapping_input_clears_state_and_mapping() {
   rtl433_native::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
@@ -373,6 +394,7 @@ int main() {
   test_key_parsing();
   test_known_packet_updates_logical_sensor();
   test_remapping_clears_old_reading();
+  test_reapplying_same_mapping_preserves_restored_reading();
   test_invalid_mapping_input_clears_state_and_mapping();
   test_duplicate_mappings_update_both();
   test_invalid_packet_is_rejected();

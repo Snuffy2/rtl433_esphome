@@ -62,6 +62,7 @@ bool matches_key(const DecodedPacket &packet, const SensorKey &key);
 class GatewayState {
  public:
   void set_mapping(const std::string &logical_key, const std::string &sensor_key);
+  void restore_logical_state(const std::string &logical_key, const LogicalSensorState &state);
   const LogicalSensorState *logical_sensor(const std::string &logical_key) const;
   PacketResult process_packet(const DecodedPacket &packet);
   void set_discovery_enabled(bool enabled) { discovery_enabled_ = enabled; }

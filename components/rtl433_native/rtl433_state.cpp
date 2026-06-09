@@ -76,8 +76,19 @@ void GatewayState::set_mapping(const std::string &logical_key, const std::string
     logical_states_.erase(logical_key);
     return;
   }
+  const auto existing = mappings_.find(logical_key);
+  if (existing != mappings_.end() && same_key(existing->second, *parsed)) {
+    return;
+  }
   mappings_[logical_key] = *parsed;
   logical_states_[logical_key] = LogicalSensorState{};
+}
+
+void GatewayState::restore_logical_state(const std::string &logical_key, const LogicalSensorState &state) {
+  if (mappings_.find(logical_key) == mappings_.end()) {
+    return;
+  }
+  logical_states_[logical_key] = state;
 }
 
 const LogicalSensorState *GatewayState::logical_sensor(const std::string &logical_key) const {
