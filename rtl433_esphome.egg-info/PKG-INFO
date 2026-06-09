@@ -1,7 +1,0 @@
-Metadata-Version: 2.4
-Name: rtl433-esphome
-Version: 0.1.0
-Summary: ESPHome rtl_433 native gateway for temperature sensors
-Author: Snuffy2
-License-Expression: MIT
-Requires-Python: >=3.12
