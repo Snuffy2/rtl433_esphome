@@ -173,6 +173,24 @@ void test_reordered_synonyms_preserve_restored_reading() {
   require(after->last_seen_ms == 4000, "expected reordered synonyms to preserve last seen timestamp");
 }
 
+void test_reordered_primary_preserves_restored_reading() {
+  rtl433::GatewayState state;
+  state.set_mapping("garage_combo_freezer", "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88");
+
+  rtl433::LogicalSensorState restored;
+  restored.has_value = true;
+  restored.temperature_f = 8.25f;
+  restored.last_seen_ms = 5000;
+  state.restore_logical_state("garage_combo_freezer", restored);
+
+  state.set_mapping("garage_combo_freezer", "LaCrosse-TX141THBv2/1/88;TFA-303221/2/88");
+
+  const auto *after = state.logical_sensor("garage_combo_freezer");
+  require(after != nullptr, "expected logical sensor state after reordered primary");
+  require(after->has_value, "expected reordered primary to preserve restored reading");
+  require(after->last_seen_ms == 5000, "expected reordered primary to preserve last seen timestamp");
+}
+
 void test_invalid_mapping_input_clears_state_and_mapping() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
@@ -471,6 +489,7 @@ int main() {
   test_remapping_clears_old_reading();
   test_reapplying_same_mapping_preserves_restored_reading();
   test_reordered_synonyms_preserve_restored_reading();
+  test_reordered_primary_preserves_restored_reading();
   test_invalid_mapping_input_clears_state_and_mapping();
   test_duplicate_mappings_update_both();
   test_invalid_packet_is_rejected();

@@ -31,6 +31,15 @@ bool key_less(const SensorKey &left, const SensorKey &right) {
   return left.id < right.id;
 }
 
+void canonicalize_mapping(SensorMapping &mapping) {
+  std::vector<SensorKey> keys{mapping.primary};
+  keys.insert(keys.end(), mapping.synonyms.begin(), mapping.synonyms.end());
+  std::sort(keys.begin(), keys.end(), key_less);
+  keys.erase(std::unique(keys.begin(), keys.end(), same_key), keys.end());
+  mapping.primary = keys.front();
+  mapping.synonyms.assign(std::next(keys.begin()), keys.end());
+}
+
 bool same_mapping(const SensorMapping &left, const SensorMapping &right) {
   if (!same_key(left.primary, right.primary) || left.synonyms.size() != right.synonyms.size()) {
     return false;
@@ -105,7 +114,7 @@ std::optional<SensorMapping> parse_sensor_mapping(const std::string &value) {
     ESP_LOGW(TAG, "parse_sensor_mapping rejected invalid mapping '%s'", value.c_str());
     return std::nullopt;
   }
-  std::sort(mapping.synonyms.begin(), mapping.synonyms.end(), key_less);
+  canonicalize_mapping(mapping);
   return mapping;
 }
 
