@@ -39,6 +39,9 @@ StopAction = rtl433_native_ns.class_("StopAction", automation.Action)
 ClearCandidatesAction = rtl433_native_ns.class_("ClearCandidatesAction", automation.Action)
 
 UINT32_MAX_MILLISECONDS = 4_294_967_295
+ARDUINO_NETWORK_INCLUDE_FLAG = (
+    "-I${platformio.packages_dir}/framework-arduinoespressif32/libraries/Network/src"
+)
 
 
 def _validate_known_sensor_keys(value: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -155,6 +158,7 @@ GATEWAY_ID_SCHEMA = cv.Schema({cv.GenerateID(): cv.use_id(Gateway)})
 async def to_code(config: dict[str, Any]) -> None:
     """Generate C++ for the rtl433_native component."""
 
+    cg.add_build_flag(ARDUINO_NETWORK_INCLUDE_FLAG)
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     cg.add(var.set_candidate_limit(config[CONF_CANDIDATE_LIMIT]))

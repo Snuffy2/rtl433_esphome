@@ -25,7 +25,6 @@ esphome:
       - "-DRF_MODULE_SCK=5"
       - "-DRF_MODULE_MISO=19"
       - "-DRF_MODULE_MOSI=27"
-      - "-I/root/.platformio/packages/framework-arduinoespressif32/libraries/Network/src"
       - "-include src/esphome/components/rtl433_native/ledc_compat.h"
   on_boot:
     priority: -100
