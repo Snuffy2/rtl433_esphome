@@ -12,7 +12,9 @@
 
 namespace esphome::rtl433_native {
 
-static const char *const TAG = "rtl433_native";
+namespace {
+
+const char *const TAG = "rtl433_native";
 
 float json_float_or_nan(JsonObject root, const char *key) {
   if (root[key].is<float>()) {
@@ -37,6 +39,8 @@ uint32_t preference_key(const std::string &logical_key) {
   }
   return hash ^ 0xA4330E01UL;
 }
+
+}  // namespace
 
 Gateway *Gateway::instance_ = nullptr;
 
