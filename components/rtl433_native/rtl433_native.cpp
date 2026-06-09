@@ -429,11 +429,7 @@ void Gateway::publish_candidates() {
       continue;
     }
     this->last_candidate_values_[index] = next_value;
-    if (index < candidates.size()) {
-      sensor->publish_state(next_value);
-    } else {
-      sensor->publish_state(next_value);
-    }
+    sensor->publish_state(next_value);
   }
 }
 
