@@ -9,6 +9,7 @@ esphome:
   libraries:
     - "rtl_433_ESP=git+https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"
     - RadioLib@6.2.0
+    - Networking
     - SPI
     - EEPROM
   platformio_options:
@@ -24,6 +25,7 @@ esphome:
       - "-DRF_MODULE_SCK=5"
       - "-DRF_MODULE_MISO=19"
       - "-DRF_MODULE_MOSI=27"
+      - "-I/root/.platformio/packages/framework-arduinoespressif32/libraries/Network/src"
       - "-include src/esphome/components/rtl433_native/ledc_compat.h"
   on_boot:
     priority: -100
