@@ -1,8 +1,6 @@
 # Garage RTL433 ESPHome Gateway
 
-ESPHome replacement for the garage `OMG_Garage` OpenMQTTGateway receiver. The
-firmware uses `rtl_433_ESP` on a Heltec WiFi LoRa 32 V2-style 433 MHz board and
-publishes native Home Assistant entities for the known fridge/freezer sensors.
+ESPHome replacement for an OpenMQTTGateway receiver. The firmware uses `rtl_433_ESP` on a Heltec WiFi LoRa 32 V2-style 433 MHz board and publishes native Home Assistant entities for the known sensors.
 
 ## Known Sensor Mappings
 
@@ -35,14 +33,3 @@ uv sync --group dev
 
 The firmware never creates normal entities for unknown packets and never
 automatically rebinds a freezer/fridge mapping.
-
-## Initial Rollout
-
-1. Flash as `garage-rtl433-native`, leaving `OMG_Garage` in place.
-2. Compare the four native ESPHome entities with the existing MQTT/template
-   entities for several update cycles. This comparison remains pending for a
-   hardware/HA rollout gate and has not been completed in this batch.
-3. Rename the native entities to the existing public entity IDs after the new
-   values are stable.
-4. Disable the OpenMQTTGateway smart-plug restart automations in a separate Home
-   Assistant cleanup after the ESPHome device has proven reliable.

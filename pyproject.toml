@@ -1,26 +1,87 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "rtl433-esphome"
 version = "0.1.0"
-description = "ESPHome rtl_433 native gateway for garage fridge and freezer sensors"
+description = "ESPHome rtl_433 native gateway for temperature sensors"
 requires-python = ">=3.12"
 dependencies = []
+license = "MIT"
+authors = [
+    { name = "Snuffy2" },
+]
 
 [dependency-groups]
 dev = [
   "esphome>=2026.4.5",
-  "mypy>=1.18.0",
-  "pytest>=8.4.0",
-  "ruff>=0.15.0",
+  "mypy",
+  "pytest",
+  "ruff",
+  "prek",
 ]
 
 [tool.ruff]
 line-length = 100
+indent-width = 4
 target-version = "py312"
+fix = true
+
+[tool.coverage.run]
+branch = true
+source = ["components/rtl433_native"]
+relative_files = true
+parallel = false
+
+[tool.pytest.ini_options]
+addopts = """
+  --quiet
+  --timeout=20
+  --durations=10
+  -o console_output_style=progress
+  --cov=components.rtl433_native
+  --cov-report=term-missing
+  --cov-report=html
+"""
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
 
 [tool.ruff.lint]
-select = ["B", "E", "F", "I", "N", "UP"]
+fixable = ["ALL"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+combine-as-imports = true
+split-on-trailing-comma = false
+
+[tool.ruff.lint.mccabe]
+max-complexity = 25
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 files = ["tests", "components/rtl433_native"]
+disable_error_code = [
+    "untyped-decorator",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "esphome.*",
+]
+ignore_missing_imports = true

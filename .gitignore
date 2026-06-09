@@ -4,5 +4,8 @@
 __pycache__/
 *.pyc
 
-/.esphome/
-/secrets.yaml
+.esphome/
+secrets.yaml
+.esphome_build_cache_tmp
+uv.lock
+MEMORY.md
