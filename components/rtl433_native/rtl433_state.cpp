@@ -47,13 +47,7 @@ bool candidate_less(const CandidateRow &left, const CandidateRow &right) {
   if (left.last_seen_ms != right.last_seen_ms) {
     return left.last_seen_ms > right.last_seen_ms;
   }
-  if (left.key.model != right.key.model) {
-    return left.key.model < right.key.model;
-  }
-  if (left.key.channel != right.key.channel) {
-    return left.key.channel < right.key.channel;
-  }
-  return left.key.id < right.key.id;
+  return key_less(left.key, right.key);
 }
 
 bool is_older_than(uint32_t now_ms, uint32_t seen_ms, uint32_t age_ms) {
