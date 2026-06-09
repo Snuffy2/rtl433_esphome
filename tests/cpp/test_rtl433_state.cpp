@@ -7,6 +7,8 @@
 
 namespace {
 
+namespace rtl433 = esphome::rtl433_native;
+
 void require(bool condition, const std::string &message) {
   if (!condition) {
     std::cerr << message << '\n';
@@ -15,20 +17,20 @@ void require(bool condition, const std::string &message) {
 }
 
 void test_key_parsing() {
-  auto key = esphome::rtl433_native::parse_sensor_key("LaCrosse-TX141THBv2/0/203");
+  auto key = rtl433::parse_sensor_key("LaCrosse-TX141THBv2/0/203");
   require(key.has_value(), "expected valid LaCrosse key");
   require(key->model == "LaCrosse-TX141THBv2", "wrong parsed model");
   require(key->channel == "0", "wrong parsed channel");
   require(key->id == "203", "wrong parsed id");
-  require(!esphome::rtl433_native::parse_sensor_key("LaCrosse-TX141THBv2/203").has_value(),
+  require(!rtl433::parse_sensor_key("LaCrosse-TX141THBv2/203").has_value(),
           "expected malformed key to fail");
 }
 
 void test_known_packet_updates_logical_sensor() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
 
-  esphome::rtl433_native::DecodedPacket packet;
+  rtl433::DecodedPacket packet;
   packet.model = "LaCrosse-TX141THBv2";
   packet.channel = "0";
   packet.id = "203";
@@ -39,7 +41,7 @@ void test_known_packet_updates_logical_sensor() {
   packet.seen_ms = 1000;
 
   auto result = state.process_packet(packet);
-  require(result == esphome::rtl433_native::PacketResult::MATCHED_KNOWN, "expected known packet match");
+  require(result == rtl433::PacketResult::MATCHED_KNOWN, "expected known packet match");
 
   const auto *logical = state.logical_sensor("garage_combo_fridge");
   require(logical != nullptr, "expected logical sensor state");
@@ -48,10 +50,10 @@ void test_known_packet_updates_logical_sensor() {
 }
 
 void test_synonym_key_updates_logical_sensor() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_mapping("garage_combo_freezer", "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88");
 
-  esphome::rtl433_native::DecodedPacket packet;
+  rtl433::DecodedPacket packet;
   packet.model = "LaCrosse-TX141THBv2";
   packet.channel = "1";
   packet.id = "88";
@@ -62,7 +64,7 @@ void test_synonym_key_updates_logical_sensor() {
   packet.seen_ms = 2500;
 
   auto result = state.process_packet(packet);
-  require(result == esphome::rtl433_native::PacketResult::MATCHED_KNOWN, "expected synonym packet match");
+  require(result == rtl433::PacketResult::MATCHED_KNOWN, "expected synonym packet match");
 
   const auto *logical = state.logical_sensor("garage_combo_freezer");
   require(logical != nullptr, "expected logical sensor state");
@@ -72,25 +74,25 @@ void test_synonym_key_updates_logical_sensor() {
 }
 
 void test_mapping_list_updates_from_primary_and_synonym() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_mapping("garage_combo_freezer", "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88");
 
-  esphome::rtl433_native::DecodedPacket primary_packet;
+  rtl433::DecodedPacket primary_packet;
   primary_packet.model = "TFA-303221";
   primary_packet.channel = "2";
   primary_packet.id = "88";
   primary_packet.temperature_f = 12.25f;
   primary_packet.seen_ms = 1000;
-  require(state.process_packet(primary_packet) == esphome::rtl433_native::PacketResult::MATCHED_KNOWN,
+  require(state.process_packet(primary_packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected primary mapping list key to match");
 
-  esphome::rtl433_native::DecodedPacket synonym_packet;
+  rtl433::DecodedPacket synonym_packet;
   synonym_packet.model = "LaCrosse-TX141THBv2";
   synonym_packet.channel = "1";
   synonym_packet.id = "88";
   synonym_packet.temperature_f = 13.5f;
   synonym_packet.seen_ms = 2000;
-  require(state.process_packet(synonym_packet) == esphome::rtl433_native::PacketResult::MATCHED_KNOWN,
+  require(state.process_packet(synonym_packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected synonym mapping list key to match");
 
   const auto *logical = state.logical_sensor("garage_combo_freezer");
@@ -101,17 +103,17 @@ void test_mapping_list_updates_from_primary_and_synonym() {
 }
 
 void test_remapping_clears_old_reading() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
 
-  esphome::rtl433_native::DecodedPacket original_packet;
+  rtl433::DecodedPacket original_packet;
   original_packet.model = "LaCrosse-TX141THBv2";
   original_packet.channel = "0";
   original_packet.id = "203";
   original_packet.temperature_f = 34.16f;
   original_packet.seen_ms = 1000;
 
-  require(state.process_packet(original_packet) == esphome::rtl433_native::PacketResult::MATCHED_KNOWN,
+  require(state.process_packet(original_packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected initial packet match");
 
   const auto *before = state.logical_sensor("garage_combo_fridge");
@@ -125,7 +127,7 @@ void test_remapping_clears_old_reading() {
   require(!after_remap->has_value, "expected remap to clear old reading");
   require(after_remap->last_seen_ms == 0, "expected remap to clear old timestamp");
 
-  require(state.process_packet(original_packet) == esphome::rtl433_native::PacketResult::IGNORED_UNKNOWN,
+  require(state.process_packet(original_packet) == rtl433::PacketResult::IGNORED_UNKNOWN,
           "expected old packet key to no longer match");
   const auto *after_old_packet = state.logical_sensor("garage_combo_fridge");
   require(after_old_packet != nullptr, "expected logical sensor state after old packet");
@@ -133,10 +135,10 @@ void test_remapping_clears_old_reading() {
 }
 
 void test_reapplying_same_mapping_preserves_restored_reading() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_mapping("garage_freezer_2", "Acurite-986/2F/31274");
 
-  esphome::rtl433_native::LogicalSensorState restored;
+  rtl433::LogicalSensorState restored;
   restored.has_value = true;
   restored.temperature_f = 11.0f;
   restored.battery = 100.0f;
@@ -154,10 +156,10 @@ void test_reapplying_same_mapping_preserves_restored_reading() {
 }
 
 void test_reordered_synonyms_preserve_restored_reading() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_mapping("garage_combo_freezer", "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88;Acurite-986/2F/31274");
 
-  esphome::rtl433_native::LogicalSensorState restored;
+  rtl433::LogicalSensorState restored;
   restored.has_value = true;
   restored.temperature_f = 9.5f;
   restored.last_seen_ms = 4000;
@@ -172,30 +174,30 @@ void test_reordered_synonyms_preserve_restored_reading() {
 }
 
 void test_invalid_mapping_input_clears_state_and_mapping() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
 
-  esphome::rtl433_native::DecodedPacket packet;
+  rtl433::DecodedPacket packet;
   packet.model = "LaCrosse-TX141THBv2";
   packet.channel = "0";
   packet.id = "203";
   packet.temperature_f = 34.16f;
-  require(state.process_packet(packet) == esphome::rtl433_native::PacketResult::MATCHED_KNOWN,
+  require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected known match");
 
   state.set_mapping("garage_combo_fridge", "not_a_valid_key");
   require(state.logical_sensor("garage_combo_fridge") == nullptr,
           "expected invalid mapping to remove logical state");
-  require(state.process_packet(packet) == esphome::rtl433_native::PacketResult::IGNORED_UNKNOWN,
+  require(state.process_packet(packet) == rtl433::PacketResult::IGNORED_UNKNOWN,
           "expected stale mapping to be removed after invalid mapping input");
 }
 
 void test_duplicate_mappings_update_both() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
   state.set_mapping("garage_combo_freezer", "LaCrosse-TX141THBv2/0/203");
 
-  esphome::rtl433_native::DecodedPacket packet;
+  rtl433::DecodedPacket packet;
   packet.model = "LaCrosse-TX141THBv2";
   packet.channel = "0";
   packet.id = "203";
@@ -206,7 +208,7 @@ void test_duplicate_mappings_update_both() {
   packet.seen_ms = 1500;
 
   auto result = state.process_packet(packet);
-  require(result == esphome::rtl433_native::PacketResult::MATCHED_KNOWN, "expected duplicate matches to succeed");
+  require(result == rtl433::PacketResult::MATCHED_KNOWN, "expected duplicate matches to succeed");
 
   const auto *fridge = state.logical_sensor("garage_combo_fridge");
   const auto *freezer = state.logical_sensor("garage_combo_freezer");
@@ -218,39 +220,39 @@ void test_duplicate_mappings_update_both() {
 }
 
 void test_invalid_packet_is_rejected() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
 
-  esphome::rtl433_native::DecodedPacket invalid_model;
+  rtl433::DecodedPacket invalid_model;
   invalid_model.id = "203";
   invalid_model.channel = "0";
-  require(state.process_packet(invalid_model) == esphome::rtl433_native::PacketResult::REJECTED_INVALID,
+  require(state.process_packet(invalid_model) == rtl433::PacketResult::REJECTED_INVALID,
           "expected empty model packet to be rejected");
 
-  esphome::rtl433_native::DecodedPacket invalid_id;
+  rtl433::DecodedPacket invalid_id;
   invalid_id.model = "LaCrosse-TX141THBv2";
   invalid_id.channel = "0";
-  require(state.process_packet(invalid_id) == esphome::rtl433_native::PacketResult::REJECTED_INVALID,
+  require(state.process_packet(invalid_id) == rtl433::PacketResult::REJECTED_INVALID,
           "expected empty id packet to be rejected");
 }
 
 void test_unmatched_packet_is_ignored() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
 
-  esphome::rtl433_native::DecodedPacket packet;
+  rtl433::DecodedPacket packet;
   packet.model = "LaCrosse-TX141THBv2";
   packet.channel = "1";
   packet.id = "999";
-  require(state.process_packet(packet) == esphome::rtl433_native::PacketResult::IGNORED_UNKNOWN,
+  require(state.process_packet(packet) == rtl433::PacketResult::IGNORED_UNKNOWN,
           "expected unmatched packet to be ignored");
 }
 
 void test_unknowns_only_record_when_discovery_enabled() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_candidate_limit(10);
 
-  esphome::rtl433_native::DecodedPacket packet;
+  rtl433::DecodedPacket packet;
   packet.model = "Acurite-986";
   packet.channel = "1R";
   packet.id = "11932";
@@ -259,24 +261,24 @@ void test_unknowns_only_record_when_discovery_enabled() {
   packet.rssi = -88;
   packet.seen_ms = 2000;
 
-  require(state.process_packet(packet) == esphome::rtl433_native::PacketResult::IGNORED_UNKNOWN,
+  require(state.process_packet(packet) == rtl433::PacketResult::IGNORED_UNKNOWN,
           "unknown packet should be ignored while discovery is disabled");
   require(state.candidates().empty(), "candidate table should be empty");
 
   state.set_discovery_enabled(true);
-  require(state.process_packet(packet) == esphome::rtl433_native::PacketResult::RECORDED_CANDIDATE,
+  require(state.process_packet(packet) == rtl433::PacketResult::RECORDED_CANDIDATE,
           "unknown packet should be recorded while discovery is enabled");
   require(state.candidates().size() == 1, "candidate table should have one row");
   require(state.candidates().front().packet_count == 1, "candidate count should start at one");
 }
 
 void test_candidates_are_grouped_capped_and_clearable() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_discovery_enabled(true);
   state.set_candidate_limit(2);
 
   for (int index = 0; index < 4; ++index) {
-    esphome::rtl433_native::DecodedPacket packet;
+    rtl433::DecodedPacket packet;
     packet.model = "Noise";
     if (index == 2) {
       packet.channel = "1";
@@ -305,12 +307,12 @@ void test_candidates_are_grouped_capped_and_clearable() {
 }
 
 void test_duplicate_mappings_record_matched_candidate_once() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_discovery_enabled(true);
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
   state.set_mapping("garage_combo_freezer", "LaCrosse-TX141THBv2/0/203");
 
-  esphome::rtl433_native::DecodedPacket packet;
+  rtl433::DecodedPacket packet;
   packet.model = "LaCrosse-TX141THBv2";
   packet.channel = "0";
   packet.id = "203";
@@ -321,7 +323,7 @@ void test_duplicate_mappings_record_matched_candidate_once() {
   packet.seen_ms = 1500;
 
   auto result = state.process_packet(packet);
-  require(result == esphome::rtl433_native::PacketResult::MATCHED_KNOWN, "expected duplicate matches to succeed");
+  require(result == rtl433::PacketResult::MATCHED_KNOWN, "expected duplicate matches to succeed");
 
   const auto *fridge = state.logical_sensor("garage_combo_fridge");
   const auto *freezer = state.logical_sensor("garage_combo_freezer");
@@ -334,33 +336,33 @@ void test_duplicate_mappings_record_matched_candidate_once() {
 }
 
 void test_mapping_override_replaces_default_key() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_mapping("garage_freezer_1", "Acurite-986/1R/11932");
   state.set_mapping("garage_freezer_1", "Acurite-986/1R/55555");
 
-  esphome::rtl433_native::DecodedPacket old_packet;
+  rtl433::DecodedPacket old_packet;
   old_packet.model = "Acurite-986";
   old_packet.channel = "1R";
   old_packet.id = "11932";
   old_packet.temperature_f = 75.0f;
   old_packet.seen_ms = 1000;
-  require(state.process_packet(old_packet) == esphome::rtl433_native::PacketResult::IGNORED_UNKNOWN,
+  require(state.process_packet(old_packet) == rtl433::PacketResult::IGNORED_UNKNOWN,
           "old mapping should no longer match");
 
-  esphome::rtl433_native::DecodedPacket new_packet = old_packet;
+  rtl433::DecodedPacket new_packet = old_packet;
   new_packet.id = "55555";
   new_packet.temperature_f = 10.0f;
   new_packet.seen_ms = 2000;
-  require(state.process_packet(new_packet) == esphome::rtl433_native::PacketResult::MATCHED_KNOWN,
+  require(state.process_packet(new_packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "new mapping should match");
 }
 
 void test_stale_detection_uses_last_seen() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_stale_after_ms(600000);
   state.set_mapping("garage_combo_freezer", "TFA-303221/2/88");
 
-  esphome::rtl433_native::DecodedPacket packet;
+  rtl433::DecodedPacket packet;
   packet.model = "TFA-303221";
   packet.channel = "2";
   packet.id = "88";
@@ -374,11 +376,11 @@ void test_stale_detection_uses_last_seen() {
 }
 
 void test_stale_detection_wraps_with_uint32_delta() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_stale_after_ms(1000);
   state.set_mapping("garage_combo_freezer", "Noise/0/1");
 
-  esphome::rtl433_native::DecodedPacket packet;
+  rtl433::DecodedPacket packet;
   packet.model = "Noise";
   packet.channel = "0";
   packet.id = "1";
@@ -390,17 +392,17 @@ void test_stale_detection_wraps_with_uint32_delta() {
 }
 
 void test_candidate_order_is_deterministic_for_equal_seen_time() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_discovery_enabled(true);
 
-  esphome::rtl433_native::DecodedPacket apple;
+  rtl433::DecodedPacket apple;
   apple.model = "Apple";
   apple.channel = "1";
   apple.id = "10";
   apple.seen_ms = 5000;
   state.process_packet(apple);
 
-  esphome::rtl433_native::DecodedPacket zebra;
+  rtl433::DecodedPacket zebra;
   zebra.model = "Zebra";
   zebra.channel = "0";
   zebra.id = "1";
@@ -414,18 +416,18 @@ void test_candidate_order_is_deterministic_for_equal_seen_time() {
 }
 
 void test_candidates_pruned_by_age() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_discovery_enabled(true);
   state.set_stale_after_ms(1000);
 
-  esphome::rtl433_native::DecodedPacket old_candidate;
+  rtl433::DecodedPacket old_candidate;
   old_candidate.model = "OldSensor";
   old_candidate.channel = "0";
   old_candidate.id = "111";
   old_candidate.seen_ms = 1000;
   state.process_packet(old_candidate);
 
-  esphome::rtl433_native::DecodedPacket recent_candidate;
+  rtl433::DecodedPacket recent_candidate;
   recent_candidate.model = "NewSensor";
   recent_candidate.channel = "0";
   recent_candidate.id = "222";
@@ -437,18 +439,18 @@ void test_candidates_pruned_by_age() {
 }
 
 void test_candidate_age_pruning_is_uint32_wrap_safe() {
-  esphome::rtl433_native::GatewayState state;
+  rtl433::GatewayState state;
   state.set_discovery_enabled(true);
   state.set_stale_after_ms(200);
 
-  esphome::rtl433_native::DecodedPacket pre_wrap_candidate;
+  rtl433::DecodedPacket pre_wrap_candidate;
   pre_wrap_candidate.model = "Rollover";
   pre_wrap_candidate.channel = "0";
   pre_wrap_candidate.id = "001";
   pre_wrap_candidate.seen_ms = 0xFFFFFF80;
   state.process_packet(pre_wrap_candidate);
 
-  esphome::rtl433_native::DecodedPacket post_wrap_candidate;
+  rtl433::DecodedPacket post_wrap_candidate;
   post_wrap_candidate.model = "Fresh";
   post_wrap_candidate.channel = "0";
   post_wrap_candidate.id = "002";
