@@ -102,6 +102,10 @@ void Gateway::add_mapping(const std::string &logical_key, const std::string &mod
   }
 }
 
+void Gateway::add_mapping_alias(const std::string &logical_key, const std::string &sensor_key) {
+  this->state_.add_mapping_alias(logical_key, sensor_key);
+}
+
 void Gateway::set_override(const std::string &logical_key, const std::string &sensor_key) {
   this->entities_.try_emplace(logical_key);
   this->state_.set_mapping(logical_key, sensor_key);

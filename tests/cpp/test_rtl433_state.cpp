@@ -47,6 +47,31 @@ void test_known_packet_updates_logical_sensor() {
   require(logical->last_seen_ms == 1000, "wrong last seen timestamp");
 }
 
+void test_alias_key_updates_logical_sensor() {
+  rtl433_native::GatewayState state;
+  state.set_mapping("garage_combo_freezer", "TFA-303221/2/88");
+  state.add_mapping_alias("garage_combo_freezer", "LaCrosse-TX141THBv2/1/88");
+
+  rtl433_native::DecodedPacket packet;
+  packet.model = "LaCrosse-TX141THBv2";
+  packet.channel = "1";
+  packet.id = "88";
+  packet.temperature_f = 0.5f;
+  packet.humidity = 44.0f;
+  packet.battery = 100.0f;
+  packet.rssi = -67;
+  packet.seen_ms = 2500;
+
+  auto result = state.process_packet(packet);
+  require(result == rtl433_native::PacketResult::MATCHED_KNOWN, "expected alias packet match");
+
+  const auto *logical = state.logical_sensor("garage_combo_freezer");
+  require(logical != nullptr, "expected logical sensor state");
+  require(logical->has_value, "expected alias packet to update logical sensor");
+  require(std::fabs(logical->temperature_f - 0.5f) < 0.001f, "wrong alias temperature");
+  require(logical->last_seen_ms == 2500, "wrong alias last seen timestamp");
+}
+
 void test_remapping_clears_old_reading() {
   rtl433_native::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
@@ -393,6 +418,7 @@ void test_candidate_age_pruning_is_uint32_wrap_safe() {
 int main() {
   test_key_parsing();
   test_known_packet_updates_logical_sensor();
+  test_alias_key_updates_logical_sensor();
   test_remapping_clears_old_reading();
   test_reapplying_same_mapping_preserves_restored_reading();
   test_invalid_mapping_input_clears_state_and_mapping();

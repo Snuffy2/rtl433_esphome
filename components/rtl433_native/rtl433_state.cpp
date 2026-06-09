@@ -12,6 +12,10 @@ bool same_key(const SensorKey &left, const SensorKey &right) {
   return left.model == right.model && left.channel == right.channel && left.id == right.id;
 }
 
+bool same_mapping_primary(const SensorMapping &mapping, const SensorKey &key) {
+  return same_key(mapping.primary, key);
+}
+
 bool candidate_less(const CandidateRow &left, const CandidateRow &right) {
   if (left.last_seen_ms != right.last_seen_ms) {
     return left.last_seen_ms > right.last_seen_ms;
@@ -69,6 +73,15 @@ bool matches_key(const DecodedPacket &packet, const SensorKey &key) {
   return packet.model == key.model && packet.channel == key.channel && packet.id == key.id;
 }
 
+bool matches_mapping(const DecodedPacket &packet, const SensorMapping &mapping) {
+  if (matches_key(packet, mapping.primary)) {
+    return true;
+  }
+  return std::any_of(mapping.aliases.begin(), mapping.aliases.end(), [&](const SensorKey &alias) {
+    return matches_key(packet, alias);
+  });
+}
+
 void GatewayState::set_mapping(const std::string &logical_key, const std::string &sensor_key) {
   auto parsed = parse_sensor_key(sensor_key);
   if (!parsed.has_value()) {
@@ -77,11 +90,31 @@ void GatewayState::set_mapping(const std::string &logical_key, const std::string
     return;
   }
   const auto existing = mappings_.find(logical_key);
-  if (existing != mappings_.end() && same_key(existing->second, *parsed)) {
+  if (existing != mappings_.end() && same_mapping_primary(existing->second, *parsed)) {
     return;
   }
-  mappings_[logical_key] = *parsed;
+  auto &mapping = mappings_[logical_key];
+  mapping.primary = *parsed;
   logical_states_[logical_key] = LogicalSensorState{};
+}
+
+void GatewayState::add_mapping_alias(const std::string &logical_key, const std::string &sensor_key) {
+  auto parsed = parse_sensor_key(sensor_key);
+  if (!parsed.has_value()) {
+    return;
+  }
+  auto mapping = mappings_.find(logical_key);
+  if (mapping == mappings_.end()) {
+    return;
+  }
+  if (same_key(mapping->second.primary, *parsed)) {
+    return;
+  }
+  const auto &aliases = mapping->second.aliases;
+  if (std::any_of(aliases.begin(), aliases.end(), [&](const SensorKey &alias) { return same_key(alias, *parsed); })) {
+    return;
+  }
+  mapping->second.aliases.push_back(*parsed);
 }
 
 void GatewayState::restore_logical_state(const std::string &logical_key, const LogicalSensorState &state) {
@@ -105,8 +138,8 @@ PacketResult GatewayState::process_packet(const DecodedPacket &packet) {
   }
 
   bool matched = false;
-  for (const auto &[logical_key, sensor_key] : mappings_) {
-    if (!matches_key(packet, sensor_key)) {
+  for (const auto &[logical_key, mapping] : mappings_) {
+    if (!matches_mapping(packet, mapping)) {
       continue;
     }
     auto &state = logical_states_[logical_key];

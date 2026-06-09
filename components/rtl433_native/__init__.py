@@ -15,6 +15,7 @@ CODEOWNERS = ["@Snuffy2"]
 
 candidate_limit = "candidate_limit"
 candidates = "candidates"
+aliases = "aliases"
 battery = "battery"
 channel = "channel"
 discovery_enabled = "discovery_enabled"
@@ -36,6 +37,7 @@ unknown_packet_count = "unknown_packet_count"
 
 CONF_CANDIDATE_LIMIT = candidate_limit
 CONF_CANDIDATES = candidates
+CONF_ALIASES = aliases
 CONF_BATTERY = battery
 CONF_CHANNEL = channel
 CONF_DISCOVERY_ENABLED = discovery_enabled
@@ -76,7 +78,19 @@ def _validate_known_sensor_keys(value: list[dict[str, Any]]) -> list[dict[str, A
     return value
 
 
+def _validate_sensor_key(value: Any) -> str:
+    """Validate a rtl_433 sensor key in model/channel/id format."""
+
+    sensor_key = str(cv.string_strict(value))
+    parts = sensor_key.split("/")
+    if len(parts) != 3 or any(part == "" for part in parts):
+        raise cv.Invalid("Expected sensor key in model/channel/id format")
+    return sensor_key
+
+
 def _validate_stale_after(value: Any) -> Any:
+    """Validate stale duration fits the C++ millisecond storage type."""
+
     result = cv.positive_time_period_milliseconds(value)
     if result.total_milliseconds > UINT32_MAX_MILLISECONDS:
         raise cv.Invalid(f"stale_after exceeds uint32_t limit: {result.total_milliseconds}ms")
@@ -89,6 +103,7 @@ SENSOR_ENTRY_SCHEMA = cv.Schema(
         cv.Required(CONF_MODEL): cv.string_strict,
         cv.Required(CONF_CHANNEL): cv.string_strict,
         cv.Required(CONF_RF_ID): cv.string_strict,
+        cv.Optional(CONF_ALIASES, default=[]): cv.ensure_list(_validate_sensor_key),
         cv.Required(CONF_TEMPERATURE): sensor.sensor_schema(
             unit_of_measurement="°F",
             accuracy_decimals=2,
@@ -174,6 +189,8 @@ async def to_code(config: dict[str, Any]) -> None:
                 entry[CONF_RF_ID],
             )
         )
+        for alias in entry[CONF_ALIASES]:
+            cg.add(var.add_mapping_alias(entry[CONF_KEY], alias))
         temperature = await sensor.new_sensor(entry[CONF_TEMPERATURE])
         cg.add(var.set_temperature_sensor(entry[CONF_KEY], temperature))
         if CONF_HUMIDITY in entry:

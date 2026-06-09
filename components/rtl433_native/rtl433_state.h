@@ -15,6 +15,11 @@ struct SensorKey {
   std::string id;
 };
 
+struct SensorMapping {
+  SensorKey primary;
+  std::vector<SensorKey> aliases{};
+};
+
 struct DecodedPacket {
   std::string model;
   std::string channel;
@@ -62,6 +67,7 @@ bool matches_key(const DecodedPacket &packet, const SensorKey &key);
 class GatewayState {
  public:
   void set_mapping(const std::string &logical_key, const std::string &sensor_key);
+  void add_mapping_alias(const std::string &logical_key, const std::string &sensor_key);
   void restore_logical_state(const std::string &logical_key, const LogicalSensorState &state);
   const LogicalSensorState *logical_sensor(const std::string &logical_key) const;
   PacketResult process_packet(const DecodedPacket &packet);
@@ -76,7 +82,7 @@ class GatewayState {
   uint32_t candidate_max_age_ms() const { return stale_after_ms_; }
 
  private:
-  std::unordered_map<std::string, SensorKey> mappings_{};
+  std::unordered_map<std::string, SensorMapping> mappings_{};
   std::unordered_map<std::string, LogicalSensorState> logical_states_{};
   bool discovery_enabled_{false};
   std::size_t candidate_limit_{10};

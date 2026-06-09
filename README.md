@@ -4,12 +4,16 @@ ESPHome replacement for an OpenMQTTGateway receiver. The firmware uses `rtl_433_
 
 ## Known Sensor Mappings
 
-| Logical sensor | Mapping key | Current HA entity |
-| --- | --- | --- |
-| Garage Combo Fridge | `LaCrosse-TX141THBv2/0/203` | `sensor.garage_combo_fridge` |
-| Garage Combo Freezer | `TFA-303221/2/88` | `sensor.garage_combo_freezer` |
-| Garage Freezer 1 | `Acurite-986/1R/11932` | `sensor.garage_freezer_1` |
-| Garage Freezer 2 | `Acurite-986/2F/31274` | `sensor.garage_freezer_2` |
+| Logical sensor | Primary mapping key | Alias keys | Current HA entity |
+| --- | --- | --- | --- |
+| Garage Combo Fridge | `LaCrosse-TX141THBv2/0/203` | `TFA-303221/1/203` | `sensor.garage_combo_fridge` |
+| Garage Combo Freezer | `TFA-303221/2/88` | `LaCrosse-TX141THBv2/1/88` | `sensor.garage_combo_freezer` |
+| Garage Freezer 1 | `Acurite-986/1R/11932` | none | `sensor.garage_freezer_1` |
+| Garage Freezer 2 | `Acurite-986/2F/31274` | none | `sensor.garage_freezer_2` |
+
+Use `aliases` when rtl_433 reports the same physical transmitter under more
+than one decoder key. Alias entries use the same `model/channel/id` format as
+discovery candidates and mapping overrides.
 
 ## Build
 

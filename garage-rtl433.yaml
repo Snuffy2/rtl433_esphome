@@ -79,6 +79,8 @@ rtl433_native:
       model: "LaCrosse-TX141THBv2"
       channel: "0"
       rf_id: "203"
+      aliases:
+        - "TFA-303221/1/203"
       temperature:
         name: "Garage Combo Fridge"
       humidity:
@@ -100,6 +102,8 @@ rtl433_native:
       model: "TFA-303221"
       channel: "2"
       rf_id: "88"
+      aliases:
+        - "LaCrosse-TX141THBv2/1/88"
       temperature:
         name: "Garage Combo Freezer"
       humidity:

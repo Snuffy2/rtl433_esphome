@@ -62,6 +62,7 @@ class Gateway : public Component {
   void set_discovery_enabled(bool enabled);
   void add_mapping(const std::string &logical_key, const std::string &model, const std::string &channel,
                   const std::string &id);
+  void add_mapping_alias(const std::string &logical_key, const std::string &sensor_key);
   void set_override(const std::string &logical_key, const std::string &sensor_key);
   void set_candidate_limit(std::size_t limit);
   void set_stale_after_ms(uint32_t stale_after_ms);
