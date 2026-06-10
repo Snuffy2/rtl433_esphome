@@ -328,6 +328,50 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
     assert fake_cg.added == gateway.calls
 
 
+async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Generate code when optional entities and time are omitted."""
+
+    gateway = FakeGateway()
+    fake_cg = FakeCodegen(gateway=gateway)
+    fake_sensor = FakeSensorModule(prefix="sensor")
+    fake_binary_sensor = FakeBinarySensorModule()
+    fake_text_sensor = FakeTextSensorModule()
+    monkeypatch.setattr(rtl433_native, "cg", fake_cg)
+    monkeypatch.setattr(rtl433_native, "sensor", fake_sensor)
+    monkeypatch.setattr(rtl433_native, "binary_sensor", fake_binary_sensor)
+    monkeypatch.setattr(rtl433_native, "text_sensor", fake_text_sensor)
+
+    config: dict[str, Any] = {
+        CONF_ID: "gateway_id",
+        CONF_CANDIDATE_LIMIT: 1,
+        CONF_STALE_AFTER: FakeTimePeriod(total_milliseconds=60_000),
+        CONF_KNOWN_SENSORS: [
+            {
+                CONF_KEY: "garage_freezer_1",
+                CONF_MAPPING: "Acurite-986/1R/11932",
+                CONF_TEMPERATURE: {"name": "temperature"},
+            }
+        ],
+        CONF_CANDIDATES: [],
+    }
+
+    await to_code(config)
+
+    assert fake_cg.build_flags == [ARDUINO_NETWORK_INCLUDE_FLAG]
+    assert fake_cg.new_pvariable_calls == [("gateway_id",)]
+    assert fake_cg.registered_components == [(gateway, config)]
+    assert fake_sensor.created == [{"name": "temperature"}]
+    assert fake_binary_sensor.created == []
+    assert fake_text_sensor.created == []
+    assert gateway.calls == [
+        ("set_candidate_limit", (1,)),
+        ("set_stale_after_ms", (60_000,)),
+        ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
+        ("set_temperature_sensor", ("garage_freezer_1", "sensor:temperature")),
+    ]
+    assert fake_cg.added == gateway.calls
+
+
 async def test_action_to_code_registers_parented_action(monkeypatch: pytest.MonkeyPatch) -> None:
     """Generate parented action code for rtl433_native actions."""
 
