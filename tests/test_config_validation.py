@@ -644,6 +644,11 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         assert call in fake_env.codegen.added
     for call in fake_env.text.texts[0].calls:
         assert call in fake_env.codegen.added
+    assert (
+        fake_env.text.texts[0],
+        fake_env.text.created[0],
+    ) in fake_env.codegen.registered_components
+    assert ("register_component", fake_env.text.texts[0]) not in fake_env.codegen.added
 
 
 async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPatch) -> None:

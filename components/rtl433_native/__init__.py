@@ -9,7 +9,7 @@ import esphome.codegen as cg
 from esphome.components import binary_sensor, button, sensor, switch, text, text_sensor, time
 import esphome.config_validation as cv
 from esphome.const import CONF_DISABLED_BY_DEFAULT, CONF_ENTITY_CATEGORY, CONF_ID, CONF_NAME
-from esphome.core import ID
+from esphome.core import CORE, Define, ID
 
 AUTO_LOAD = ["binary_sensor", "button", "json", "sensor", "switch", "text", "text_sensor", "time"]
 CODEOWNERS = ["@Snuffy2"]
@@ -223,6 +223,21 @@ def _compact_entity_config(name: str, entity: str) -> dict[str, Any]:
     return entity_config
 
 
+def _add_generated_component_count(extra_count: int) -> None:
+    """Increase ESPHome's static component capacity for generated components."""
+
+    if extra_count == 0:
+        return
+
+    for define in tuple(CORE.defines):
+        if define.name != "ESPHOME_COMPONENT_COUNT":
+            continue
+
+        CORE.defines.remove(define)
+        CORE.add_define(Define("ESPHOME_COMPONENT_COUNT", int(str(define.value)) + extra_count))
+        return
+
+
 def _expand_compact_sensor_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Expand a compact known sensor entry into the verbose schema shape."""
 
@@ -413,6 +428,7 @@ async def to_code(config: dict[str, Any]) -> None:
         time_var = await cg.get_variable(config[CONF_TIME_ID])
         cg.add(var.set_time(time_var))
 
+    generated_component_count = 0
     for entry in config[CONF_KNOWN_SENSORS]:
         cg.add(
             var.add_mapping(
@@ -431,12 +447,14 @@ async def to_code(config: dict[str, Any]) -> None:
                 "disabled_by_default": False,
                 "mode": text.TextMode.TEXT_MODE_TEXT,
             }
+            CORE.component_ids.add(mapping_text_id.id)
             mapping_text = await text.new_text(
                 mapping_text_config,
                 min_length=MAPPING_TEXT_MIN_LENGTH,
                 max_length=MAPPING_TEXT_MAX_LENGTH,
             )
-            cg.add(cg.App.register_component_(mapping_text))
+            await cg.register_component(mapping_text, mapping_text_config)
+            generated_component_count += 1
             cg.add(mapping_text.set_parent(var))
             cg.add(mapping_text.set_logical_key(entry[CONF_KEY]))
             cg.add(mapping_text.set_initial_value(entry[CONF_MAPPING]))
@@ -479,6 +497,7 @@ async def to_code(config: dict[str, Any]) -> None:
             config[CONF_DISCOVERY_ENABLED]
         )
         cg.add(var.set_discovery_enabled_sensor(discovery_enabled_sensor))
+    _add_generated_component_count(generated_component_count)
     if CONF_DISCOVERY_MODE in config:
         discovery_mode = await switch.new_switch(config[CONF_DISCOVERY_MODE])
         await cg.register_component(discovery_mode, config[CONF_DISCOVERY_MODE])
