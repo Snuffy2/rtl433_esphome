@@ -1,15 +1,227 @@
 """Tests for rtl433_native ESPHome config validation."""
 
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
 import pytest
 from esphome import config_validation as cv
+from esphome.const import CONF_ID
 
+import components.rtl433_native as rtl433_native
 from components.rtl433_native import (
     ARDUINO_NETWORK_INCLUDE_FLAG,
+    CONF_BATTERY,
+    CONF_CANDIDATE_LIMIT,
+    CONF_CANDIDATES,
+    CONF_DISCOVERY_ENABLED,
+    CONF_HUMIDITY,
     CONF_KEY,
+    CONF_KNOWN_PACKET_COUNT,
+    CONF_KNOWN_SENSORS,
+    CONF_LAST_PACKET,
+    CONF_LAST_UPDATED,
+    CONF_MAPPING,
+    CONF_PACKET_COUNT,
+    CONF_RSSI,
+    CONF_STALE,
+    CONF_STALE_AFTER,
+    CONF_TEMPERATURE,
+    CONF_TIME_ID,
+    CONF_UNKNOWN_PACKET_COUNT,
+    action_to_code,
+    to_code,
     _validate_known_sensor_keys,
     _validate_mapping,
     _validate_stale_after,
 )
+
+
+@dataclass
+class FakeGateway:
+    """Test double that records generated gateway method calls."""
+
+    calls: list[tuple[str, tuple[Any, ...]]] = field(default_factory=list)
+
+    def _record(self, name: str, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record a generated gateway method call."""
+
+        self.calls.append((name, args))
+        return name, args
+
+    def add_mapping(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record mapping code generation."""
+
+        return self._record("add_mapping", *args)
+
+    def set_battery_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record battery sensor code generation."""
+
+        return self._record("set_battery_sensor", *args)
+
+    def set_candidate_limit(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record candidate limit code generation."""
+
+        return self._record("set_candidate_limit", *args)
+
+    def set_candidate_text_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record candidate text sensor code generation."""
+
+        return self._record("set_candidate_text_sensor", *args)
+
+    def set_discovery_enabled_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record discovery-enabled binary sensor code generation."""
+
+        return self._record("set_discovery_enabled_sensor", *args)
+
+    def set_humidity_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record humidity sensor code generation."""
+
+        return self._record("set_humidity_sensor", *args)
+
+    def set_known_packet_count_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record known packet count sensor code generation."""
+
+        return self._record("set_known_packet_count_sensor", *args)
+
+    def set_last_packet_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record last packet text sensor code generation."""
+
+        return self._record("set_last_packet_sensor", *args)
+
+    def set_last_updated_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record last updated sensor code generation."""
+
+        return self._record("set_last_updated_sensor", *args)
+
+    def set_packet_count_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record packet count sensor code generation."""
+
+        return self._record("set_packet_count_sensor", *args)
+
+    def set_rssi_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record RSSI sensor code generation."""
+
+        return self._record("set_rssi_sensor", *args)
+
+    def set_stale_after_ms(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record stale duration code generation."""
+
+        return self._record("set_stale_after_ms", *args)
+
+    def set_stale_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record stale binary sensor code generation."""
+
+        return self._record("set_stale_sensor", *args)
+
+    def set_temperature_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record temperature sensor code generation."""
+
+        return self._record("set_temperature_sensor", *args)
+
+    def set_time(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record time component code generation."""
+
+        return self._record("set_time", *args)
+
+    def set_unknown_packet_count_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record unknown packet count sensor code generation."""
+
+        return self._record("set_unknown_packet_count_sensor", *args)
+
+
+@dataclass
+class FakeCodegen:
+    """Test double for the ESPHome codegen module."""
+
+    gateway: FakeGateway
+    added: list[Any] = field(default_factory=list)
+    build_flags: list[str] = field(default_factory=list)
+    new_pvariable_calls: list[tuple[Any, ...]] = field(default_factory=list)
+    registered_components: list[tuple[FakeGateway, dict[str, Any]]] = field(default_factory=list)
+    registered_parents: list[tuple[Any, Any]] = field(default_factory=list)
+    variables: dict[Any, Any] = field(default_factory=dict)
+
+    def add(self, expression: Any) -> None:
+        """Record a generated expression."""
+
+        self.added.append(expression)
+
+    def add_build_flag(self, flag: str) -> None:
+        """Record a build flag."""
+
+        self.build_flags.append(flag)
+
+    def new_Pvariable(self, *args: Any) -> Any:  # noqa: N802
+        """Create a fake Pvariable value."""
+
+        self.new_pvariable_calls.append(args)
+        if len(args) == 1:
+            return self.gateway
+        return {"action_id": args[0], "template_arg": args[1]}
+
+    async def register_component(self, var: FakeGateway, config: dict[str, Any]) -> None:
+        """Record component registration."""
+
+        self.registered_components.append((var, config))
+
+    async def register_parented(self, var: Any, parent: Any) -> None:
+        """Record parented action registration."""
+
+        self.registered_parents.append((var, parent))
+
+    async def get_variable(self, value: Any) -> Any:
+        """Return a fake resolved variable."""
+
+        return self.variables[value]
+
+
+@dataclass
+class FakeSensorModule:
+    """Test double for ESPHome sensor factories."""
+
+    prefix: str
+    created: list[dict[str, Any]] = field(default_factory=list)
+
+    async def new_sensor(self, config: dict[str, Any]) -> str:
+        """Record sensor creation and return a fake sensor."""
+
+        self.created.append(config)
+        return f"{self.prefix}:{config['name']}"
+
+
+@dataclass
+class FakeBinarySensorModule:
+    """Test double for ESPHome binary sensor factories."""
+
+    created: list[dict[str, Any]] = field(default_factory=list)
+
+    async def new_binary_sensor(self, config: dict[str, Any]) -> str:
+        """Record binary sensor creation and return a fake binary sensor."""
+
+        self.created.append(config)
+        return f"binary:{config['name']}"
+
+
+@dataclass
+class FakeTextSensorModule:
+    """Test double for ESPHome text sensor factories."""
+
+    created: list[dict[str, Any]] = field(default_factory=list)
+
+    async def new_text_sensor(self, config: dict[str, Any]) -> str:
+        """Record text sensor creation and return a fake text sensor."""
+
+        self.created.append(config)
+        return f"text:{config['name']}"
+
+
+@dataclass(frozen=True)
+class FakeTimePeriod:
+    """Small stand-in for ESPHome time period values."""
+
+    total_milliseconds: int
 
 
 def test_validate_mapping_accepts_semicolon_delimited_sensor_keys() -> None:
@@ -75,6 +287,103 @@ def test_validate_known_sensor_keys_accepts_unique_keys() -> None:
     config = [{CONF_KEY: "garage_freezer_1"}, {CONF_KEY: "garage_freezer_2"}]
 
     assert _validate_known_sensor_keys(config) is config
+
+
+async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Generate code for known sensors, diagnostics, counters, candidates, and time."""
+
+    gateway = FakeGateway()
+    fake_cg = FakeCodegen(gateway=gateway, variables={"time_id": "time:clock"})
+    fake_sensor = FakeSensorModule(prefix="sensor")
+    fake_binary_sensor = FakeBinarySensorModule()
+    fake_text_sensor = FakeTextSensorModule()
+    monkeypatch.setattr(rtl433_native, "cg", fake_cg)
+    monkeypatch.setattr(rtl433_native, "sensor", fake_sensor)
+    monkeypatch.setattr(rtl433_native, "binary_sensor", fake_binary_sensor)
+    monkeypatch.setattr(rtl433_native, "text_sensor", fake_text_sensor)
+
+    config: dict[str, Any] = {
+        CONF_ID: "gateway_id",
+        CONF_CANDIDATE_LIMIT: 2,
+        CONF_STALE_AFTER: FakeTimePeriod(total_milliseconds=3_600_000),
+        CONF_TIME_ID: "time_id",
+        CONF_KNOWN_SENSORS: [
+            {
+                CONF_KEY: "garage_freezer_1",
+                CONF_MAPPING: "Acurite-986/1R/11932",
+                CONF_TEMPERATURE: {"name": "temperature"},
+                CONF_HUMIDITY: {"name": "humidity"},
+                CONF_BATTERY: {"name": "battery"},
+                CONF_RSSI: {"name": "rssi"},
+                CONF_STALE: {"name": "stale"},
+                CONF_LAST_UPDATED: {"name": "last_updated"},
+            }
+        ],
+        CONF_CANDIDATES: [{"name": "candidate_0"}, {"name": "candidate_1"}],
+        CONF_LAST_PACKET: {"name": "last_packet"},
+        CONF_PACKET_COUNT: {"name": "packet_count"},
+        CONF_KNOWN_PACKET_COUNT: {"name": "known_packet_count"},
+        CONF_UNKNOWN_PACKET_COUNT: {"name": "unknown_packet_count"},
+        CONF_DISCOVERY_ENABLED: {"name": "discovery_enabled"},
+    }
+
+    await to_code(config)
+
+    assert fake_cg.build_flags == [ARDUINO_NETWORK_INCLUDE_FLAG]
+    assert fake_cg.new_pvariable_calls == [("gateway_id",)]
+    assert fake_cg.registered_components == [(gateway, config)]
+    assert fake_sensor.created == [
+        {"name": "temperature"},
+        {"name": "humidity"},
+        {"name": "rssi"},
+        {"name": "last_updated"},
+        {"name": "packet_count"},
+        {"name": "known_packet_count"},
+        {"name": "unknown_packet_count"},
+    ]
+    assert fake_binary_sensor.created == [
+        {"name": "battery"},
+        {"name": "stale"},
+        {"name": "discovery_enabled"},
+    ]
+    assert fake_text_sensor.created == [
+        {"name": "candidate_0"},
+        {"name": "candidate_1"},
+        {"name": "last_packet"},
+    ]
+    assert gateway.calls == [
+        ("set_candidate_limit", (2,)),
+        ("set_stale_after_ms", (3_600_000,)),
+        ("set_time", ("time:clock",)),
+        ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
+        ("set_temperature_sensor", ("garage_freezer_1", "sensor:temperature")),
+        ("set_humidity_sensor", ("garage_freezer_1", "sensor:humidity")),
+        ("set_battery_sensor", ("garage_freezer_1", "binary:battery")),
+        ("set_rssi_sensor", ("garage_freezer_1", "sensor:rssi")),
+        ("set_stale_sensor", ("garage_freezer_1", "binary:stale")),
+        ("set_last_updated_sensor", ("garage_freezer_1", "sensor:last_updated")),
+        ("set_candidate_text_sensor", (0, "text:candidate_0")),
+        ("set_candidate_text_sensor", (1, "text:candidate_1")),
+        ("set_last_packet_sensor", ("text:last_packet",)),
+        ("set_packet_count_sensor", ("sensor:packet_count",)),
+        ("set_known_packet_count_sensor", ("sensor:known_packet_count",)),
+        ("set_unknown_packet_count_sensor", ("sensor:unknown_packet_count",)),
+        ("set_discovery_enabled_sensor", ("binary:discovery_enabled",)),
+    ]
+    assert fake_cg.added == gateway.calls
+
+
+async def test_action_to_code_registers_parented_action(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Generate parented action code for rtl433_native actions."""
+
+    fake_cg = FakeCodegen(gateway=FakeGateway())
+    monkeypatch.setattr(rtl433_native, "cg", fake_cg)
+
+    result = await action_to_code({CONF_ID: "gateway_id"}, "action_id", "template_arg", ())
+
+    assert result == {"action_id": "action_id", "template_arg": "template_arg"}
+    assert fake_cg.new_pvariable_calls == [("action_id", "template_arg")]
+    assert fake_cg.registered_parents == [(result, "gateway_id")]
 
 
 @pytest.mark.parametrize(
