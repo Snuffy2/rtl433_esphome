@@ -179,6 +179,40 @@ class FakeTimePeriod:
     total_milliseconds: int
 
 
+@dataclass(frozen=True)
+class FakeCodegenEnvironment:
+    """Installed ESPHome codegen fakes for a test."""
+
+    gateway: FakeGateway
+    codegen: FakeCodegen
+    sensor: FakeSensorModule
+    binary_sensor: FakeBinarySensorModule
+    text_sensor: FakeTextSensorModule
+
+
+def install_codegen_fakes(
+    monkeypatch: pytest.MonkeyPatch, variables: dict[Any, Any] | None = None
+) -> FakeCodegenEnvironment:
+    """Install ESPHome codegen fakes and return them for assertions."""
+
+    gateway = FakeGateway()
+    fake_cg = FakeCodegen(gateway=gateway, variables=variables or {})
+    fake_sensor = FakeSensorModule(prefix="sensor")
+    fake_binary_sensor = FakeBinarySensorModule()
+    fake_text_sensor = FakeTextSensorModule()
+    monkeypatch.setattr(rtl433_native, "cg", fake_cg)
+    monkeypatch.setattr(rtl433_native, "sensor", fake_sensor)
+    monkeypatch.setattr(rtl433_native, "binary_sensor", fake_binary_sensor)
+    monkeypatch.setattr(rtl433_native, "text_sensor", fake_text_sensor)
+    return FakeCodegenEnvironment(
+        gateway=gateway,
+        codegen=fake_cg,
+        sensor=fake_sensor,
+        binary_sensor=fake_binary_sensor,
+        text_sensor=fake_text_sensor,
+    )
+
+
 def test_validate_mapping_accepts_semicolon_delimited_sensor_keys() -> None:
     """Accept mapping strings with one primary key and synonyms."""
 
@@ -247,15 +281,7 @@ def test_validate_known_sensor_keys_accepts_unique_keys() -> None:
 async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyPatch) -> None:
     """Generate code for known sensors, diagnostics, counters, candidates, and time."""
 
-    gateway = FakeGateway()
-    fake_cg = FakeCodegen(gateway=gateway, variables={"time_id": "time:clock"})
-    fake_sensor = FakeSensorModule(prefix="sensor")
-    fake_binary_sensor = FakeBinarySensorModule()
-    fake_text_sensor = FakeTextSensorModule()
-    monkeypatch.setattr(rtl433_native, "cg", fake_cg)
-    monkeypatch.setattr(rtl433_native, "sensor", fake_sensor)
-    monkeypatch.setattr(rtl433_native, "binary_sensor", fake_binary_sensor)
-    monkeypatch.setattr(rtl433_native, "text_sensor", fake_text_sensor)
+    fake_env = install_codegen_fakes(monkeypatch, variables={"time_id": "time:clock"})
 
     config: dict[str, Any] = {
         CONF_ID: "gateway_id",
@@ -284,10 +310,10 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
 
     await to_code(config)
 
-    assert fake_cg.build_flags == [ARDUINO_NETWORK_INCLUDE_FLAG]
-    assert fake_cg.new_pvariable_calls == [("gateway_id",)]
-    assert fake_cg.registered_components == [(gateway, config)]
-    assert fake_sensor.created == [
+    assert fake_env.codegen.build_flags == [ARDUINO_NETWORK_INCLUDE_FLAG]
+    assert fake_env.codegen.new_pvariable_calls == [("gateway_id",)]
+    assert fake_env.codegen.registered_components == [(fake_env.gateway, config)]
+    assert fake_env.sensor.created == [
         {"name": "temperature"},
         {"name": "humidity"},
         {"name": "rssi"},
@@ -296,17 +322,17 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         {"name": "known_packet_count"},
         {"name": "unknown_packet_count"},
     ]
-    assert fake_binary_sensor.created == [
+    assert fake_env.binary_sensor.created == [
         {"name": "battery"},
         {"name": "stale"},
         {"name": "discovery_enabled"},
     ]
-    assert fake_text_sensor.created == [
+    assert fake_env.text_sensor.created == [
         {"name": "candidate_0"},
         {"name": "candidate_1"},
         {"name": "last_packet"},
     ]
-    assert gateway.calls == [
+    assert fake_env.gateway.calls == [
         ("set_candidate_limit", (2,)),
         ("set_stale_after_ms", (3_600_000,)),
         ("set_time", ("time:clock",)),
@@ -325,21 +351,13 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         ("set_unknown_packet_count_sensor", ("sensor:unknown_packet_count",)),
         ("set_discovery_enabled_sensor", ("binary:discovery_enabled",)),
     ]
-    assert fake_cg.added == gateway.calls
+    assert fake_env.codegen.added == fake_env.gateway.calls
 
 
 async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPatch) -> None:
     """Generate code when optional entities and time are omitted."""
 
-    gateway = FakeGateway()
-    fake_cg = FakeCodegen(gateway=gateway)
-    fake_sensor = FakeSensorModule(prefix="sensor")
-    fake_binary_sensor = FakeBinarySensorModule()
-    fake_text_sensor = FakeTextSensorModule()
-    monkeypatch.setattr(rtl433_native, "cg", fake_cg)
-    monkeypatch.setattr(rtl433_native, "sensor", fake_sensor)
-    monkeypatch.setattr(rtl433_native, "binary_sensor", fake_binary_sensor)
-    monkeypatch.setattr(rtl433_native, "text_sensor", fake_text_sensor)
+    fake_env = install_codegen_fakes(monkeypatch)
 
     config: dict[str, Any] = {
         CONF_ID: "gateway_id",
@@ -357,19 +375,19 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
 
     await to_code(config)
 
-    assert fake_cg.build_flags == [ARDUINO_NETWORK_INCLUDE_FLAG]
-    assert fake_cg.new_pvariable_calls == [("gateway_id",)]
-    assert fake_cg.registered_components == [(gateway, config)]
-    assert fake_sensor.created == [{"name": "temperature"}]
-    assert fake_binary_sensor.created == []
-    assert fake_text_sensor.created == []
-    assert gateway.calls == [
+    assert fake_env.codegen.build_flags == [ARDUINO_NETWORK_INCLUDE_FLAG]
+    assert fake_env.codegen.new_pvariable_calls == [("gateway_id",)]
+    assert fake_env.codegen.registered_components == [(fake_env.gateway, config)]
+    assert fake_env.sensor.created == [{"name": "temperature"}]
+    assert fake_env.binary_sensor.created == []
+    assert fake_env.text_sensor.created == []
+    assert fake_env.gateway.calls == [
         ("set_candidate_limit", (1,)),
         ("set_stale_after_ms", (60_000,)),
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
         ("set_temperature_sensor", ("garage_freezer_1", "sensor:temperature")),
     ]
-    assert fake_cg.added == gateway.calls
+    assert fake_env.codegen.added == fake_env.gateway.calls
 
 
 async def test_action_to_code_registers_parented_action(monkeypatch: pytest.MonkeyPatch) -> None:
