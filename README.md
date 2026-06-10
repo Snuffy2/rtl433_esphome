@@ -53,6 +53,18 @@ rtl433_native:
         entity_category: diagnostic
 ```
 
+Gateway diagnostics are created by default and do not need to be listed in
+`garage-rtl433.yaml`:
+
+- `last_packet`
+- `packet_count`
+- `known_packet_count`
+- `unknown_packet_count`
+- `discovery_enabled`
+
+Add any of those options under `rtl433_native` only when overriding the generated
+name or other entity settings.
+
 ## Hardware Configuration
 
 `garage-rtl433.yaml` omits the default receiver hardware profile. The

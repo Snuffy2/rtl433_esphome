@@ -87,22 +87,6 @@ rtl433_native:
         - stale
         - last_updated
         - mapping
-  last_packet:
-    name: "Last Packet"
-    entity_category: diagnostic
-  packet_count:
-    name: "Packet Count"
-    entity_category: diagnostic
-  known_packet_count:
-    name: "Known Packet Count"
-    entity_category: diagnostic
-  unknown_packet_count:
-    name: "Unknown Packet Count"
-    entity_category: diagnostic
-  discovery_enabled:
-    name: "Discovery Enabled"
-    entity_category: diagnostic
-
 sensor:
   - platform: uptime
     name: "Uptime"

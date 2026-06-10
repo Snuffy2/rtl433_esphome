@@ -353,6 +353,39 @@ def compact_known_sensor_config(
     }
 
 
+def _entity_name_and_category(config: dict[str, Any]) -> tuple[str, str]:
+    """Return stable entity identity fields from a generated config."""
+
+    return config["name"], config["entity_category"]
+
+
+def gateway_diagnostic_overrides(prefix: str) -> dict[str, dict[str, str]]:
+    """Return unique gateway diagnostic configs for schema test isolation."""
+
+    return {
+        CONF_LAST_PACKET: {
+            "name": f"{prefix} Last Packet",
+            "entity_category": "diagnostic",
+        },
+        CONF_PACKET_COUNT: {
+            "name": f"{prefix} Packet Count",
+            "entity_category": "diagnostic",
+        },
+        CONF_KNOWN_PACKET_COUNT: {
+            "name": f"{prefix} Known Packet Count",
+            "entity_category": "diagnostic",
+        },
+        CONF_UNKNOWN_PACKET_COUNT: {
+            "name": f"{prefix} Unknown Packet Count",
+            "entity_category": "diagnostic",
+        },
+        CONF_DISCOVERY_ENABLED: {
+            "name": f"{prefix} Discovery Enabled",
+            "entity_category": "diagnostic",
+        },
+    }
+
+
 def test_validate_mapping_accepts_semicolon_delimited_sensor_keys() -> None:
     """Accept mapping strings with one primary key and synonyms."""
 
@@ -573,6 +606,7 @@ def test_config_schema_generates_candidate_sensors_from_limit() -> None:
         {
             CONF_ID: "gateway_id",
             CONF_CANDIDATE_LIMIT: 2,
+            **gateway_diagnostic_overrides("Candidates Fixture"),
             CONF_KNOWN_SENSORS: [
                 {
                     CONF_KEY: "garage_freezer_1",
@@ -607,12 +641,56 @@ def test_config_schema_generates_candidate_sensors_from_limit() -> None:
     ]
 
 
+async def test_config_schema_generates_default_gateway_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Create default gateway diagnostic entities when omitted."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            CONF_CANDIDATES: [],
+            CONF_KNOWN_SENSORS: [
+                compact_known_sensor_config("Default Diagnostics Fixture", ["temperature"])
+            ],
+        }
+    )
+    fake_env = install_codegen_fakes(monkeypatch)
+
+    await to_code(config)
+
+    assert config[CONF_LAST_PACKET]["name"] == "Last Packet"
+    assert config[CONF_PACKET_COUNT]["name"] == "Packet Count"
+    assert config[CONF_KNOWN_PACKET_COUNT]["name"] == "Known Packet Count"
+    assert config[CONF_UNKNOWN_PACKET_COUNT]["name"] == "Unknown Packet Count"
+    assert config[CONF_DISCOVERY_ENABLED]["name"] == "Discovery Enabled"
+    assert config[CONF_LAST_PACKET]["entity_category"] == "diagnostic"
+    assert config[CONF_PACKET_COUNT]["entity_category"] == "diagnostic"
+    assert config[CONF_KNOWN_PACKET_COUNT]["entity_category"] == "diagnostic"
+    assert config[CONF_UNKNOWN_PACKET_COUNT]["entity_category"] == "diagnostic"
+    assert config[CONF_DISCOVERY_ENABLED]["entity_category"] == "diagnostic"
+    assert _entity_name_and_category(fake_env.text_sensor.created[0]) == (
+        "Last Packet",
+        "diagnostic",
+    )
+    assert [_entity_name_and_category(entity) for entity in fake_env.sensor.created[-3:]] == [
+        ("Packet Count", "diagnostic"),
+        ("Known Packet Count", "diagnostic"),
+        ("Unknown Packet Count", "diagnostic"),
+    ]
+    assert _entity_name_and_category(fake_env.binary_sensor.created[0]) == (
+        "Discovery Enabled",
+        "diagnostic",
+    )
+
+
 def test_config_schema_supplies_default_hardware_profile() -> None:
     """Use component hardware defaults when LED and radio options are omitted."""
 
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **gateway_diagnostic_overrides("Hardware Fixture"),
             CONF_KNOWN_SENSORS: [
                 {
                     CONF_KEY: "garage_freezer_1",
@@ -633,6 +711,7 @@ def test_config_schema_expands_compact_known_sensor_entities() -> None:
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **gateway_diagnostic_overrides("Compact Fixture"),
             CONF_KNOWN_SENSORS: [
                 {
                     CONF_KEY: "garage_combo_fridge",
@@ -678,6 +757,7 @@ async def test_compact_known_sensor_mapping_entity_is_optional(
             CONF_CANDIDATE_LIMIT: 1,
             CONF_CANDIDATES: [],
             CONF_STALE_AFTER: "1min",
+            **gateway_diagnostic_overrides("No Mapping Fixture"),
             CONF_KNOWN_SENSORS: [compact_known_sensor_config("Garage Freezer 1", ["temperature"])],
         }
     )
@@ -686,13 +766,15 @@ async def test_compact_known_sensor_mapping_entity_is_optional(
     await to_code(config)
 
     assert fake_env.text.created == []
-    assert fake_env.gateway.calls == [
+    expected_calls = [
         ("set_candidate_limit", (1,)),
         ("set_stale_after_ms", (60_000,)),
         ("set_led_pin", (25,)),
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
         ("set_temperature_sensor", ("garage_freezer_1", "sensor:Garage Freezer 1 Temperature")),
     ]
+    for call in expected_calls:
+        assert call in fake_env.gateway.calls
 
 
 async def test_compact_known_sensor_mapping_entity_uses_base_name(
@@ -706,6 +788,7 @@ async def test_compact_known_sensor_mapping_entity_uses_base_name(
             CONF_CANDIDATE_LIMIT: 1,
             CONF_CANDIDATES: [],
             CONF_STALE_AFTER: "1min",
+            **gateway_diagnostic_overrides("Mapping Fixture"),
             CONF_KNOWN_SENSORS: [
                 compact_known_sensor_config("Garage Mapping Fixture", ["temperature", "mapping"])
             ],

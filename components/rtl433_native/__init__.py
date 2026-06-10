@@ -305,20 +305,35 @@ CONFIG_SCHEMA = cv.All(
                 cv.ensure_list(text_sensor.text_sensor_schema(icon="mdi:radio-tower")),
                 cv.Length(max=20),
             ),
-            cv.Optional(CONF_LAST_PACKET): text_sensor.text_sensor_schema(icon="mdi:radio"),
-            cv.Optional(CONF_PACKET_COUNT): sensor.sensor_schema(
+            cv.Optional(
+                CONF_LAST_PACKET,
+                default={"name": "Last Packet", "entity_category": "diagnostic"},
+            ): text_sensor.text_sensor_schema(icon="mdi:radio"),
+            cv.Optional(
+                CONF_PACKET_COUNT,
+                default={"name": "Packet Count", "entity_category": "diagnostic"},
+            ): sensor.sensor_schema(
                 accuracy_decimals=0,
                 state_class="total_increasing",
             ),
-            cv.Optional(CONF_KNOWN_PACKET_COUNT): sensor.sensor_schema(
+            cv.Optional(
+                CONF_KNOWN_PACKET_COUNT,
+                default={"name": "Known Packet Count", "entity_category": "diagnostic"},
+            ): sensor.sensor_schema(
                 accuracy_decimals=0,
                 state_class="total_increasing",
             ),
-            cv.Optional(CONF_UNKNOWN_PACKET_COUNT): sensor.sensor_schema(
+            cv.Optional(
+                CONF_UNKNOWN_PACKET_COUNT,
+                default={"name": "Unknown Packet Count", "entity_category": "diagnostic"},
+            ): sensor.sensor_schema(
                 accuracy_decimals=0,
                 state_class="total_increasing",
             ),
-            cv.Optional(CONF_DISCOVERY_ENABLED): binary_sensor.binary_sensor_schema(
+            cv.Optional(
+                CONF_DISCOVERY_ENABLED,
+                default={"name": "Discovery Enabled", "entity_category": "diagnostic"},
+            ): binary_sensor.binary_sensor_schema(
                 # Diagnostic read-only binary sensor mirroring runtime discovery enable state.
                 entity_category="diagnostic",
             ),
