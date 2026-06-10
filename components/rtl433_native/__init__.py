@@ -79,11 +79,27 @@ DEFAULT_RADIO_PINS = {
     CONF_MISO: 19,
     CONF_MOSI: 27,
 }
+RADIO_PIN_BUILD_FLAGS: tuple[tuple[str, str], ...] = (
+    (CONF_DIO0, "DIO0"),
+    (CONF_DIO1, "DIO1"),
+    (CONF_DIO2, "DIO2"),
+    (CONF_RST, "RST"),
+    (CONF_CS, "CS"),
+    (CONF_SCK, "SCK"),
+    (CONF_MISO, "MISO"),
+    (CONF_MOSI, "MOSI"),
+)
 DEFAULT_RADIO_CONFIG = {
     CONF_MODULE: DEFAULT_RADIO_MODULE,
     CONF_FREQUENCY: DEFAULT_RADIO_FREQUENCY,
     CONF_PINS: DEFAULT_RADIO_PINS,
 }
+RADIO_PINS_SCHEMA = cv.Schema(
+    {
+        cv.Optional(pin_key, default=DEFAULT_RADIO_PINS[pin_key]): cv.int_range(min=0)
+        for pin_key, _ in RADIO_PIN_BUILD_FLAGS
+    }
+)
 
 
 def _validate_known_sensor_keys(value: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -190,18 +206,7 @@ RADIO_SCHEMA = cv.Schema(
     {
         cv.Optional(CONF_MODULE, default=DEFAULT_RADIO_MODULE): cv.one_of("SX1278", upper=True),
         cv.Optional(CONF_FREQUENCY, default=DEFAULT_RADIO_FREQUENCY): cv.float_,
-        cv.Optional(CONF_PINS, default=DEFAULT_RADIO_PINS): cv.Schema(
-            {
-                cv.Optional(CONF_DIO0, default=DEFAULT_RADIO_PINS[CONF_DIO0]): cv.int_range(min=0),
-                cv.Optional(CONF_DIO1, default=DEFAULT_RADIO_PINS[CONF_DIO1]): cv.int_range(min=0),
-                cv.Optional(CONF_DIO2, default=DEFAULT_RADIO_PINS[CONF_DIO2]): cv.int_range(min=0),
-                cv.Optional(CONF_RST, default=DEFAULT_RADIO_PINS[CONF_RST]): cv.int_range(min=0),
-                cv.Optional(CONF_CS, default=DEFAULT_RADIO_PINS[CONF_CS]): cv.int_range(min=0),
-                cv.Optional(CONF_SCK, default=DEFAULT_RADIO_PINS[CONF_SCK]): cv.int_range(min=0),
-                cv.Optional(CONF_MISO, default=DEFAULT_RADIO_PINS[CONF_MISO]): cv.int_range(min=0),
-                cv.Optional(CONF_MOSI, default=DEFAULT_RADIO_PINS[CONF_MOSI]): cv.int_range(min=0),
-            }
-        ),
+        cv.Optional(CONF_PINS, default=DEFAULT_RADIO_PINS): RADIO_PINS_SCHEMA,
     }
 )
 
@@ -258,14 +263,8 @@ async def to_code(config: dict[str, Any]) -> None:
     radio_pins = radio_config[CONF_PINS]
     cg.add_build_flag(f"-DRF_{radio_config[CONF_MODULE]}")
     cg.add_build_flag(f"-DRF_MODULE_FREQUENCY={radio_config[CONF_FREQUENCY]:g}")
-    cg.add_build_flag(f"-DRF_MODULE_DIO0={radio_pins[CONF_DIO0]}")
-    cg.add_build_flag(f"-DRF_MODULE_DIO1={radio_pins[CONF_DIO1]}")
-    cg.add_build_flag(f"-DRF_MODULE_DIO2={radio_pins[CONF_DIO2]}")
-    cg.add_build_flag(f"-DRF_MODULE_RST={radio_pins[CONF_RST]}")
-    cg.add_build_flag(f"-DRF_MODULE_CS={radio_pins[CONF_CS]}")
-    cg.add_build_flag(f"-DRF_MODULE_SCK={radio_pins[CONF_SCK]}")
-    cg.add_build_flag(f"-DRF_MODULE_MISO={radio_pins[CONF_MISO]}")
-    cg.add_build_flag(f"-DRF_MODULE_MOSI={radio_pins[CONF_MOSI]}")
+    for pin_key, build_flag_name in RADIO_PIN_BUILD_FLAGS:
+        cg.add_build_flag(f"-DRF_MODULE_{build_flag_name}={radio_pins[pin_key]}")
     for name, version, repository in RTL433_NATIVE_LIBRARIES:
         cg.add_library(name, version, repository)
 

@@ -29,6 +29,8 @@
 
 namespace esphome::rtl433_native {
 
+constexpr std::size_t MAPPING_TEXT_MAX_LENGTH = 240;
+
 struct SavedLogicalState {
   bool has_value{false};
   float temperature_f{NAN};
@@ -40,7 +42,7 @@ struct SavedLogicalState {
 
 struct SavedMappingText {
   bool has_value{false};
-  char value[241]{};
+  char value[MAPPING_TEXT_MAX_LENGTH + 1]{};
 };
 
 struct EntitySet {
