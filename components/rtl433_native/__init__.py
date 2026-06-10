@@ -13,47 +13,24 @@ from esphome.const import CONF_ID
 AUTO_LOAD = ["binary_sensor", "json", "sensor", "text_sensor", "time"]
 CODEOWNERS = ["@Snuffy2"]
 
-candidate_limit = "candidate_limit"
-candidates = "candidates"
-battery = "battery"
-channel = "channel"
-discovery_enabled = "discovery_enabled"
-humidity = "humidity"
-key = "key"
-known_sensors = "known_sensors"
-known_packet_count = "known_packet_count"
-last_packet = "last_packet"
-last_updated = "last_updated"
-model = "model"
-packet_count = "packet_count"
-rf_id = "rf_id"
-rssi = "rssi"
-stale = "stale"
-stale_after = "stale_after"
-temperature = "temperature"
-time_id = "time_id"
-unknown_packet_count = "unknown_packet_count"
-
-CONF_CANDIDATE_LIMIT = candidate_limit
-CONF_CANDIDATES = candidates
-CONF_BATTERY = battery
-CONF_CHANNEL = channel
-CONF_DISCOVERY_ENABLED = discovery_enabled
-CONF_HUMIDITY = humidity
-CONF_KEY = key
-CONF_KNOWN_SENSORS = known_sensors
-CONF_KNOWN_PACKET_COUNT = known_packet_count
-CONF_LAST_PACKET = last_packet
-CONF_LAST_UPDATED = last_updated
-CONF_MODEL = model
-CONF_PACKET_COUNT = packet_count
-CONF_RF_ID = rf_id
-CONF_RSSI = rssi
-CONF_STALE = stale
-CONF_STALE_AFTER = stale_after
-CONF_TEMPERATURE = temperature
-CONF_TIME_ID = time_id
-CONF_UNKNOWN_PACKET_COUNT = unknown_packet_count
+CONF_CANDIDATE_LIMIT = "candidate_limit"
+CONF_CANDIDATES = "candidates"
+CONF_BATTERY = "battery"
+CONF_DISCOVERY_ENABLED = "discovery_enabled"
+CONF_HUMIDITY = "humidity"
+CONF_KEY = "key"
+CONF_KNOWN_SENSORS = "known_sensors"
+CONF_KNOWN_PACKET_COUNT = "known_packet_count"
+CONF_LAST_PACKET = "last_packet"
+CONF_LAST_UPDATED = "last_updated"
+CONF_MAPPING = "mapping"
+CONF_PACKET_COUNT = "packet_count"
+CONF_RSSI = "rssi"
+CONF_STALE = "stale"
+CONF_STALE_AFTER = "stale_after"
+CONF_TEMPERATURE = "temperature"
+CONF_TIME_ID = "time_id"
+CONF_UNKNOWN_PACKET_COUNT = "unknown_packet_count"
 
 rtl433_native_ns = cg.esphome_ns.namespace("rtl433_native")
 Gateway = rtl433_native_ns.class_("Gateway", cg.Component)
@@ -62,6 +39,9 @@ StopAction = rtl433_native_ns.class_("StopAction", automation.Action)
 ClearCandidatesAction = rtl433_native_ns.class_("ClearCandidatesAction", automation.Action)
 
 UINT32_MAX_MILLISECONDS = 4_294_967_295
+ARDUINO_NETWORK_INCLUDE_FLAG = (
+    '-I"${platformio.packages_dir}/framework-arduinoespressif32/libraries/Network/src"'
+)
 
 
 def _validate_known_sensor_keys(value: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -76,7 +56,29 @@ def _validate_known_sensor_keys(value: list[dict[str, Any]]) -> list[dict[str, A
     return value
 
 
+def _validate_sensor_key(value: Any) -> str:
+    """Validate a rtl_433 sensor key in model/channel/id format."""
+
+    sensor_key = str(cv.string_strict(value))
+    parts = [part.strip() for part in sensor_key.split("/")]
+    if len(parts) != 3 or any(part == "" for part in parts):
+        raise cv.Invalid("Expected sensor key in model/channel/id format")
+    return "/".join(parts)
+
+
+def _validate_mapping(value: Any) -> str:
+    """Validate a semicolon-delimited rtl_433 mapping string."""
+
+    mapping_value = str(cv.string_strict(value)).strip()
+    if mapping_value == "":
+        raise cv.Invalid("Expected at least one sensor key in model/channel/id format")
+    sensor_keys = [sensor_key.strip() for sensor_key in mapping_value.split(";")]
+    return ";".join(_validate_sensor_key(sensor_key) for sensor_key in sensor_keys)
+
+
 def _validate_stale_after(value: Any) -> Any:
+    """Validate stale duration fits the C++ millisecond storage type."""
+
     result = cv.positive_time_period_milliseconds(value)
     if result.total_milliseconds > UINT32_MAX_MILLISECONDS:
         raise cv.Invalid(f"stale_after exceeds uint32_t limit: {result.total_milliseconds}ms")
@@ -86,9 +88,7 @@ def _validate_stale_after(value: Any) -> Any:
 SENSOR_ENTRY_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_KEY): cv.string_strict,
-        cv.Required(CONF_MODEL): cv.string_strict,
-        cv.Required(CONF_CHANNEL): cv.string_strict,
-        cv.Required(CONF_RF_ID): cv.string_strict,
+        cv.Required(CONF_MAPPING): _validate_mapping,
         cv.Required(CONF_TEMPERATURE): sensor.sensor_schema(
             unit_of_measurement="°F",
             accuracy_decimals=2,
@@ -157,6 +157,7 @@ GATEWAY_ID_SCHEMA = cv.Schema({cv.GenerateID(): cv.use_id(Gateway)})
 async def to_code(config: dict[str, Any]) -> None:
     """Generate C++ for the rtl433_native component."""
 
+    cg.add_build_flag(ARDUINO_NETWORK_INCLUDE_FLAG)
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     cg.add(var.set_candidate_limit(config[CONF_CANDIDATE_LIMIT]))
@@ -169,9 +170,7 @@ async def to_code(config: dict[str, Any]) -> None:
         cg.add(
             var.add_mapping(
                 entry[CONF_KEY],
-                entry[CONF_MODEL],
-                entry[CONF_CHANNEL],
-                entry[CONF_RF_ID],
+                entry[CONF_MAPPING],
             )
         )
         temperature = await sensor.new_sensor(entry[CONF_TEMPERATURE])

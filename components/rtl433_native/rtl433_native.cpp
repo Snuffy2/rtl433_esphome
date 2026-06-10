@@ -12,7 +12,9 @@
 
 namespace esphome::rtl433_native {
 
-static const char *const TAG = "rtl433_native";
+namespace {
+
+const char *const TAG = "rtl433_native";
 
 float json_float_or_nan(JsonObject root, const char *key) {
   if (root[key].is<float>()) {
@@ -37,6 +39,8 @@ uint32_t preference_key(const std::string &logical_key) {
   }
   return hash ^ 0xA4330E01UL;
 }
+
+}  // namespace
 
 Gateway *Gateway::instance_ = nullptr;
 
@@ -92,9 +96,8 @@ void Gateway::set_discovery_enabled(bool enabled) {
   }
 }
 
-void Gateway::add_mapping(const std::string &logical_key, const std::string &model,
-                         const std::string &channel, const std::string &id) {
-  this->state_.set_mapping(logical_key, model + "/" + channel + "/" + id);
+void Gateway::add_mapping(const std::string &logical_key, const std::string &mapping) {
+  this->state_.set_mapping(logical_key, mapping);
   this->entities_.try_emplace(logical_key);
   if (std::find(this->logical_keys_.begin(), this->logical_keys_.end(), logical_key) ==
       this->logical_keys_.end()) {
@@ -430,11 +433,7 @@ void Gateway::publish_candidates() {
       continue;
     }
     this->last_candidate_values_[index] = next_value;
-    if (index < candidates.size()) {
-      sensor->publish_state(next_value);
-    } else {
-      sensor->publish_state(next_value);
-    }
+    sensor->publish_state(next_value);
   }
 }
 

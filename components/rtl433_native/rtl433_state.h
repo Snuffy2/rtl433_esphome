@@ -15,6 +15,11 @@ struct SensorKey {
   std::string id;
 };
 
+struct SensorMapping {
+  SensorKey primary;
+  std::vector<SensorKey> synonyms{};
+};
+
 struct DecodedPacket {
   std::string model;
   std::string channel;
@@ -55,13 +60,14 @@ enum class PacketResult {
 };
 
 std::optional<SensorKey> parse_sensor_key(const std::string &value);
+std::optional<SensorMapping> parse_sensor_mapping(const std::string &value);
 std::string format_sensor_key(const SensorKey &key);
 std::string format_candidate(const CandidateRow &candidate);
 bool matches_key(const DecodedPacket &packet, const SensorKey &key);
 
 class GatewayState {
  public:
-  void set_mapping(const std::string &logical_key, const std::string &sensor_key);
+  void set_mapping(const std::string &logical_key, const std::string &mapping);
   void restore_logical_state(const std::string &logical_key, const LogicalSensorState &state);
   const LogicalSensorState *logical_sensor(const std::string &logical_key) const;
   PacketResult process_packet(const DecodedPacket &packet);
@@ -73,10 +79,9 @@ class GatewayState {
   void clear_candidates() { candidates_.clear(); }
   const std::vector<CandidateRow> &candidates() const { return candidates_; }
   bool is_stale(const std::string &logical_key, uint32_t now_ms) const;
-  uint32_t candidate_max_age_ms() const { return stale_after_ms_; }
 
  private:
-  std::unordered_map<std::string, SensorKey> mappings_{};
+  std::unordered_map<std::string, SensorMapping> mappings_{};
   std::unordered_map<std::string, LogicalSensorState> logical_states_{};
   bool discovery_enabled_{false};
   std::size_t candidate_limit_{10};
@@ -87,7 +92,3 @@ class GatewayState {
 };
 
 }  // namespace esphome::rtl433_native
-
-// Backward-compatible alias for existing include users/tests still expecting the
-// historical top-level namespace name.
-namespace rtl433_native = esphome::rtl433_native;
