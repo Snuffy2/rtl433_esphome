@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -37,6 +38,27 @@ from components.rtl433_native import (
     _validate_stale_after,
 )
 
+GENERATED_GATEWAY_METHODS = frozenset(
+    {
+        "add_mapping",
+        "set_battery_sensor",
+        "set_candidate_limit",
+        "set_candidate_text_sensor",
+        "set_discovery_enabled_sensor",
+        "set_humidity_sensor",
+        "set_known_packet_count_sensor",
+        "set_last_packet_sensor",
+        "set_last_updated_sensor",
+        "set_packet_count_sensor",
+        "set_rssi_sensor",
+        "set_stale_after_ms",
+        "set_stale_sensor",
+        "set_temperature_sensor",
+        "set_time",
+        "set_unknown_packet_count_sensor",
+    }
+)
+
 
 @dataclass
 class FakeGateway:
@@ -50,85 +72,18 @@ class FakeGateway:
         self.calls.append((name, args))
         return name, args
 
-    def add_mapping(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record mapping code generation."""
+    def __getattr__(self, name: str) -> Callable[..., tuple[str, tuple[Any, ...]]]:
+        """Return a recorder for known generated gateway methods."""
 
-        return self._record("add_mapping", *args)
+        if name not in GENERATED_GATEWAY_METHODS:
+            raise AttributeError(name)
 
-    def set_battery_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record battery sensor code generation."""
+        def recorder(*args: Any) -> tuple[str, tuple[Any, ...]]:
+            """Record a generated gateway method call."""
 
-        return self._record("set_battery_sensor", *args)
+            return self._record(name, *args)
 
-    def set_candidate_limit(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record candidate limit code generation."""
-
-        return self._record("set_candidate_limit", *args)
-
-    def set_candidate_text_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record candidate text sensor code generation."""
-
-        return self._record("set_candidate_text_sensor", *args)
-
-    def set_discovery_enabled_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record discovery-enabled binary sensor code generation."""
-
-        return self._record("set_discovery_enabled_sensor", *args)
-
-    def set_humidity_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record humidity sensor code generation."""
-
-        return self._record("set_humidity_sensor", *args)
-
-    def set_known_packet_count_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record known packet count sensor code generation."""
-
-        return self._record("set_known_packet_count_sensor", *args)
-
-    def set_last_packet_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record last packet text sensor code generation."""
-
-        return self._record("set_last_packet_sensor", *args)
-
-    def set_last_updated_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record last updated sensor code generation."""
-
-        return self._record("set_last_updated_sensor", *args)
-
-    def set_packet_count_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record packet count sensor code generation."""
-
-        return self._record("set_packet_count_sensor", *args)
-
-    def set_rssi_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record RSSI sensor code generation."""
-
-        return self._record("set_rssi_sensor", *args)
-
-    def set_stale_after_ms(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record stale duration code generation."""
-
-        return self._record("set_stale_after_ms", *args)
-
-    def set_stale_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record stale binary sensor code generation."""
-
-        return self._record("set_stale_sensor", *args)
-
-    def set_temperature_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record temperature sensor code generation."""
-
-        return self._record("set_temperature_sensor", *args)
-
-    def set_time(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record time component code generation."""
-
-        return self._record("set_time", *args)
-
-    def set_unknown_packet_count_sensor(self, *args: Any) -> tuple[str, tuple[Any, ...]]:
-        """Record unknown packet count sensor code generation."""
-
-        return self._record("set_unknown_packet_count_sensor", *args)
+        return recorder
 
 
 @dataclass
