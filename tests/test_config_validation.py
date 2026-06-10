@@ -614,6 +614,111 @@ def test_config_schema_supplies_default_hardware_profile() -> None:
     assert config[CONF_RADIO] == DEFAULT_RADIO_CONFIG
 
 
+def test_config_schema_expands_compact_known_sensor_entities() -> None:
+    """Expand compact known sensor entries into generated entity configs."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            CONF_KNOWN_SENSORS: [
+                {
+                    CONF_KEY: "garage_combo_fridge",
+                    "name": "Garage Combo Fridge",
+                    CONF_MAPPING: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203",
+                    "entities": [
+                        "temperature",
+                        "humidity",
+                        "battery",
+                        "rssi",
+                        "stale",
+                        "last_updated",
+                        "mapping",
+                    ],
+                }
+            ],
+        }
+    )
+
+    entry = config[CONF_KNOWN_SENSORS][0]
+
+    assert entry[CONF_TEMPERATURE]["name"] == "Garage Combo Fridge Temperature"
+    assert entry[CONF_HUMIDITY]["name"] == "Garage Combo Fridge Humidity"
+    assert entry[CONF_BATTERY]["name"] == "Garage Combo Fridge Battery"
+    assert entry[CONF_RSSI]["name"] == "Garage Combo Fridge RSSI"
+    assert entry[CONF_STALE]["name"] == "Garage Combo Fridge Stale"
+    assert entry[CONF_LAST_UPDATED]["name"] == "Garage Combo Fridge Last Updated"
+    assert entry[CONF_HUMIDITY]["entity_category"] == "diagnostic"
+    assert entry[CONF_BATTERY]["entity_category"] == "diagnostic"
+    assert entry[CONF_RSSI]["entity_category"] == "diagnostic"
+    assert entry[CONF_STALE]["entity_category"] == "diagnostic"
+    assert entry[CONF_LAST_UPDATED]["entity_category"] == "diagnostic"
+
+
+async def test_compact_known_sensor_mapping_entity_is_optional(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Skip the mapping text entity when compact config omits mapping from entities."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            CONF_CANDIDATE_LIMIT: 1,
+            CONF_CANDIDATES: [],
+            CONF_STALE_AFTER: "1min",
+            CONF_KNOWN_SENSORS: [
+                {
+                    CONF_KEY: "garage_freezer_1",
+                    "name": "Garage Freezer 1",
+                    CONF_MAPPING: "Acurite-986/1R/11932",
+                    "entities": ["temperature"],
+                }
+            ],
+        }
+    )
+    fake_env = install_codegen_fakes(monkeypatch)
+
+    await to_code(config)
+
+    assert fake_env.text.created == []
+    assert fake_env.gateway.calls == [
+        ("set_candidate_limit", (1,)),
+        ("set_stale_after_ms", (60_000,)),
+        ("set_led_pin", (25,)),
+        ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
+        ("set_temperature_sensor", ("garage_freezer_1", "sensor:Garage Freezer 1 Temperature")),
+    ]
+
+
+async def test_compact_known_sensor_mapping_entity_uses_base_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Name compact mapping text entities from the base known sensor name."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            CONF_CANDIDATE_LIMIT: 1,
+            CONF_CANDIDATES: [],
+            CONF_STALE_AFTER: "1min",
+            CONF_KNOWN_SENSORS: [
+                {
+                    CONF_KEY: "garage_freezer_1",
+                    "name": "Garage Mapping Fixture",
+                    CONF_MAPPING: "Acurite-986/1R/11932",
+                    "entities": ["temperature", "mapping"],
+                }
+            ],
+        }
+    )
+    fake_env = install_codegen_fakes(monkeypatch)
+
+    await to_code(config)
+
+    assert [text_config["name"] for text_config in fake_env.text.created] == [
+        "Garage Mapping Fixture Mapping"
+    ]
+
+
 async def test_action_to_code_registers_parented_action(monkeypatch: pytest.MonkeyPatch) -> None:
     """Generate parented action code for rtl433_native actions."""
 

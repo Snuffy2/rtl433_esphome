@@ -15,6 +15,44 @@ Use semicolon-delimited mappings when rtl_433 reports the same physical
 transmitter under more than one decoder key. Each entry uses the
 `model/channel/id` format shown in discovery candidates.
 
+Known sensors can use the compact form:
+
+```yaml
+rtl433_native:
+  known_sensors:
+    - key: garage_combo_fridge
+      name: "Garage Combo Fridge"
+      mapping: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203"
+      entities:
+        - temperature
+        - humidity
+        - battery
+        - rssi
+        - stale
+        - last_updated
+        - mapping
+```
+
+Compact entries generate entity names by appending the entity type, such as
+`Garage Combo Fridge Temperature`, `Garage Combo Fridge Humidity`, `Garage
+Combo Fridge RSSI`, and `Garage Combo Fridge Last Updated`. The `mapping`
+entity is optional; include it when you want a Home Assistant text entity for
+changing the rtl_433 mapping at runtime.
+
+Use the verbose form instead when an entity needs custom options:
+
+```yaml
+rtl433_native:
+  known_sensors:
+    - key: garage_combo_fridge
+      mapping: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203"
+      temperature:
+        name: "Garage Combo Fridge Temperature"
+      humidity:
+        name: "Garage Combo Fridge Humidity"
+        entity_category: diagnostic
+```
+
 ## Hardware Configuration
 
 `garage-rtl433.yaml` omits the default receiver hardware profile. The

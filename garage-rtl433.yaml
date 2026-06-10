@@ -46,75 +46,47 @@ rtl433_native:
   stale_after: 1h
   known_sensors:
     - key: garage_combo_fridge
+      name: "Garage Combo Fridge"
       mapping: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203"
-      temperature:
-        name: "Garage Combo Fridge"
-      humidity:
-        name: "Garage Combo Fridge Humidity"
-        entity_category: diagnostic
-      battery:
-        name: "Garage Combo Fridge Battery"
-        entity_category: diagnostic
-      rssi:
-        name: "Garage Combo Fridge RSSI"
-        entity_category: diagnostic
-      stale:
-        name: "Garage Combo Fridge Stale"
-        entity_category: diagnostic
-      last_updated:
-        name: "Garage Combo Fridge Last Updated"
-        entity_category: diagnostic
+      entities:
+        - temperature
+        - humidity
+        - battery
+        - rssi
+        - stale
+        - last_updated
+        - mapping
     - key: garage_combo_freezer
+      name: "Garage Combo Freezer"
       mapping: "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88"
-      temperature:
-        name: "Garage Combo Freezer"
-      humidity:
-        name: "Garage Combo Freezer Humidity"
-        entity_category: diagnostic
-      battery:
-        name: "Garage Combo Freezer Battery"
-        entity_category: diagnostic
-      rssi:
-        name: "Garage Combo Freezer RSSI"
-        entity_category: diagnostic
-      stale:
-        name: "Garage Combo Freezer Stale"
-        entity_category: diagnostic
-      last_updated:
-        name: "Garage Combo Freezer Last Updated"
-        entity_category: diagnostic
+      entities:
+        - temperature
+        - humidity
+        - battery
+        - rssi
+        - stale
+        - last_updated
+        - mapping
     - key: garage_freezer_1
+      name: "Garage Freezer 1"
       mapping: "Acurite-986/1R/11932"
-      temperature:
-        name: "Garage Freezer 1"
-      battery:
-        name: "Garage Freezer 1 Battery"
-        entity_category: diagnostic
-      rssi:
-        name: "Garage Freezer 1 RSSI"
-        entity_category: diagnostic
-      stale:
-        name: "Garage Freezer 1 Stale"
-        entity_category: diagnostic
-      last_updated:
-        name: "Garage Freezer 1 Last Updated"
-        entity_category: diagnostic
+      entities:
+        - temperature
+        - battery
+        - rssi
+        - stale
+        - last_updated
+        - mapping
     - key: garage_freezer_2
+      name: "Garage Freezer 2"
       mapping: "Acurite-986/2F/31274"
-      temperature:
-        name: "Garage Freezer 2"
-      battery:
-        name: "Garage Freezer 2 Battery"
-        entity_category: diagnostic
-      rssi:
-        name: "Garage Freezer 2 RSSI"
-        entity_category: diagnostic
-      stale:
-        name: "Garage Freezer 2 Stale"
-        entity_category: diagnostic
-      last_updated:
-        name: "Garage Freezer 2 Last Updated"
-        entity_category: diagnostic
+      entities:
+        - temperature
+        - battery
+        - rssi
+        - stale
+        - last_updated
+        - mapping
   last_packet:
     name: "Last Packet"
     entity_category: diagnostic
