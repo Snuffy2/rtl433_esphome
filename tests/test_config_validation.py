@@ -20,6 +20,7 @@ from components.rtl433_native import (
     CONF_CLEAR_CANDIDATES_BUTTON,
     CONF_DISCOVERY_ENABLED,
     CONF_DISCOVERY_MODE,
+    CONF_ENTITIES,
     CONF_HUMIDITY,
     CONF_KEY,
     CONF_KNOWN_PACKET_COUNT,
@@ -434,7 +435,7 @@ def compact_known_sensor_config(
         CONF_KEY: key,
         "name": name,
         CONF_MAPPING: "Acurite-986/1R/11932",
-        "entities": entities,
+        CONF_ENTITIES: entities,
     }
 
 
@@ -850,7 +851,7 @@ def test_config_schema_expands_compact_known_sensor_entities() -> None:
                     CONF_KEY: "garage_combo_fridge",
                     "name": "Garage Combo Fridge",
                     CONF_MAPPING: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203",
-                    "entities": [
+                    CONF_ENTITIES: [
                         "temperature",
                         "humidity",
                         "battery",

@@ -50,7 +50,7 @@ CONF_TEMPERATURE = "temperature"
 CONF_TIME_ID = "time_id"
 CONF_UNKNOWN_PACKET_COUNT = "unknown_packet_count"
 
-ENTITY_MAPPING = "mapping"
+ENTITY_MAPPING = CONF_MAPPING
 
 rtl433_native_ns = cg.esphome_ns.namespace("rtl433_native")
 Gateway = rtl433_native_ns.class_("Gateway", cg.Component)
