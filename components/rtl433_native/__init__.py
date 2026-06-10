@@ -42,6 +42,13 @@ UINT32_MAX_MILLISECONDS = 4_294_967_295
 ARDUINO_NETWORK_INCLUDE_FLAG = (
     '-I"${platformio.packages_dir}/framework-arduinoespressif32/libraries/Network/src"'
 )
+RTL433_NATIVE_LIBRARIES = (
+    ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"),
+    ("RadioLib", "6.2.0", None),
+    ("Networking", None, None),
+    ("SPI", None, None),
+    ("EEPROM", None, None),
+)
 
 
 def _validate_known_sensor_keys(value: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -176,6 +183,9 @@ async def to_code(config: dict[str, Any]) -> None:
     """Generate C++ for the rtl433_native component."""
 
     cg.add_build_flag(ARDUINO_NETWORK_INCLUDE_FLAG)
+    for name, version, repository in RTL433_NATIVE_LIBRARIES:
+        cg.add_library(name, version, repository)
+
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     cg.add(var.set_candidate_limit(config[CONF_CANDIDATE_LIMIT]))

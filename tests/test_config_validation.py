@@ -94,6 +94,7 @@ class FakeCodegen:
     gateway: FakeGateway
     added: list[Any] = field(default_factory=list)
     build_flags: list[str] = field(default_factory=list)
+    libraries: list[tuple[str, str | None, str | None]] = field(default_factory=list)
     new_pvariable_calls: list[tuple[Any, ...]] = field(default_factory=list)
     registered_components: list[tuple[FakeGateway, dict[str, Any]]] = field(default_factory=list)
     registered_parents: list[tuple[Any, Any]] = field(default_factory=list)
@@ -108,6 +109,13 @@ class FakeCodegen:
         """Record a build flag."""
 
         self.build_flags.append(flag)
+
+    def add_library(
+        self, name: str, version: str | None, repository: str | None = None
+    ) -> None:
+        """Record a PlatformIO library dependency."""
+
+        self.libraries.append((name, version, repository))
 
     def new_Pvariable(self, *args: Any) -> Any:  # noqa: N802
         """Create a fake Pvariable value."""
@@ -324,6 +332,13 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
     await to_code(config)
 
     assert fake_env.codegen.build_flags == [ARDUINO_NETWORK_INCLUDE_FLAG]
+    assert fake_env.codegen.libraries == [
+        ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"),
+        ("RadioLib", "6.2.0", None),
+        ("Networking", None, None),
+        ("SPI", None, None),
+        ("EEPROM", None, None),
+    ]
     assert fake_env.codegen.new_pvariable_calls == [("gateway_id",)]
     assert fake_env.codegen.registered_components == [(fake_env.gateway, config)]
     assert fake_env.sensor.created == [
@@ -389,6 +404,13 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
     await to_code(config)
 
     assert fake_env.codegen.build_flags == [ARDUINO_NETWORK_INCLUDE_FLAG]
+    assert fake_env.codegen.libraries == [
+        ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"),
+        ("RadioLib", "6.2.0", None),
+        ("Networking", None, None),
+        ("SPI", None, None),
+        ("EEPROM", None, None),
+    ]
     assert fake_env.codegen.new_pvariable_calls == [("gateway_id",)]
     assert fake_env.codegen.registered_components == [(fake_env.gateway, config)]
     assert fake_env.sensor.created == [{"name": "temperature"}]

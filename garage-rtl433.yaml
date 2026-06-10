@@ -6,12 +6,6 @@ esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
   comment: "Heltec WiFi LoRa 32 V2-style 433 MHz rtl_433 ESPHome gateway"
-  libraries:
-    - "rtl_433_ESP=git+https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"
-    - RadioLib@6.2.0
-    - Networking
-    - SPI
-    - EEPROM
   platformio_options:
     lib_ldf_mode: "chain+"
     build_flags:
