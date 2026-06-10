@@ -9,7 +9,9 @@
 #include <vector>
 
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/button/button.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/switch/switch.h"
 #include "esphome/components/text/text.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/time/real_time_clock.h"
@@ -123,6 +125,41 @@ class Gateway : public Component {
   void publish_state(const std::string &logical_key);
   void publish_candidates();
   void publish_stale_states();
+};
+
+class DiscoverySwitch : public switch_::Switch, public Component {
+ public:
+  void setup() override;
+
+  void set_parent(Gateway *parent) { this->parent_ = parent; }
+
+ protected:
+  void write_state(bool state) override;
+
+ private:
+  Gateway *parent_{nullptr};
+};
+
+class ClearCandidatesButton : public button::Button {
+ public:
+  void set_parent(Gateway *parent) { this->parent_ = parent; }
+
+ protected:
+  void press_action() override;
+
+ private:
+  Gateway *parent_{nullptr};
+};
+
+class StatusButton : public button::Button {
+ public:
+  void set_parent(Gateway *parent) { this->parent_ = parent; }
+
+ protected:
+  void press_action() override;
+
+ private:
+  Gateway *parent_{nullptr};
 };
 
 class MappingText : public text::Text, public Component {

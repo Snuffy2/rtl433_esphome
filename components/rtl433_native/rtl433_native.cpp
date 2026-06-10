@@ -176,6 +176,37 @@ void Gateway::set_discovery_enabled_sensor(binary_sensor::BinarySensor *sensor) 
   }
 }
 
+void DiscoverySwitch::setup() {
+  bool enabled = false;
+  optional<bool> initial_state = this->get_initial_state_with_restore_mode();
+  if (initial_state.has_value()) {
+    enabled = initial_state.value();
+  }
+  if (this->parent_ != nullptr) {
+    this->parent_->set_discovery_enabled(enabled);
+  }
+  this->publish_state(enabled);
+}
+
+void DiscoverySwitch::write_state(bool state) {
+  if (this->parent_ != nullptr) {
+    this->parent_->set_discovery_enabled(state);
+  }
+  this->publish_state(state);
+}
+
+void ClearCandidatesButton::press_action() {
+  if (this->parent_ != nullptr) {
+    this->parent_->clear_candidates();
+  }
+}
+
+void StatusButton::press_action() {
+  if (this->parent_ != nullptr) {
+    this->parent_->status();
+  }
+}
+
 void Gateway::process_dispatch(char *message) {
   if (Gateway::instance_ != nullptr) {
     Gateway::instance_->process_message(message);

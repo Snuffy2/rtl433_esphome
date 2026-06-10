@@ -65,6 +65,16 @@ Gateway diagnostics are created by default and do not need to be listed in
 Add any of those options under `rtl433_native` only when overriding the generated
 name or other entity settings.
 
+Gateway controls are also created by default and do not need template `switch`
+or `button` entries in `garage-rtl433.yaml`:
+
+- `discovery_mode`
+- `clear_candidates_button`
+- `status_button`
+
+Add any of those options under `rtl433_native` only when overriding the generated
+name or other entity settings.
+
 ## Hardware Configuration
 
 `garage-rtl433.yaml` omits the default receiver hardware profile. The

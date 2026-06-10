@@ -6,18 +6,20 @@ from typing import Any
 
 from esphome import automation
 import esphome.codegen as cg
-from esphome.components import binary_sensor, sensor, text, text_sensor, time
+from esphome.components import binary_sensor, button, sensor, switch, text, text_sensor, time
 import esphome.config_validation as cv
 from esphome.const import CONF_ENTITY_CATEGORY, CONF_ID, CONF_NAME
 from esphome.core import ID
 
-AUTO_LOAD = ["binary_sensor", "json", "sensor", "text", "text_sensor", "time"]
+AUTO_LOAD = ["binary_sensor", "button", "json", "sensor", "switch", "text", "text_sensor", "time"]
 CODEOWNERS = ["@Snuffy2"]
 
 CONF_CANDIDATE_LIMIT = "candidate_limit"
 CONF_CANDIDATES = "candidates"
 CONF_BATTERY = "battery"
+CONF_CLEAR_CANDIDATES_BUTTON = "clear_candidates_button"
 CONF_DISCOVERY_ENABLED = "discovery_enabled"
+CONF_DISCOVERY_MODE = "discovery_mode"
 CONF_ENTITIES = "entities"
 CONF_HUMIDITY = "humidity"
 CONF_KEY = "key"
@@ -43,6 +45,7 @@ CONF_RST = "rst"
 CONF_SCK = "sck"
 CONF_STALE = "stale"
 CONF_STALE_AFTER = "stale_after"
+CONF_STATUS_BUTTON = "status_button"
 CONF_TEMPERATURE = "temperature"
 CONF_TIME_ID = "time_id"
 CONF_UNKNOWN_PACKET_COUNT = "unknown_packet_count"
@@ -52,6 +55,9 @@ ENTITY_MAPPING = "mapping"
 rtl433_native_ns = cg.esphome_ns.namespace("rtl433_native")
 Gateway = rtl433_native_ns.class_("Gateway", cg.Component)
 MappingText = rtl433_native_ns.class_("MappingText", text.Text, cg.Component)
+DiscoverySwitch = rtl433_native_ns.class_("DiscoverySwitch", switch.Switch, cg.Component)
+ClearCandidatesButton = rtl433_native_ns.class_("ClearCandidatesButton", button.Button)
+StatusButton = rtl433_native_ns.class_("StatusButton", button.Button)
 StatusAction = rtl433_native_ns.class_("StatusAction", automation.Action)
 StopAction = rtl433_native_ns.class_("StopAction", automation.Action)
 ClearCandidatesAction = rtl433_native_ns.class_("ClearCandidatesAction", automation.Action)
@@ -337,6 +343,22 @@ CONFIG_SCHEMA = cv.All(
                 # Diagnostic read-only binary sensor mirroring runtime discovery enable state.
                 entity_category="diagnostic",
             ),
+            cv.Optional(
+                CONF_DISCOVERY_MODE,
+                default={"name": "Discovery Mode", "entity_category": "config"},
+            ): switch.switch_schema(
+                DiscoverySwitch,
+                default_restore_mode="RESTORE_DEFAULT_OFF",
+                entity_category="config",
+            ).extend(cv.COMPONENT_SCHEMA),
+            cv.Optional(
+                CONF_CLEAR_CANDIDATES_BUTTON,
+                default={"name": "Clear Candidates", "entity_category": "config"},
+            ): button.button_schema(ClearCandidatesButton, entity_category="config"),
+            cv.Optional(
+                CONF_STATUS_BUTTON,
+                default={"name": "Radio Status", "entity_category": "config"},
+            ): button.button_schema(StatusButton, entity_category="config"),
         }
     ).extend(cv.COMPONENT_SCHEMA),
     _add_default_candidates,
@@ -435,6 +457,16 @@ async def to_code(config: dict[str, Any]) -> None:
             config[CONF_DISCOVERY_ENABLED]
         )
         cg.add(var.set_discovery_enabled_sensor(discovery_enabled_sensor))
+    if CONF_DISCOVERY_MODE in config:
+        discovery_mode = await switch.new_switch(config[CONF_DISCOVERY_MODE])
+        await cg.register_component(discovery_mode, config[CONF_DISCOVERY_MODE])
+        cg.add(discovery_mode.set_parent(var))
+    if CONF_CLEAR_CANDIDATES_BUTTON in config:
+        clear_candidates_button = await button.new_button(config[CONF_CLEAR_CANDIDATES_BUTTON])
+        cg.add(clear_candidates_button.set_parent(var))
+    if CONF_STATUS_BUTTON in config:
+        status_button = await button.new_button(config[CONF_STATUS_BUTTON])
+        cg.add(status_button.set_parent(var))
 
 
 def _entry_has_mapping_text(entry: dict[str, Any]) -> bool:

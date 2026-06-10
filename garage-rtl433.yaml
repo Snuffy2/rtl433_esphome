@@ -115,29 +115,7 @@ binary_sensor:
     name: 'Status'
     entity_category: diagnostic
 
-switch:
-  - platform: template
-    name: "Discovery Mode"
-    id: rtl433_discovery_mode
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
-    entity_category: config
-    turn_on_action:
-      - lambda: id(rtl433_gateway).set_discovery_enabled(true);
-    turn_off_action:
-      - lambda: id(rtl433_gateway).set_discovery_enabled(false);
-
 button:
-  - platform: template
-    name: "Clear Candidates"
-    entity_category: config
-    on_press:
-      - rtl433_native.clear_candidates: rtl433_gateway
-  - platform: template
-    name: "Radio Status"
-    entity_category: config
-    on_press:
-      - rtl433_native.status: rtl433_gateway
   - platform: restart
     name: Restart
     icon: mdi:restart
