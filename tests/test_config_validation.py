@@ -92,6 +92,19 @@ GENERATED_MAPPING_TEXT_METHODS = frozenset(
 
 GENERATED_GATEWAY_CONTROL_METHODS = frozenset({"set_parent"})
 
+GATEWAY_DIAGNOSTIC_DEFAULTS = (
+    (CONF_LAST_PACKET, "Last Packet"),
+    (CONF_PACKET_COUNT, "Packet Count"),
+    (CONF_KNOWN_PACKET_COUNT, "Known Packet Count"),
+    (CONF_UNKNOWN_PACKET_COUNT, "Unknown Packet Count"),
+    (CONF_DISCOVERY_ENABLED, "Discovery Enabled"),
+)
+GATEWAY_CONTROL_DEFAULTS = (
+    (CONF_DISCOVERY_MODE, "Discovery Mode"),
+    (CONF_CLEAR_CANDIDATES_BUTTON, "Clear Candidates"),
+    (CONF_STATUS_BUTTON, "Radio Status"),
+)
+
 
 @dataclass
 class FakeGateway:
@@ -435,26 +448,8 @@ def gateway_diagnostic_overrides(prefix: str) -> dict[str, dict[str, str]]:
     """Return unique gateway diagnostic configs for schema test isolation."""
 
     return {
-        CONF_LAST_PACKET: {
-            "name": f"{prefix} Last Packet",
-            "entity_category": "diagnostic",
-        },
-        CONF_PACKET_COUNT: {
-            "name": f"{prefix} Packet Count",
-            "entity_category": "diagnostic",
-        },
-        CONF_KNOWN_PACKET_COUNT: {
-            "name": f"{prefix} Known Packet Count",
-            "entity_category": "diagnostic",
-        },
-        CONF_UNKNOWN_PACKET_COUNT: {
-            "name": f"{prefix} Unknown Packet Count",
-            "entity_category": "diagnostic",
-        },
-        CONF_DISCOVERY_ENABLED: {
-            "name": f"{prefix} Discovery Enabled",
-            "entity_category": "diagnostic",
-        },
+        key: {"name": f"{prefix} {name}", "entity_category": "diagnostic"}
+        for key, name in GATEWAY_DIAGNOSTIC_DEFAULTS
     }
 
 
@@ -462,18 +457,8 @@ def gateway_control_overrides(prefix: str) -> dict[str, dict[str, str]]:
     """Return unique gateway control configs for schema test isolation."""
 
     return {
-        CONF_DISCOVERY_MODE: {
-            "name": f"{prefix} Discovery Mode",
-            "entity_category": "config",
-        },
-        CONF_CLEAR_CANDIDATES_BUTTON: {
-            "name": f"{prefix} Clear Candidates",
-            "entity_category": "config",
-        },
-        CONF_STATUS_BUTTON: {
-            "name": f"{prefix} Radio Status",
-            "entity_category": "config",
-        },
+        key: {"name": f"{prefix} {name}", "entity_category": "config"}
+        for key, name in GATEWAY_CONTROL_DEFAULTS
     }
 
 
@@ -778,16 +763,9 @@ async def test_config_schema_generates_default_gateway_diagnostics(
 
     await to_code(config)
 
-    assert config[CONF_LAST_PACKET]["name"] == "Last Packet"
-    assert config[CONF_PACKET_COUNT]["name"] == "Packet Count"
-    assert config[CONF_KNOWN_PACKET_COUNT]["name"] == "Known Packet Count"
-    assert config[CONF_UNKNOWN_PACKET_COUNT]["name"] == "Unknown Packet Count"
-    assert config[CONF_DISCOVERY_ENABLED]["name"] == "Discovery Enabled"
-    assert config[CONF_LAST_PACKET]["entity_category"] == "diagnostic"
-    assert config[CONF_PACKET_COUNT]["entity_category"] == "diagnostic"
-    assert config[CONF_KNOWN_PACKET_COUNT]["entity_category"] == "diagnostic"
-    assert config[CONF_UNKNOWN_PACKET_COUNT]["entity_category"] == "diagnostic"
-    assert config[CONF_DISCOVERY_ENABLED]["entity_category"] == "diagnostic"
+    assert [_entity_name_and_category(config[key]) for key, _ in GATEWAY_DIAGNOSTIC_DEFAULTS] == [
+        (name, "diagnostic") for _, name in GATEWAY_DIAGNOSTIC_DEFAULTS
+    ]
     assert _entity_name_and_category(fake_env.text_sensor.created[0]) == (
         "Last Packet",
         "diagnostic",
@@ -822,12 +800,9 @@ async def test_config_schema_generates_default_gateway_controls(
 
     await to_code(config)
 
-    assert config[CONF_DISCOVERY_MODE]["name"] == "Discovery Mode"
-    assert config[CONF_CLEAR_CANDIDATES_BUTTON]["name"] == "Clear Candidates"
-    assert config[CONF_STATUS_BUTTON]["name"] == "Radio Status"
-    assert config[CONF_DISCOVERY_MODE]["entity_category"] == "config"
-    assert config[CONF_CLEAR_CANDIDATES_BUTTON]["entity_category"] == "config"
-    assert config[CONF_STATUS_BUTTON]["entity_category"] == "config"
+    assert [_entity_name_and_category(config[key]) for key, _ in GATEWAY_CONTROL_DEFAULTS] == [
+        (name, "config") for _, name in GATEWAY_CONTROL_DEFAULTS
+    ]
     assert [_entity_name_and_category(entity) for entity in fake_env.switch.created] == [
         ("Discovery Mode", "config")
     ]
