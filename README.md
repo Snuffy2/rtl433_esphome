@@ -37,7 +37,8 @@ Compact entries generate entity names by appending the entity type, such as
 `Garage Combo Fridge Temperature`, `Garage Combo Fridge Humidity`, `Garage
 Combo Fridge RSSI`, and `Garage Combo Fridge Last Updated`. The `mapping`
 entity is optional; include it when you want a Home Assistant text entity for
-changing the rtl_433 mapping at runtime.
+changing the rtl_433 mapping at runtime. Compact RSSI and last-updated entities
+are disabled by default.
 
 Use the verbose form instead when an entity needs custom options:
 
@@ -51,7 +52,6 @@ rtl433_native:
         name: "Garage Combo Fridge Temperature"
       humidity:
         name: "Garage Combo Fridge Humidity"
-        entity_category: diagnostic
 ```
 
 Gateway diagnostics are created by default and do not need to be listed in
@@ -64,7 +64,11 @@ Gateway diagnostics are created by default and do not need to be listed in
 - `discovery_enabled`
 
 Add any of those options under `rtl433_native` only when overriding the generated
-name or other entity settings.
+name or other entity settings. These gateway diagnostics are disabled by
+default.
+
+Candidate text sensors are created from `candidate_limit` and disabled by
+default, so enable them in Home Assistant only while using discovery.
 
 Gateway controls are also created by default and do not need template `switch`
 or `button` entries in `garage-rtl433.yaml`:

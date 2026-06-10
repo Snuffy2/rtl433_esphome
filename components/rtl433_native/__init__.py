@@ -8,7 +8,7 @@ from esphome import automation
 import esphome.codegen as cg
 from esphome.components import binary_sensor, button, sensor, switch, text, text_sensor, time
 import esphome.config_validation as cv
-from esphome.const import CONF_ENTITY_CATEGORY, CONF_ID, CONF_NAME
+from esphome.const import CONF_DISABLED_BY_DEFAULT, CONF_ENTITY_CATEGORY, CONF_ID, CONF_NAME
 from esphome.core import ID
 
 AUTO_LOAD = ["binary_sensor", "button", "json", "sensor", "switch", "text", "text_sensor", "time"]
@@ -188,7 +188,7 @@ def _add_default_candidates(config: dict[str, Any]) -> dict[str, Any]:
                 ),
                 "name": f"Candidate {index + 1}",
                 "entity_category": "diagnostic",
-                "disabled_by_default": False,
+                CONF_DISABLED_BY_DEFAULT: True,
                 "icon": "mdi:radio-tower",
             }
             for index in range(config[CONF_CANDIDATE_LIMIT])
@@ -215,9 +215,11 @@ def _entity_title(entity: str) -> str:
 def _compact_entity_config(name: str, entity: str) -> dict[str, Any]:
     """Return the generated entity config for a compact known sensor entity."""
 
-    entity_config = {CONF_NAME: f"{name} {_entity_title(entity)}"}
-    if entity != CONF_TEMPERATURE:
+    entity_config: dict[str, Any] = {CONF_NAME: f"{name} {_entity_title(entity)}"}
+    if entity not in (CONF_TEMPERATURE, CONF_HUMIDITY):
         entity_config[CONF_ENTITY_CATEGORY] = "diagnostic"
+    if entity in (CONF_RSSI, CONF_LAST_UPDATED):
+        entity_config[CONF_DISABLED_BY_DEFAULT] = True
     return entity_config
 
 
@@ -313,32 +315,52 @@ CONFIG_SCHEMA = cv.All(
             ),
             cv.Optional(
                 CONF_LAST_PACKET,
-                default={"name": "Last Packet", "entity_category": "diagnostic"},
+                default={
+                    "name": "Last Packet",
+                    "entity_category": "diagnostic",
+                    CONF_DISABLED_BY_DEFAULT: True,
+                },
             ): text_sensor.text_sensor_schema(icon="mdi:radio"),
             cv.Optional(
                 CONF_PACKET_COUNT,
-                default={"name": "Packet Count", "entity_category": "diagnostic"},
+                default={
+                    "name": "Packet Count",
+                    "entity_category": "diagnostic",
+                    CONF_DISABLED_BY_DEFAULT: True,
+                },
             ): sensor.sensor_schema(
                 accuracy_decimals=0,
                 state_class="total_increasing",
             ),
             cv.Optional(
                 CONF_KNOWN_PACKET_COUNT,
-                default={"name": "Known Packet Count", "entity_category": "diagnostic"},
+                default={
+                    "name": "Known Packet Count",
+                    "entity_category": "diagnostic",
+                    CONF_DISABLED_BY_DEFAULT: True,
+                },
             ): sensor.sensor_schema(
                 accuracy_decimals=0,
                 state_class="total_increasing",
             ),
             cv.Optional(
                 CONF_UNKNOWN_PACKET_COUNT,
-                default={"name": "Unknown Packet Count", "entity_category": "diagnostic"},
+                default={
+                    "name": "Unknown Packet Count",
+                    "entity_category": "diagnostic",
+                    CONF_DISABLED_BY_DEFAULT: True,
+                },
             ): sensor.sensor_schema(
                 accuracy_decimals=0,
                 state_class="total_increasing",
             ),
             cv.Optional(
                 CONF_DISCOVERY_ENABLED,
-                default={"name": "Discovery Enabled", "entity_category": "diagnostic"},
+                default={
+                    "name": "Discovery Enabled",
+                    "entity_category": "diagnostic",
+                    CONF_DISABLED_BY_DEFAULT: True,
+                },
             ): binary_sensor.binary_sensor_schema(
                 # Diagnostic read-only binary sensor mirroring runtime discovery enable state.
                 entity_category="diagnostic",

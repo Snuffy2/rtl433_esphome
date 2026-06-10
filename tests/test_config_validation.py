@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 from esphome import config_validation as cv
-from esphome.const import CONF_ID
+from esphome.const import CONF_DISABLED_BY_DEFAULT, CONF_ID
 
 import components.rtl433_native as rtl433_native
 from components.rtl433_native import (
@@ -725,7 +725,7 @@ def test_config_schema_generates_candidate_sensors_from_limit() -> None:
         {
             "name": candidate["name"],
             "entity_category": candidate["entity_category"],
-            "disabled_by_default": candidate["disabled_by_default"],
+            CONF_DISABLED_BY_DEFAULT: candidate[CONF_DISABLED_BY_DEFAULT],
             "icon": candidate["icon"],
         }
         for candidate in config[CONF_CANDIDATES]
@@ -733,13 +733,13 @@ def test_config_schema_generates_candidate_sensors_from_limit() -> None:
         {
             "name": "Candidate 1",
             "entity_category": "diagnostic",
-            "disabled_by_default": False,
+            CONF_DISABLED_BY_DEFAULT: True,
             "icon": "mdi:radio-tower",
         },
         {
             "name": "Candidate 2",
             "entity_category": "diagnostic",
-            "disabled_by_default": False,
+            CONF_DISABLED_BY_DEFAULT: True,
             "icon": "mdi:radio-tower",
         },
     ]
@@ -767,19 +767,25 @@ async def test_config_schema_generates_default_gateway_diagnostics(
     assert [_entity_name_and_category(config[key]) for key, _ in GATEWAY_DIAGNOSTIC_DEFAULTS] == [
         (name, "diagnostic") for _, name in GATEWAY_DIAGNOSTIC_DEFAULTS
     ]
+    assert all(
+        config[key][CONF_DISABLED_BY_DEFAULT] is True for key, _ in GATEWAY_DIAGNOSTIC_DEFAULTS
+    )
     assert _entity_name_and_category(fake_env.text_sensor.created[0]) == (
         "Last Packet",
         "diagnostic",
     )
+    assert fake_env.text_sensor.created[0][CONF_DISABLED_BY_DEFAULT] is True
     assert [_entity_name_and_category(entity) for entity in fake_env.sensor.created[-3:]] == [
         ("Packet Count", "diagnostic"),
         ("Known Packet Count", "diagnostic"),
         ("Unknown Packet Count", "diagnostic"),
     ]
+    assert all(entity[CONF_DISABLED_BY_DEFAULT] is True for entity in fake_env.sensor.created[-3:])
     assert _entity_name_and_category(fake_env.binary_sensor.created[0]) == (
         "Discovery Enabled",
         "diagnostic",
     )
+    assert fake_env.binary_sensor.created[0][CONF_DISABLED_BY_DEFAULT] is True
 
 
 async def test_config_schema_generates_default_gateway_controls(
@@ -873,11 +879,13 @@ def test_config_schema_expands_compact_known_sensor_entities() -> None:
     assert entry[CONF_RSSI]["name"] == "Garage Combo Fridge RSSI"
     assert entry[CONF_STALE]["name"] == "Garage Combo Fridge Stale"
     assert entry[CONF_LAST_UPDATED]["name"] == "Garage Combo Fridge Last Updated"
-    assert entry[CONF_HUMIDITY]["entity_category"] == "diagnostic"
+    assert "entity_category" not in entry[CONF_HUMIDITY]
     assert entry[CONF_BATTERY]["entity_category"] == "diagnostic"
     assert entry[CONF_RSSI]["entity_category"] == "diagnostic"
     assert entry[CONF_STALE]["entity_category"] == "diagnostic"
     assert entry[CONF_LAST_UPDATED]["entity_category"] == "diagnostic"
+    assert entry[CONF_RSSI][CONF_DISABLED_BY_DEFAULT] is True
+    assert entry[CONF_LAST_UPDATED][CONF_DISABLED_BY_DEFAULT] is True
 
 
 async def test_compact_known_sensor_mapping_entity_is_optional(
