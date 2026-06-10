@@ -10,6 +10,7 @@
 
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/text/text.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/core/automation.h"
@@ -37,6 +38,11 @@ struct SavedLogicalState {
   uint32_t last_updated{0};
 };
 
+struct SavedMappingText {
+  bool has_value{false};
+  char value[241]{};
+};
+
 struct EntitySet {
   sensor::Sensor *temperature{nullptr};
   sensor::Sensor *humidity{nullptr};
@@ -47,6 +53,8 @@ struct EntitySet {
   bool stale_initialized{false};
   bool last_stale{false};
 };
+
+class MappingText;
 
 class Gateway : public Component {
  public:
@@ -113,6 +121,27 @@ class Gateway : public Component {
   void publish_state(const std::string &logical_key);
   void publish_candidates();
   void publish_stale_states();
+};
+
+class MappingText : public text::Text, public Component {
+ public:
+  void setup() override;
+  void dump_config() override;
+
+  void set_parent(Gateway *parent) { this->parent_ = parent; }
+  void set_logical_key(const std::string &logical_key) { this->logical_key_ = logical_key; }
+  void set_initial_value(const std::string &initial_value) { this->initial_value_ = initial_value; }
+
+ protected:
+  void control(const std::string &value) override;
+
+ private:
+  Gateway *parent_{nullptr};
+  std::string logical_key_{};
+  std::string initial_value_{};
+  ESPPreferenceObject preference_{};
+
+  void apply_value(const std::string &value, bool save);
 };
 
 template <typename... Ts>

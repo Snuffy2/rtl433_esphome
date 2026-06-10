@@ -17,14 +17,6 @@ esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
   comment: "Heltec WiFi LoRa 32 V2-style 433 MHz rtl_433 ESPHome gateway"
-  on_boot:
-    priority: -100
-    then:
-      - lambda: |-
-          id(rtl433_gateway).set_override("garage_combo_fridge", id(garage_combo_fridge_mapping).state);
-          id(rtl433_gateway).set_override("garage_combo_freezer", id(garage_combo_freezer_mapping).state);
-          id(rtl433_gateway).set_override("garage_freezer_1", id(garage_freezer_1_mapping).state);
-          id(rtl433_gateway).set_override("garage_freezer_2", id(garage_freezer_2_mapping).state);
 
 esp32:
   board: heltec_wifi_kit_32_v2
@@ -218,54 +210,3 @@ button:
     name: Restart
     icon: mdi:restart
     entity_category: config
-
-
-text:
-  - platform: template
-    name: "Garage Combo Fridge Mapping"
-    id: garage_combo_fridge_mapping
-    optimistic: true
-    restore_value: true
-    mode: text
-    initial_value: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203"
-    min_length: 3
-    max_length: 240
-    entity_category: config
-    set_action:
-      - lambda: id(rtl433_gateway).set_override("garage_combo_fridge", x);
-  - platform: template
-    name: "Garage Combo Freezer Mapping"
-    id: garage_combo_freezer_mapping
-    optimistic: true
-    restore_value: true
-    mode: text
-    initial_value: "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88"
-    min_length: 3
-    max_length: 240
-    entity_category: config
-    set_action:
-      - lambda: id(rtl433_gateway).set_override("garage_combo_freezer", x);
-  - platform: template
-    name: "Garage Freezer 1 Mapping"
-    id: garage_freezer_1_mapping
-    optimistic: true
-    restore_value: true
-    mode: text
-    initial_value: "Acurite-986/1R/11932"
-    min_length: 3
-    max_length: 240
-    entity_category: config
-    set_action:
-      - lambda: id(rtl433_gateway).set_override("garage_freezer_1", x);
-  - platform: template
-    name: "Garage Freezer 2 Mapping"
-    id: garage_freezer_2_mapping
-    optimistic: true
-    restore_value: true
-    mode: text
-    initial_value: "Acurite-986/2F/31274"
-    min_length: 3
-    max_length: 240
-    entity_category: config
-    set_action:
-      - lambda: id(rtl433_gateway).set_override("garage_freezer_2", x);

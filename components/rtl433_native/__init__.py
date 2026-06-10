@@ -6,11 +6,12 @@ from typing import Any
 
 from esphome import automation
 import esphome.codegen as cg
-from esphome.components import binary_sensor, sensor, text_sensor, time
+from esphome.components import binary_sensor, sensor, text, text_sensor, time
 import esphome.config_validation as cv
 from esphome.const import CONF_ID
+from esphome.core import ID
 
-AUTO_LOAD = ["binary_sensor", "json", "sensor", "text_sensor", "time"]
+AUTO_LOAD = ["binary_sensor", "json", "sensor", "text", "text_sensor", "time"]
 CODEOWNERS = ["@Snuffy2"]
 
 CONF_CANDIDATE_LIMIT = "candidate_limit"
@@ -47,11 +48,14 @@ CONF_UNKNOWN_PACKET_COUNT = "unknown_packet_count"
 
 rtl433_native_ns = cg.esphome_ns.namespace("rtl433_native")
 Gateway = rtl433_native_ns.class_("Gateway", cg.Component)
+MappingText = rtl433_native_ns.class_("MappingText", text.Text, cg.Component)
 StatusAction = rtl433_native_ns.class_("StatusAction", automation.Action)
 StopAction = rtl433_native_ns.class_("StopAction", automation.Action)
 ClearCandidatesAction = rtl433_native_ns.class_("ClearCandidatesAction", automation.Action)
 
 UINT32_MAX_MILLISECONDS = 4_294_967_295
+MAPPING_TEXT_MAX_LENGTH = 240
+MAPPING_TEXT_MIN_LENGTH = 3
 ARDUINO_NETWORK_INCLUDE_FLAG = (
     '-I"${platformio.packages_dir}/framework-arduinoespressif32/libraries/Network/src"'
 )
@@ -63,19 +67,22 @@ RTL433_NATIVE_LIBRARIES = (
     ("SPI", None, None),
     ("EEPROM", None, None),
 )
+DEFAULT_RADIO_MODULE = "SX1278"
+DEFAULT_RADIO_FREQUENCY = 433.92
+DEFAULT_RADIO_PINS = {
+    CONF_DIO0: 26,
+    CONF_DIO1: 35,
+    CONF_DIO2: 34,
+    CONF_RST: 14,
+    CONF_CS: 18,
+    CONF_SCK: 5,
+    CONF_MISO: 19,
+    CONF_MOSI: 27,
+}
 DEFAULT_RADIO_CONFIG = {
-    CONF_MODULE: "SX1278",
-    CONF_FREQUENCY: 433.92,
-    CONF_PINS: {
-        CONF_DIO0: 26,
-        CONF_DIO1: 35,
-        CONF_DIO2: 34,
-        CONF_RST: 14,
-        CONF_CS: 18,
-        CONF_SCK: 5,
-        CONF_MISO: 19,
-        CONF_MOSI: 27,
-    },
+    CONF_MODULE: DEFAULT_RADIO_MODULE,
+    CONF_FREQUENCY: DEFAULT_RADIO_FREQUENCY,
+    CONF_PINS: DEFAULT_RADIO_PINS,
 }
 
 
@@ -124,15 +131,28 @@ def _add_default_candidates(config: dict[str, Any]) -> dict[str, Any]:
     """Create default candidate text sensors from the configured limit."""
 
     if CONF_CANDIDATES not in config:
+        component_id = getattr(config[CONF_ID], "id", str(config[CONF_ID]))
         config[CONF_CANDIDATES] = [
             {
+                CONF_ID: ID(
+                    f"{component_id}_candidate_{index + 1}",
+                    is_declaration=True,
+                    type=text_sensor.TextSensor,
+                ),
                 "name": f"Candidate {index + 1}",
                 "entity_category": "diagnostic",
+                "disabled_by_default": False,
                 "icon": "mdi:radio-tower",
             }
             for index in range(config[CONF_CANDIDATE_LIMIT])
         ]
     return config
+
+
+def _mapping_text_name(entry: dict[str, Any]) -> str:
+    """Return the generated mapping text entity name for a known sensor."""
+
+    return f"{entry[CONF_TEMPERATURE]['name']} Mapping"
 
 
 SENSOR_ENTRY_SCHEMA = cv.Schema(
@@ -168,36 +188,18 @@ SENSOR_ENTRY_SCHEMA = cv.Schema(
 
 RADIO_SCHEMA = cv.Schema(
     {
-        cv.Optional(CONF_MODULE, default=DEFAULT_RADIO_CONFIG[CONF_MODULE]): cv.one_of(
-            "SX1278", upper=True
-        ),
-        cv.Optional(CONF_FREQUENCY, default=DEFAULT_RADIO_CONFIG[CONF_FREQUENCY]): cv.float_,
-        cv.Optional(CONF_PINS, default=DEFAULT_RADIO_CONFIG[CONF_PINS]): cv.Schema(
+        cv.Optional(CONF_MODULE, default=DEFAULT_RADIO_MODULE): cv.one_of("SX1278", upper=True),
+        cv.Optional(CONF_FREQUENCY, default=DEFAULT_RADIO_FREQUENCY): cv.float_,
+        cv.Optional(CONF_PINS, default=DEFAULT_RADIO_PINS): cv.Schema(
             {
-                cv.Optional(
-                    CONF_DIO0, default=DEFAULT_RADIO_CONFIG[CONF_PINS][CONF_DIO0]
-                ): cv.int_range(min=0),
-                cv.Optional(
-                    CONF_DIO1, default=DEFAULT_RADIO_CONFIG[CONF_PINS][CONF_DIO1]
-                ): cv.int_range(min=0),
-                cv.Optional(
-                    CONF_DIO2, default=DEFAULT_RADIO_CONFIG[CONF_PINS][CONF_DIO2]
-                ): cv.int_range(min=0),
-                cv.Optional(
-                    CONF_RST, default=DEFAULT_RADIO_CONFIG[CONF_PINS][CONF_RST]
-                ): cv.int_range(min=0),
-                cv.Optional(
-                    CONF_CS, default=DEFAULT_RADIO_CONFIG[CONF_PINS][CONF_CS]
-                ): cv.int_range(min=0),
-                cv.Optional(
-                    CONF_SCK, default=DEFAULT_RADIO_CONFIG[CONF_PINS][CONF_SCK]
-                ): cv.int_range(min=0),
-                cv.Optional(
-                    CONF_MISO, default=DEFAULT_RADIO_CONFIG[CONF_PINS][CONF_MISO]
-                ): cv.int_range(min=0),
-                cv.Optional(
-                    CONF_MOSI, default=DEFAULT_RADIO_CONFIG[CONF_PINS][CONF_MOSI]
-                ): cv.int_range(min=0),
+                cv.Optional(CONF_DIO0, default=DEFAULT_RADIO_PINS[CONF_DIO0]): cv.int_range(min=0),
+                cv.Optional(CONF_DIO1, default=DEFAULT_RADIO_PINS[CONF_DIO1]): cv.int_range(min=0),
+                cv.Optional(CONF_DIO2, default=DEFAULT_RADIO_PINS[CONF_DIO2]): cv.int_range(min=0),
+                cv.Optional(CONF_RST, default=DEFAULT_RADIO_PINS[CONF_RST]): cv.int_range(min=0),
+                cv.Optional(CONF_CS, default=DEFAULT_RADIO_PINS[CONF_CS]): cv.int_range(min=0),
+                cv.Optional(CONF_SCK, default=DEFAULT_RADIO_PINS[CONF_SCK]): cv.int_range(min=0),
+                cv.Optional(CONF_MISO, default=DEFAULT_RADIO_PINS[CONF_MISO]): cv.int_range(min=0),
+                cv.Optional(CONF_MOSI, default=DEFAULT_RADIO_PINS[CONF_MOSI]): cv.int_range(min=0),
             }
         ),
     }
@@ -283,6 +285,23 @@ async def to_code(config: dict[str, Any]) -> None:
                 entry[CONF_MAPPING],
             )
         )
+        mapping_text_id = ID(f"{entry[CONF_KEY]}_mapping", is_declaration=True, type=MappingText)
+        mapping_text_config = {
+            CONF_ID: mapping_text_id,
+            "name": _mapping_text_name(entry),
+            "entity_category": "config",
+            "disabled_by_default": False,
+            "mode": text.TextMode.TEXT_MODE_TEXT,
+        }
+        mapping_text = await text.new_text(
+            mapping_text_config,
+            min_length=MAPPING_TEXT_MIN_LENGTH,
+            max_length=MAPPING_TEXT_MAX_LENGTH,
+        )
+        cg.add(cg.App.register_component_(mapping_text))
+        cg.add(mapping_text.set_parent(var))
+        cg.add(mapping_text.set_logical_key(entry[CONF_KEY]))
+        cg.add(mapping_text.set_initial_value(entry[CONF_MAPPING]))
         temperature = await sensor.new_sensor(entry[CONF_TEMPERATURE])
         cg.add(var.set_temperature_sensor(entry[CONF_KEY], temperature))
         if CONF_HUMIDITY in entry:

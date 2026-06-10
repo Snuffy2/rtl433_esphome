@@ -62,9 +62,9 @@ GENERATED_GATEWAY_METHODS = frozenset(
         "set_candidate_text_sensor",
         "set_discovery_enabled_sensor",
         "set_humidity_sensor",
-    "set_known_packet_count_sensor",
-    "set_led_pin",
-    "set_last_packet_sensor",
+        "set_known_packet_count_sensor",
+        "set_led_pin",
+        "set_last_packet_sensor",
         "set_last_updated_sensor",
         "set_packet_count_sensor",
         "set_rssi_sensor",
@@ -73,6 +73,14 @@ GENERATED_GATEWAY_METHODS = frozenset(
         "set_temperature_sensor",
         "set_time",
         "set_unknown_packet_count_sensor",
+    }
+)
+
+GENERATED_MAPPING_TEXT_METHODS = frozenset(
+    {
+        "set_initial_value",
+        "set_logical_key",
+        "set_parent",
     }
 )
 
@@ -104,6 +112,33 @@ class FakeGateway:
 
 
 @dataclass
+class FakeMappingText:
+    """Test double that records generated mapping text method calls."""
+
+    name: str
+    calls: list[tuple[str, tuple[Any, ...]]] = field(default_factory=list)
+
+    def _record(self, name: str, *args: Any) -> tuple[str, tuple[Any, ...]]:
+        """Record a generated mapping text method call."""
+
+        self.calls.append((name, args))
+        return name, args
+
+    def __getattr__(self, name: str) -> Callable[..., tuple[str, tuple[Any, ...]]]:
+        """Return a recorder for known generated mapping text methods."""
+
+        if name not in GENERATED_MAPPING_TEXT_METHODS:
+            raise AttributeError(name)
+
+        def recorder(*args: Any) -> tuple[str, tuple[Any, ...]]:
+            """Record a generated mapping text method call."""
+
+            return self._record(name, *args)
+
+        return recorder
+
+
+@dataclass
 class FakeCodegen:
     """Test double for the ESPHome codegen module."""
 
@@ -113,9 +148,24 @@ class FakeCodegen:
     libraries: list[tuple[str, str | None, str | None]] = field(default_factory=list)
     platformio_options: list[tuple[str, str | list[str]]] = field(default_factory=list)
     new_pvariable_calls: list[tuple[Any, ...]] = field(default_factory=list)
-    registered_components: list[tuple[FakeGateway, dict[str, Any]]] = field(default_factory=list)
+    registered_components: list[tuple[Any, dict[str, Any]]] = field(default_factory=list)
     registered_parents: list[tuple[Any, Any]] = field(default_factory=list)
     variables: dict[Any, Any] = field(default_factory=dict)
+
+    @property
+    def App(self) -> Any:  # noqa: N802
+        """Return a small fake Application codegen object."""
+
+        class FakeApp:
+            """Test double for cg.App."""
+
+            @staticmethod
+            def register_component_(var: Any) -> tuple[str, Any]:
+                """Record direct component registration expression."""
+
+                return "register_component", var
+
+        return FakeApp
 
     def add(self, expression: Any) -> None:
         """Record a generated expression."""
@@ -145,7 +195,7 @@ class FakeCodegen:
             return self.gateway
         return {"action_id": args[0], "template_arg": args[1]}
 
-    async def register_component(self, var: FakeGateway, config: dict[str, Any]) -> None:
+    async def register_component(self, var: Any, config: dict[str, Any]) -> None:
         """Record component registration."""
 
         self.registered_components.append((var, config))
@@ -201,6 +251,35 @@ class FakeTextSensorModule:
         return f"text:{config['name']}"
 
 
+@dataclass
+class FakeTextModule:
+    """Test double for ESPHome text factories."""
+
+    created: list[dict[str, Any]] = field(default_factory=list)
+    texts: list[FakeMappingText] = field(default_factory=list)
+
+    class TextMode:
+        """Test double for text mode enum values."""
+
+        TEXT_MODE_TEXT = "TEXT_MODE_TEXT"
+
+    async def new_text(
+        self,
+        config: dict[str, Any],
+        *,
+        min_length: int | None = 0,
+        max_length: int | None = 255,
+        pattern: str | None = None,
+    ) -> FakeMappingText:
+        """Record text creation and return a fake text input."""
+
+        del min_length, max_length, pattern
+        self.created.append(config)
+        text_input = FakeMappingText(config["name"])
+        self.texts.append(text_input)
+        return text_input
+
+
 @dataclass(frozen=True)
 class FakeTimePeriod:
     """Small stand-in for ESPHome time period values."""
@@ -217,6 +296,7 @@ class FakeCodegenEnvironment:
     sensor: FakeSensorModule
     binary_sensor: FakeBinarySensorModule
     text_sensor: FakeTextSensorModule
+    text: FakeTextModule
 
 
 def install_codegen_fakes(
@@ -241,16 +321,19 @@ def install_codegen_fakes(
     fake_sensor = FakeSensorModule(prefix="sensor")
     fake_binary_sensor = FakeBinarySensorModule()
     fake_text_sensor = FakeTextSensorModule()
+    fake_text = FakeTextModule()
     monkeypatch.setattr(rtl433_native, "cg", fake_cg)
     monkeypatch.setattr(rtl433_native, "sensor", fake_sensor)
     monkeypatch.setattr(rtl433_native, "binary_sensor", fake_binary_sensor)
     monkeypatch.setattr(rtl433_native, "text_sensor", fake_text_sensor)
+    monkeypatch.setattr(rtl433_native, "text", fake_text)
     return FakeCodegenEnvironment(
         gateway=gateway,
         codegen=fake_cg,
         sensor=fake_sensor,
         binary_sensor=fake_binary_sensor,
         text_sensor=fake_text_sensor,
+        text=fake_text,
     )
 
 
@@ -361,7 +444,7 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         ("EEPROM", None, None),
     ]
     assert fake_env.codegen.new_pvariable_calls == [("gateway_id",)]
-    assert fake_env.codegen.registered_components == [(fake_env.gateway, config)]
+    assert fake_env.codegen.registered_components[0] == (fake_env.gateway, config)
     assert fake_env.sensor.created == [
         {"name": "temperature"},
         {"name": "humidity"},
@@ -380,6 +463,12 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         {"name": "candidate_0"},
         {"name": "candidate_1"},
         {"name": "last_packet"},
+    ]
+    assert [text_config["name"] for text_config in fake_env.text.created] == ["temperature Mapping"]
+    assert fake_env.text.texts[0].calls == [
+        ("set_parent", (fake_env.gateway,)),
+        ("set_logical_key", ("garage_freezer_1",)),
+        ("set_initial_value", ("Acurite-986/1R/11932",)),
     ]
     assert fake_env.gateway.calls == [
         ("set_candidate_limit", (2,)),
@@ -401,7 +490,10 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         ("set_unknown_packet_count_sensor", ("sensor:unknown_packet_count",)),
         ("set_discovery_enabled_sensor", ("binary:discovery_enabled",)),
     ]
-    assert fake_env.codegen.added == fake_env.gateway.calls
+    for call in fake_env.gateway.calls:
+        assert call in fake_env.codegen.added
+    for call in fake_env.text.texts[0].calls:
+        assert call in fake_env.codegen.added
 
 
 async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -435,10 +527,16 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
         ("EEPROM", None, None),
     ]
     assert fake_env.codegen.new_pvariable_calls == [("gateway_id",)]
-    assert fake_env.codegen.registered_components == [(fake_env.gateway, config)]
+    assert fake_env.codegen.registered_components[0] == (fake_env.gateway, config)
     assert fake_env.sensor.created == [{"name": "temperature"}]
     assert fake_env.binary_sensor.created == []
     assert fake_env.text_sensor.created == []
+    assert [text_config["name"] for text_config in fake_env.text.created] == ["temperature Mapping"]
+    assert fake_env.text.texts[0].calls == [
+        ("set_parent", (fake_env.gateway,)),
+        ("set_logical_key", ("garage_freezer_1",)),
+        ("set_initial_value", ("Acurite-986/1R/11932",)),
+    ]
     assert fake_env.gateway.calls == [
         ("set_candidate_limit", (1,)),
         ("set_stale_after_ms", (60_000,)),
@@ -446,7 +544,10 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
         ("set_temperature_sensor", ("garage_freezer_1", "sensor:temperature")),
     ]
-    assert fake_env.codegen.added == fake_env.gateway.calls
+    for call in fake_env.gateway.calls:
+        assert call in fake_env.codegen.added
+    for call in fake_env.text.texts[0].calls:
+        assert call in fake_env.codegen.added
 
 
 def test_config_schema_generates_candidate_sensors_from_limit() -> None:
@@ -466,9 +567,27 @@ def test_config_schema_generates_candidate_sensors_from_limit() -> None:
         }
     )
 
-    assert config[CONF_CANDIDATES] == [
-        {"name": "Candidate 1", "entity_category": "diagnostic", "icon": "mdi:radio-tower"},
-        {"name": "Candidate 2", "entity_category": "diagnostic", "icon": "mdi:radio-tower"},
+    assert [
+        {
+            "name": candidate["name"],
+            "entity_category": candidate["entity_category"],
+            "disabled_by_default": candidate["disabled_by_default"],
+            "icon": candidate["icon"],
+        }
+        for candidate in config[CONF_CANDIDATES]
+    ] == [
+        {
+            "name": "Candidate 1",
+            "entity_category": "diagnostic",
+            "disabled_by_default": False,
+            "icon": "mdi:radio-tower",
+        },
+        {
+            "name": "Candidate 2",
+            "entity_category": "diagnostic",
+            "disabled_by_default": False,
+            "icon": "mdi:radio-tower",
+        },
     ]
 
 

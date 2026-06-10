@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <ctime>
 #include <limits>
 
@@ -40,6 +41,10 @@ uint32_t preference_key(const std::string &logical_key) {
     hash *= 16777619UL;
   }
   return hash ^ 0xA4330E01UL;
+}
+
+uint32_t mapping_preference_key(const std::string &logical_key) {
+  return preference_key("mapping:" + logical_key) ^ 0x1A77B433UL;
 }
 
 }  // namespace
@@ -453,6 +458,43 @@ void Gateway::publish_stale_states() {
       }
     }
   }
+}
+
+void MappingText::setup() {
+  this->preference_ = global_preferences->make_preference<SavedMappingText>(
+      mapping_preference_key(this->logical_key_), true);
+
+  SavedMappingText saved;
+  if (this->preference_.load(&saved) && saved.has_value && saved.value[0] != '\0') {
+    this->apply_value(saved.value, false);
+    return;
+  }
+
+  this->apply_value(this->initial_value_, true);
+}
+
+void MappingText::dump_config() {
+  ESP_LOGCONFIG(TAG, "RTL433 mapping text");
+  ESP_LOGCONFIG(TAG, "  Logical key: %s", this->logical_key_.c_str());
+}
+
+void MappingText::control(const std::string &value) { this->apply_value(value, true); }
+
+void MappingText::apply_value(const std::string &value, bool save) {
+  this->publish_state(value);
+  if (this->parent_ != nullptr) {
+    this->parent_->set_override(this->logical_key_, value);
+  }
+
+  if (!save) {
+    return;
+  }
+
+  SavedMappingText saved;
+  saved.has_value = true;
+  std::strncpy(saved.value, value.c_str(), sizeof(saved.value) - 1);
+  saved.value[sizeof(saved.value) - 1] = '\0';
+  this->preference_.save(&saved);
 }
 
 }  // namespace esphome::rtl433_native
