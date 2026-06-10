@@ -42,6 +42,7 @@ UINT32_MAX_MILLISECONDS = 4_294_967_295
 ARDUINO_NETWORK_INCLUDE_FLAG = (
     '-I"${platformio.packages_dir}/framework-arduinoespressif32/libraries/Network/src"'
 )
+LEDC_COMPAT_INCLUDE_FLAG = "-include src/esphome/components/rtl433_native/ledc_compat.h"
 RTL433_NATIVE_LIBRARIES = (
     ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"),
     ("RadioLib", "6.2.0", None),
@@ -183,6 +184,8 @@ async def to_code(config: dict[str, Any]) -> None:
     """Generate C++ for the rtl433_native component."""
 
     cg.add_build_flag(ARDUINO_NETWORK_INCLUDE_FLAG)
+    cg.add_build_flag(LEDC_COMPAT_INCLUDE_FLAG)
+    cg.add_platformio_option("lib_ldf_mode", "chain+")
     for name, version, repository in RTL433_NATIVE_LIBRARIES:
         cg.add_library(name, version, repository)
 

@@ -95,6 +95,7 @@ class FakeCodegen:
     added: list[Any] = field(default_factory=list)
     build_flags: list[str] = field(default_factory=list)
     libraries: list[tuple[str, str | None, str | None]] = field(default_factory=list)
+    platformio_options: list[tuple[str, str | list[str]]] = field(default_factory=list)
     new_pvariable_calls: list[tuple[Any, ...]] = field(default_factory=list)
     registered_components: list[tuple[FakeGateway, dict[str, Any]]] = field(default_factory=list)
     registered_parents: list[tuple[Any, Any]] = field(default_factory=list)
@@ -116,6 +117,11 @@ class FakeCodegen:
         """Record a PlatformIO library dependency."""
 
         self.libraries.append((name, version, repository))
+
+    def add_platformio_option(self, name: str, value: str | list[str]) -> None:
+        """Record a PlatformIO option."""
+
+        self.platformio_options.append((name, value))
 
     def new_Pvariable(self, *args: Any) -> Any:  # noqa: N802
         """Create a fake Pvariable value."""
@@ -331,7 +337,11 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
 
     await to_code(config)
 
-    assert fake_env.codegen.build_flags == [ARDUINO_NETWORK_INCLUDE_FLAG]
+    assert fake_env.codegen.build_flags == [
+        ARDUINO_NETWORK_INCLUDE_FLAG,
+        "-include src/esphome/components/rtl433_native/ledc_compat.h",
+    ]
+    assert fake_env.codegen.platformio_options == [("lib_ldf_mode", "chain+")]
     assert fake_env.codegen.libraries == [
         ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"),
         ("RadioLib", "6.2.0", None),
@@ -403,7 +413,11 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
 
     await to_code(config)
 
-    assert fake_env.codegen.build_flags == [ARDUINO_NETWORK_INCLUDE_FLAG]
+    assert fake_env.codegen.build_flags == [
+        ARDUINO_NETWORK_INCLUDE_FLAG,
+        "-include src/esphome/components/rtl433_native/ledc_compat.h",
+    ]
+    assert fake_env.codegen.platformio_options == [("lib_ldf_mode", "chain+")]
     assert fake_env.codegen.libraries == [
         ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"),
         ("RadioLib", "6.2.0", None),
