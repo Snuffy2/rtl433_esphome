@@ -85,6 +85,21 @@ def _validate_stale_after(value: Any) -> Any:
     return result
 
 
+def _add_default_candidates(config: dict[str, Any]) -> dict[str, Any]:
+    """Create default candidate text sensors from the configured limit."""
+
+    if CONF_CANDIDATES not in config:
+        config[CONF_CANDIDATES] = [
+            {
+                "name": f"Candidate {index + 1}",
+                "entity_category": "diagnostic",
+                "icon": "mdi:radio-tower",
+            }
+            for index in range(config[CONF_CANDIDATE_LIMIT])
+        ]
+    return config
+
+
 SENSOR_ENTRY_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_KEY): cv.string_strict,
@@ -116,40 +131,43 @@ SENSOR_ENTRY_SCHEMA = cv.Schema(
     }
 )
 
-CONFIG_SCHEMA = cv.Schema(
-    {
-        cv.GenerateID(): cv.declare_id(Gateway),
-        cv.Required(CONF_KNOWN_SENSORS): cv.All(
-            cv.ensure_list(SENSOR_ENTRY_SCHEMA),
-            cv.Length(min=1),
-            _validate_known_sensor_keys,
-        ),
-        cv.Optional(CONF_CANDIDATE_LIMIT, default=10): cv.int_range(min=1, max=20),
-        cv.Optional(CONF_STALE_AFTER, default="1h"): _validate_stale_after,
-        cv.Optional(CONF_TIME_ID): cv.use_id(time.RealTimeClock),
-        cv.Optional(CONF_CANDIDATES, default=[]): cv.All(
-            cv.ensure_list(text_sensor.text_sensor_schema(icon="mdi:radio-tower")),
-            cv.Length(max=20),
-        ),
-        cv.Optional(CONF_LAST_PACKET): text_sensor.text_sensor_schema(icon="mdi:radio"),
-        cv.Optional(CONF_PACKET_COUNT): sensor.sensor_schema(
-            accuracy_decimals=0,
-            state_class="total_increasing",
-        ),
-        cv.Optional(CONF_KNOWN_PACKET_COUNT): sensor.sensor_schema(
-            accuracy_decimals=0,
-            state_class="total_increasing",
-        ),
-        cv.Optional(CONF_UNKNOWN_PACKET_COUNT): sensor.sensor_schema(
-            accuracy_decimals=0,
-            state_class="total_increasing",
-        ),
-        cv.Optional(CONF_DISCOVERY_ENABLED): binary_sensor.binary_sensor_schema(
-            # Diagnostic read-only binary sensor mirroring runtime discovery enable state.
-            entity_category="diagnostic",
-        ),
-    }
-).extend(cv.COMPONENT_SCHEMA)
+CONFIG_SCHEMA = cv.All(
+    cv.Schema(
+        {
+            cv.GenerateID(): cv.declare_id(Gateway),
+            cv.Required(CONF_KNOWN_SENSORS): cv.All(
+                cv.ensure_list(SENSOR_ENTRY_SCHEMA),
+                cv.Length(min=1),
+                _validate_known_sensor_keys,
+            ),
+            cv.Optional(CONF_CANDIDATE_LIMIT, default=10): cv.int_range(min=1, max=20),
+            cv.Optional(CONF_STALE_AFTER, default="1h"): _validate_stale_after,
+            cv.Optional(CONF_TIME_ID): cv.use_id(time.RealTimeClock),
+            cv.Optional(CONF_CANDIDATES): cv.All(
+                cv.ensure_list(text_sensor.text_sensor_schema(icon="mdi:radio-tower")),
+                cv.Length(max=20),
+            ),
+            cv.Optional(CONF_LAST_PACKET): text_sensor.text_sensor_schema(icon="mdi:radio"),
+            cv.Optional(CONF_PACKET_COUNT): sensor.sensor_schema(
+                accuracy_decimals=0,
+                state_class="total_increasing",
+            ),
+            cv.Optional(CONF_KNOWN_PACKET_COUNT): sensor.sensor_schema(
+                accuracy_decimals=0,
+                state_class="total_increasing",
+            ),
+            cv.Optional(CONF_UNKNOWN_PACKET_COUNT): sensor.sensor_schema(
+                accuracy_decimals=0,
+                state_class="total_increasing",
+            ),
+            cv.Optional(CONF_DISCOVERY_ENABLED): binary_sensor.binary_sensor_schema(
+                # Diagnostic read-only binary sensor mirroring runtime discovery enable state.
+                entity_category="diagnostic",
+            ),
+        }
+    ).extend(cv.COMPONENT_SCHEMA),
+    _add_default_candidates,
+)
 
 GATEWAY_ID_SCHEMA = cv.Schema({cv.GenerateID(): cv.use_id(Gateway)})
 

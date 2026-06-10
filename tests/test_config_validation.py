@@ -13,6 +13,7 @@ from esphome.const import CONF_ID
 import components.rtl433_native as rtl433_native
 from components.rtl433_native import (
     ARDUINO_NETWORK_INCLUDE_FLAG,
+    CONFIG_SCHEMA,
     CONF_BATTERY,
     CONF_CANDIDATE_LIMIT,
     CONF_CANDIDATES,
@@ -400,6 +401,29 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
         ("set_temperature_sensor", ("garage_freezer_1", "sensor:temperature")),
     ]
     assert fake_env.codegen.added == fake_env.gateway.calls
+
+
+def test_config_schema_generates_candidate_sensors_from_limit() -> None:
+    """Create default candidate text sensors when only a limit is configured."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            CONF_CANDIDATE_LIMIT: 2,
+            CONF_KNOWN_SENSORS: [
+                {
+                    CONF_KEY: "garage_freezer_1",
+                    CONF_MAPPING: "Acurite-986/1R/11932",
+                    CONF_TEMPERATURE: {"name": "temperature"},
+                }
+            ],
+        }
+    )
+
+    assert config[CONF_CANDIDATES] == [
+        {"name": "Candidate 1", "entity_category": "diagnostic", "icon": "mdi:radio-tower"},
+        {"name": "Candidate 2", "entity_category": "diagnostic", "icon": "mdi:radio-tower"},
+    ]
 
 
 async def test_action_to_code_registers_parented_action(monkeypatch: pytest.MonkeyPatch) -> None:

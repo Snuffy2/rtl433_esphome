@@ -161,27 +161,6 @@ rtl433_native:
   discovery_enabled:
     name: "Discovery Enabled"
     entity_category: diagnostic
-  candidates:
-    - name: "Candidate 1"
-      entity_category: diagnostic
-    - name: "Candidate 2"
-      entity_category: diagnostic
-    - name: "Candidate 3"
-      entity_category: diagnostic
-    - name: "Candidate 4"
-      entity_category: diagnostic
-    - name: "Candidate 5"
-      entity_category: diagnostic
-    - name: "Candidate 6"
-      entity_category: diagnostic
-    - name: "Candidate 7"
-      entity_category: diagnostic
-    - name: "Candidate 8"
-      entity_category: diagnostic
-    - name: "Candidate 9"
-      entity_category: diagnostic
-    - name: "Candidate 10"
-      entity_category: diagnostic
 
 sensor:
   - platform: uptime
