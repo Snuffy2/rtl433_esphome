@@ -340,6 +340,19 @@ def install_codegen_fakes(
     )
 
 
+def compact_known_sensor_config(
+    name: str, entities: list[str], key: str = "garage_freezer_1"
+) -> dict[str, Any]:
+    """Return a compact known sensor test config."""
+
+    return {
+        CONF_KEY: key,
+        "name": name,
+        CONF_MAPPING: "Acurite-986/1R/11932",
+        "entities": entities,
+    }
+
+
 def test_validate_mapping_accepts_semicolon_delimited_sensor_keys() -> None:
     """Accept mapping strings with one primary key and synonyms."""
 
@@ -665,14 +678,7 @@ async def test_compact_known_sensor_mapping_entity_is_optional(
             CONF_CANDIDATE_LIMIT: 1,
             CONF_CANDIDATES: [],
             CONF_STALE_AFTER: "1min",
-            CONF_KNOWN_SENSORS: [
-                {
-                    CONF_KEY: "garage_freezer_1",
-                    "name": "Garage Freezer 1",
-                    CONF_MAPPING: "Acurite-986/1R/11932",
-                    "entities": ["temperature"],
-                }
-            ],
+            CONF_KNOWN_SENSORS: [compact_known_sensor_config("Garage Freezer 1", ["temperature"])],
         }
     )
     fake_env = install_codegen_fakes(monkeypatch)
@@ -701,12 +707,7 @@ async def test_compact_known_sensor_mapping_entity_uses_base_name(
             CONF_CANDIDATES: [],
             CONF_STALE_AFTER: "1min",
             CONF_KNOWN_SENSORS: [
-                {
-                    CONF_KEY: "garage_freezer_1",
-                    "name": "Garage Mapping Fixture",
-                    CONF_MAPPING: "Acurite-986/1R/11932",
-                    "entities": ["temperature", "mapping"],
-                }
+                compact_known_sensor_config("Garage Mapping Fixture", ["temperature", "mapping"])
             ],
         }
     )
