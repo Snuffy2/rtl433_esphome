@@ -542,6 +542,28 @@ def test_validate_known_sensor_keys_accepts_unique_keys() -> None:
     assert _validate_known_sensor_keys(config) is config
 
 
+@pytest.mark.parametrize("key", ["garage-freezer-1", "Acurite-986/1R/11932", "1_freezer"])
+def test_config_schema_rejects_known_sensor_keys_that_cannot_generate_ids(key: str) -> None:
+    """Reject logical keys that cannot safely form generated ESPHome IDs."""
+
+    fixture_name = f"Invalid Key {key}"
+    with pytest.raises(cv.Invalid):
+        CONFIG_SCHEMA(
+            {
+                CONF_ID: "gateway_id",
+                **gateway_diagnostic_overrides(fixture_name),
+                **gateway_control_overrides(fixture_name),
+                CONF_KNOWN_SENSORS: [
+                    {
+                        CONF_KEY: key,
+                        CONF_MAPPING: "Acurite-986/1R/11932",
+                        CONF_TEMPERATURE: {"name": f"{fixture_name} Temperature"},
+                    }
+                ],
+            }
+        )
+
+
 async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyPatch) -> None:
     """Generate code for known sensors, diagnostics, counters, candidates, and time."""
 
@@ -550,6 +572,8 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
     config: dict[str, Any] = {
         CONF_ID: "gateway_id",
         CONF_CANDIDATE_LIMIT: 2,
+        CONF_LED_PIN: 25,
+        CONF_RADIO: DEFAULT_RADIO_CONFIG,
         CONF_STALE_AFTER: FakeTimePeriod(total_milliseconds=3_600_000),
         CONF_TIME_ID: "time_id",
         CONF_KNOWN_SENSORS: [
@@ -644,6 +668,8 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
     config: dict[str, Any] = {
         CONF_ID: "gateway_id",
         CONF_CANDIDATE_LIMIT: 1,
+        CONF_LED_PIN: 25,
+        CONF_RADIO: DEFAULT_RADIO_CONFIG,
         CONF_STALE_AFTER: FakeTimePeriod(total_milliseconds=60_000),
         CONF_KNOWN_SENSORS: [
             {

@@ -45,6 +45,7 @@ Use the verbose form instead when an entity needs custom options:
 rtl433_native:
   known_sensors:
     - key: garage_combo_fridge
+      name: "Garage Combo Fridge"
       mapping: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203"
       temperature:
         name: "Garage Combo Fridge Temperature"
@@ -77,8 +78,8 @@ name or other entity settings.
 
 ## Hardware Configuration
 
-`garage-rtl433.yaml` omits the default receiver hardware profile. The
-`rtl433_native` component supplies these defaults:
+`garage-rtl433.yaml` uses the `rtl433_native` component-supplied hardware
+defaults:
 
 ```yaml
 rtl433_native:

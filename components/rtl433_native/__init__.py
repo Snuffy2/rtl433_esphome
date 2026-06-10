@@ -233,7 +233,7 @@ def _expand_compact_sensor_entry(entry: dict[str, Any]) -> dict[str, Any]:
 
 SENSOR_ENTRY_SCHEMA = cv.Schema(
     {
-        cv.Required(CONF_KEY): cv.string_strict,
+        cv.Required(CONF_KEY): cv.validate_id_name,
         cv.Required(CONF_MAPPING): _validate_mapping,
         cv.Required(CONF_TEMPERATURE): sensor.sensor_schema(
             unit_of_measurement="°F",
@@ -265,7 +265,7 @@ SENSOR_ENTRY_SCHEMA = cv.Schema(
 COMPACT_SENSOR_ENTRY_SCHEMA = cv.All(
     cv.Schema(
         {
-            cv.Required(CONF_KEY): cv.string_strict,
+            cv.Required(CONF_KEY): cv.validate_id_name,
             cv.Required(CONF_NAME): cv.string_strict,
             cv.Required(CONF_MAPPING): _validate_mapping,
             cv.Required(CONF_ENTITIES): cv.All(
@@ -373,7 +373,7 @@ async def to_code(config: dict[str, Any]) -> None:
     cg.add_build_flag(ARDUINO_NETWORK_INCLUDE_FLAG)
     cg.add_build_flag(LEDC_COMPAT_INCLUDE_FLAG)
     cg.add_platformio_option("lib_ldf_mode", "chain+")
-    radio_config = config.get(CONF_RADIO, DEFAULT_RADIO_CONFIG)
+    radio_config = config[CONF_RADIO]
     radio_pins = radio_config[CONF_PINS]
     cg.add_build_flag(f"-DRF_{radio_config[CONF_MODULE]}")
     cg.add_build_flag(f"-DRF_MODULE_FREQUENCY={radio_config[CONF_FREQUENCY]:g}")
@@ -386,7 +386,7 @@ async def to_code(config: dict[str, Any]) -> None:
     await cg.register_component(var, config)
     cg.add(var.set_candidate_limit(config[CONF_CANDIDATE_LIMIT]))
     cg.add(var.set_stale_after_ms(config[CONF_STALE_AFTER].total_milliseconds))
-    cg.add(var.set_led_pin(config.get(CONF_LED_PIN, 25)))
+    cg.add(var.set_led_pin(config[CONF_LED_PIN]))
     if CONF_TIME_ID in config:
         time_var = await cg.get_variable(config[CONF_TIME_ID])
         cg.add(var.set_time(time_var))

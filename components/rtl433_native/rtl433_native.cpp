@@ -69,13 +69,16 @@ void Gateway::setup() {
   if (this->unknown_packet_count_sensor_ != nullptr) {
     this->unknown_packet_count_sensor_->publish_state(0);
   }
-  this->restore_saved_states();
   this->rf_.initReceiver(RF_MODULE_RECEIVER_GPIO, RF_MODULE_FREQUENCY);
   this->rf_.setCallback(&Gateway::process_dispatch, this->buffer_, sizeof(this->buffer_));
   this->rf_.enableReceiver();
 }
 
 void Gateway::loop() {
+  if (!this->restored_states_) {
+    this->restored_states_ = true;
+    this->restore_saved_states();
+  }
   this->rf_.loop();
   this->publish_stale_states();
 }

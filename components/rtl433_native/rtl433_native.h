@@ -114,6 +114,7 @@ class Gateway : public Component {
   uint32_t known_packet_count_{0};
   uint32_t unknown_packet_count_{0};
   uint8_t led_pin_{25};
+  bool restored_states_{false};
   static Gateway *instance_;
 
   static void process_dispatch(char *message);
