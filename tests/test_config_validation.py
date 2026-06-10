@@ -193,7 +193,19 @@ class FakeCodegenEnvironment:
 def install_codegen_fakes(
     monkeypatch: pytest.MonkeyPatch, variables: dict[Any, Any] | None = None
 ) -> FakeCodegenEnvironment:
-    """Install ESPHome codegen fakes and return them for assertions."""
+    """Install ESPHome codegen fakes and return them for assertions.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture used to replace ESPHome codegen
+            modules with local fakes.
+        variables: Optional fake codegen variable lookup values keyed by
+            ESPHome ID.
+
+    Returns:
+        Installed fake codegen environment containing the gateway recorder,
+        codegen module, sensor module, binary sensor module, and text sensor
+        module fakes.
+    """
 
     gateway = FakeGateway()
     fake_cg = FakeCodegen(gateway=gateway, variables=variables or {})
