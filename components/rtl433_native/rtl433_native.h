@@ -60,6 +60,7 @@ class Gateway : public Component {
   void status();
   void clear_candidates();
   void set_discovery_enabled(bool enabled);
+  void set_led_pin(uint8_t led_pin) { this->led_pin_ = led_pin; }
   void add_mapping(const std::string &logical_key, const std::string &mapping);
   void set_override(const std::string &logical_key, const std::string &sensor_key);
   void set_candidate_limit(std::size_t limit);
@@ -100,6 +101,7 @@ class Gateway : public Component {
   uint32_t packet_count_{0};
   uint32_t known_packet_count_{0};
   uint32_t unknown_packet_count_{0};
+  uint8_t led_pin_{25};
   static Gateway *instance_;
 
   static void process_dispatch(char *message);

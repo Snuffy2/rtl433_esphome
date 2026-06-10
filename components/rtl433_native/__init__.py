@@ -23,6 +23,7 @@ CONF_KNOWN_SENSORS = "known_sensors"
 CONF_KNOWN_PACKET_COUNT = "known_packet_count"
 CONF_LAST_PACKET = "last_packet"
 CONF_LAST_UPDATED = "last_updated"
+CONF_LED_PIN = "led_pin"
 CONF_MAPPING = "mapping"
 CONF_PACKET_COUNT = "packet_count"
 CONF_PINS = "pins"
@@ -212,6 +213,7 @@ CONFIG_SCHEMA = cv.All(
                 _validate_known_sensor_keys,
             ),
             cv.Optional(CONF_CANDIDATE_LIMIT, default=10): cv.int_range(min=1, max=20),
+            cv.Optional(CONF_LED_PIN, default=25): cv.int_range(min=0),
             cv.Optional(CONF_RADIO, default=DEFAULT_RADIO_CONFIG): RADIO_SCHEMA,
             cv.Optional(CONF_STALE_AFTER, default="1h"): _validate_stale_after,
             cv.Optional(CONF_TIME_ID): cv.use_id(time.RealTimeClock),
@@ -269,6 +271,7 @@ async def to_code(config: dict[str, Any]) -> None:
     await cg.register_component(var, config)
     cg.add(var.set_candidate_limit(config[CONF_CANDIDATE_LIMIT]))
     cg.add(var.set_stale_after_ms(config[CONF_STALE_AFTER].total_milliseconds))
+    cg.add(var.set_led_pin(config.get(CONF_LED_PIN, 25)))
     if CONF_TIME_ID in config:
         time_var = await cg.get_variable(config[CONF_TIME_ID])
         cg.add(var.set_time(time_var))

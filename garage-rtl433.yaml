@@ -1,6 +1,7 @@
 substitutions:
   device_name: garage-rtl433-native
   friendly_name: Garage RTL433
+  led_pin: "25"
   rf_module: SX1278
   rf_frequency: "433.92"
   rf_dio0_pin: "26"
@@ -19,9 +20,6 @@ esphome:
   on_boot:
     priority: -100
     then:
-      - lambda: |-
-          pinMode(25, OUTPUT);
-          digitalWrite(25, LOW);
       - lambda: |-
           id(rtl433_gateway).set_override("garage_combo_fridge", id(garage_combo_fridge_mapping).state);
           id(rtl433_gateway).set_override("garage_combo_freezer", id(garage_combo_freezer_mapping).state);
@@ -63,6 +61,7 @@ external_components:
 rtl433_native:
   id: rtl433_gateway
   time_id: homeassistant_time
+  led_pin: ${led_pin}
   radio:
     module: ${rf_module}
     frequency: ${rf_frequency}

@@ -62,8 +62,9 @@ GENERATED_GATEWAY_METHODS = frozenset(
         "set_candidate_text_sensor",
         "set_discovery_enabled_sensor",
         "set_humidity_sensor",
-        "set_known_packet_count_sensor",
-        "set_last_packet_sensor",
+    "set_known_packet_count_sensor",
+    "set_led_pin",
+    "set_last_packet_sensor",
         "set_last_updated_sensor",
         "set_packet_count_sensor",
         "set_rssi_sensor",
@@ -383,6 +384,7 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
     assert fake_env.gateway.calls == [
         ("set_candidate_limit", (2,)),
         ("set_stale_after_ms", (3_600_000,)),
+        ("set_led_pin", (25,)),
         ("set_time", ("time:clock",)),
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
         ("set_temperature_sensor", ("garage_freezer_1", "sensor:temperature")),
@@ -440,6 +442,7 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
     assert fake_env.gateway.calls == [
         ("set_candidate_limit", (1,)),
         ("set_stale_after_ms", (60_000,)),
+        ("set_led_pin", (25,)),
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
         ("set_temperature_sensor", ("garage_freezer_1", "sensor:temperature")),
     ]

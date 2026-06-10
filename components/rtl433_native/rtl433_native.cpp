@@ -1,6 +1,8 @@
 #include "rtl433_native.h"
 #include "ledc_compat.h"
 
+#include <Arduino.h>
+
 #include <algorithm>
 #include <cmath>
 #include <ctime>
@@ -47,6 +49,8 @@ Gateway *Gateway::instance_ = nullptr;
 Gateway::Gateway() { instance_ = this; }
 
 void Gateway::setup() {
+  pinMode(this->led_pin_, OUTPUT);
+  digitalWrite(this->led_pin_, LOW);
   if (this->time_ != nullptr) {
     this->time_->add_on_time_sync_callback([this]() { this->sync_time_base(); });
     this->sync_time_base();
