@@ -1,23 +1,21 @@
 substitutions:
   device_name: garage-rtl433-native
   friendly_name: Garage RTL433
+  rf_module: SX1278
+  rf_frequency: "433.92"
+  rf_dio0_pin: "26"
+  rf_dio1_pin: "35"
+  rf_dio2_pin: "34"
+  rf_rst_pin: "14"
+  rf_cs_pin: "18"
+  rf_sck_pin: "5"
+  rf_miso_pin: "19"
+  rf_mosi_pin: "27"
 
 esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
   comment: "Heltec WiFi LoRa 32 V2-style 433 MHz rtl_433 ESPHome gateway"
-  platformio_options:
-    build_flags:
-      - "-DRF_SX1278"
-      - "-DRF_MODULE_FREQUENCY=433.92"
-      - "-DRF_MODULE_DIO0=26"
-      - "-DRF_MODULE_DIO1=35"
-      - "-DRF_MODULE_DIO2=34"
-      - "-DRF_MODULE_RST=14"
-      - "-DRF_MODULE_CS=18"
-      - "-DRF_MODULE_SCK=5"
-      - "-DRF_MODULE_MISO=19"
-      - "-DRF_MODULE_MOSI=27"
   on_boot:
     priority: -100
     then:
@@ -65,6 +63,18 @@ external_components:
 rtl433_native:
   id: rtl433_gateway
   time_id: homeassistant_time
+  radio:
+    module: ${rf_module}
+    frequency: ${rf_frequency}
+    pins:
+      dio0: ${rf_dio0_pin}
+      dio1: ${rf_dio1_pin}
+      dio2: ${rf_dio2_pin}
+      rst: ${rf_rst_pin}
+      cs: ${rf_cs_pin}
+      sck: ${rf_sck_pin}
+      miso: ${rf_miso_pin}
+      mosi: ${rf_mosi_pin}
   candidate_limit: 10
   stale_after: 1h
   known_sensors:

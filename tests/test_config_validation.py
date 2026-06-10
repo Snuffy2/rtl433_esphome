@@ -39,6 +39,21 @@ from components.rtl433_native import (
     _validate_stale_after,
 )
 
+EXPECTED_BUILD_FLAGS = [
+    ARDUINO_NETWORK_INCLUDE_FLAG,
+    "-include src/esphome/components/rtl433_native/ledc_compat.h",
+    "-DRF_SX1278",
+    "-DRF_MODULE_FREQUENCY=433.92",
+    "-DRF_MODULE_DIO0=26",
+    "-DRF_MODULE_DIO1=35",
+    "-DRF_MODULE_DIO2=34",
+    "-DRF_MODULE_RST=14",
+    "-DRF_MODULE_CS=18",
+    "-DRF_MODULE_SCK=5",
+    "-DRF_MODULE_MISO=19",
+    "-DRF_MODULE_MOSI=27",
+]
+
 GENERATED_GATEWAY_METHODS = frozenset(
     {
         "add_mapping",
@@ -111,9 +126,7 @@ class FakeCodegen:
 
         self.build_flags.append(flag)
 
-    def add_library(
-        self, name: str, version: str | None, repository: str | None = None
-    ) -> None:
+    def add_library(self, name: str, version: str | None, repository: str | None = None) -> None:
         """Record a PlatformIO library dependency."""
 
         self.libraries.append((name, version, repository))
@@ -337,10 +350,7 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
 
     await to_code(config)
 
-    assert fake_env.codegen.build_flags == [
-        ARDUINO_NETWORK_INCLUDE_FLAG,
-        "-include src/esphome/components/rtl433_native/ledc_compat.h",
-    ]
+    assert fake_env.codegen.build_flags == EXPECTED_BUILD_FLAGS
     assert fake_env.codegen.platformio_options == [("lib_ldf_mode", "chain+")]
     assert fake_env.codegen.libraries == [
         ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"),
@@ -413,10 +423,7 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
 
     await to_code(config)
 
-    assert fake_env.codegen.build_flags == [
-        ARDUINO_NETWORK_INCLUDE_FLAG,
-        "-include src/esphome/components/rtl433_native/ledc_compat.h",
-    ]
+    assert fake_env.codegen.build_flags == EXPECTED_BUILD_FLAGS
     assert fake_env.codegen.platformio_options == [("lib_ldf_mode", "chain+")]
     assert fake_env.codegen.libraries == [
         ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"),
