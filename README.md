@@ -15,6 +15,62 @@ Use semicolon-delimited mappings when rtl_433 reports the same physical
 transmitter under more than one decoder key. Each entry uses the
 `model/channel/id` format shown in discovery candidates.
 
+## Hardware Configuration
+
+`garage-rtl433.yaml` omits the default receiver hardware profile. The
+`rtl433_native` component supplies these defaults:
+
+```yaml
+rtl433_native:
+  led_pin: 25
+  radio:
+    module: SX1278
+    frequency: 433.92
+    pins:
+      dio0: 26
+      dio1: 35
+      dio2: 34
+      rst: 14
+      cs: 18
+      sck: 5
+      miso: 19
+      mosi: 27
+```
+
+Users with different boards or wiring can still add any of those options back
+under `rtl433_native`. They can also keep the values as YAML substitutions if
+they prefer a board profile at the top of the file:
+
+```yaml
+substitutions:
+  led_pin: "25"
+  rf_module: SX1278
+  rf_frequency: "433.92"
+  rf_dio0_pin: "26"
+  rf_dio1_pin: "35"
+  rf_dio2_pin: "34"
+  rf_rst_pin: "14"
+  rf_cs_pin: "18"
+  rf_sck_pin: "5"
+  rf_miso_pin: "19"
+  rf_mosi_pin: "27"
+
+rtl433_native:
+  led_pin: ${led_pin}
+  radio:
+    module: ${rf_module}
+    frequency: ${rf_frequency}
+    pins:
+      dio0: ${rf_dio0_pin}
+      dio1: ${rf_dio1_pin}
+      dio2: ${rf_dio2_pin}
+      rst: ${rf_rst_pin}
+      cs: ${rf_cs_pin}
+      sck: ${rf_sck_pin}
+      miso: ${rf_miso_pin}
+      mosi: ${rf_mosi_pin}
+```
+
 ## Build
 
 ```bash

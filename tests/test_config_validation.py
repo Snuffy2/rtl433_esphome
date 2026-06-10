@@ -24,14 +24,17 @@ from components.rtl433_native import (
     CONF_KNOWN_SENSORS,
     CONF_LAST_PACKET,
     CONF_LAST_UPDATED,
+    CONF_LED_PIN,
     CONF_MAPPING,
     CONF_PACKET_COUNT,
+    CONF_RADIO,
     CONF_RSSI,
     CONF_STALE,
     CONF_STALE_AFTER,
     CONF_TEMPERATURE,
     CONF_TIME_ID,
     CONF_UNKNOWN_PACKET_COUNT,
+    DEFAULT_RADIO_CONFIG,
     action_to_code,
     to_code,
     _validate_known_sensor_keys,
@@ -561,7 +564,7 @@ def test_config_schema_generates_candidate_sensors_from_limit() -> None:
                 {
                     CONF_KEY: "garage_freezer_1",
                     CONF_MAPPING: "Acurite-986/1R/11932",
-                    CONF_TEMPERATURE: {"name": "temperature"},
+                    CONF_TEMPERATURE: {"name": "default profile temperature"},
                 }
             ],
         }
@@ -589,6 +592,26 @@ def test_config_schema_generates_candidate_sensors_from_limit() -> None:
             "icon": "mdi:radio-tower",
         },
     ]
+
+
+def test_config_schema_supplies_default_hardware_profile() -> None:
+    """Use component hardware defaults when LED and radio options are omitted."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            CONF_KNOWN_SENSORS: [
+                {
+                    CONF_KEY: "garage_freezer_1",
+                    CONF_MAPPING: "Acurite-986/1R/11932",
+                    CONF_TEMPERATURE: {"name": "temperature"},
+                }
+            ],
+        }
+    )
+
+    assert config[CONF_LED_PIN] == 25
+    assert config[CONF_RADIO] == DEFAULT_RADIO_CONFIG
 
 
 async def test_action_to_code_registers_parented_action(monkeypatch: pytest.MonkeyPatch) -> None:
