@@ -188,7 +188,7 @@ def _add_default_candidates(config: dict[str, Any]) -> dict[str, Any]:
                 ),
                 "name": f"Candidate {index + 1}",
                 "entity_category": "diagnostic",
-                CONF_DISABLED_BY_DEFAULT: True,
+                CONF_DISABLED_BY_DEFAULT: False,
                 "icon": "mdi:radio-tower",
             }
             for index in range(config[CONF_CANDIDATE_LIMIT])

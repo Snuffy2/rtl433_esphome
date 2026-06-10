@@ -733,13 +733,13 @@ def test_config_schema_generates_candidate_sensors_from_limit() -> None:
         {
             "name": "Candidate 1",
             "entity_category": "diagnostic",
-            CONF_DISABLED_BY_DEFAULT: True,
+            CONF_DISABLED_BY_DEFAULT: False,
             "icon": "mdi:radio-tower",
         },
         {
             "name": "Candidate 2",
             "entity_category": "diagnostic",
-            CONF_DISABLED_BY_DEFAULT: True,
+            CONF_DISABLED_BY_DEFAULT: False,
             "icon": "mdi:radio-tower",
         },
     ]

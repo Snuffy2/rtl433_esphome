@@ -67,8 +67,8 @@ Add any of those options under `rtl433_native` only when overriding the generate
 name or other entity settings. These gateway diagnostics are disabled by
 default.
 
-Candidate text sensors are created from `candidate_limit` and disabled by
-default, so enable them in Home Assistant only while using discovery.
+Candidate text sensors are created from `candidate_limit` as diagnostic entities
+and are enabled by default, but they are not part of the primary sensor view.
 
 Gateway controls are also created by default and do not need template `switch`
 or `button` entries in `garage-rtl433.yaml`:
