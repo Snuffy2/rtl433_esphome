@@ -18,9 +18,14 @@ from components.rtl433_native import (
     CONF_CANDIDATE_LIMIT,
     CONF_CANDIDATES,
     CONF_CLEAR_CANDIDATES_BUTTON,
+    CONF_CS,
+    CONF_DIO0,
+    CONF_DIO1,
+    CONF_DIO2,
     CONF_DISCOVERY_ENABLED,
     CONF_DISCOVERY_MODE,
     CONF_ENTITIES,
+    CONF_FREQUENCY,
     CONF_HUMIDITY,
     CONF_KEY,
     CONF_KNOWN_PACKET_COUNT,
@@ -29,10 +34,15 @@ from components.rtl433_native import (
     CONF_LAST_UPDATED,
     CONF_LED_PIN,
     CONF_MAPPING,
+    CONF_MISO,
     CONF_MODULE,
+    CONF_MOSI,
     CONF_PACKET_COUNT,
+    CONF_PINS,
     CONF_RADIO,
     CONF_RSSI,
+    CONF_RST,
+    CONF_SCK,
     CONF_STALE,
     CONF_STALE_AFTER,
     CONF_STATUS_BUTTON,
@@ -926,6 +936,67 @@ def test_config_schema_supplies_default_hardware_profile() -> None:
 
     assert config[CONF_LED_PIN] == 25
     assert config[CONF_RADIO] == DEFAULT_RADIO_CONFIG
+
+
+def test_config_schema_accepts_valid_custom_hardware_profile() -> None:
+    """Accept supported custom LED, radio frequency, and GPIO overrides."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            CONF_LED_PIN: 2,
+            CONF_RADIO: {
+                CONF_FREQUENCY: 315,
+                CONF_PINS: {
+                    CONF_DIO0: 26,
+                    CONF_DIO1: 35,
+                    CONF_DIO2: 34,
+                    CONF_RST: 14,
+                    CONF_CS: 18,
+                    CONF_SCK: 5,
+                    CONF_MISO: 19,
+                    CONF_MOSI: 27,
+                },
+            },
+            **gateway_diagnostic_overrides("Custom Hardware Fixture"),
+            **gateway_control_overrides("Custom Hardware Fixture"),
+            CONF_KNOWN_SENSORS: [
+                compact_known_sensor_config("Custom Hardware Fixture", ["temperature"])
+            ],
+        }
+    )
+
+    assert config[CONF_LED_PIN] == 2
+    assert config[CONF_RADIO][CONF_FREQUENCY] == 315
+    assert config[CONF_RADIO][CONF_PINS][CONF_DIO1] == 35
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {CONF_LED_PIN: 999},
+        {CONF_LED_PIN: -1},
+        {CONF_RADIO: {CONF_FREQUENCY: 0}},
+        {CONF_RADIO: {CONF_FREQUENCY: -1}},
+        {CONF_RADIO: {CONF_PINS: {CONF_DIO0: 999}}},
+        {CONF_RADIO: {CONF_PINS: {CONF_DIO0: -1}}},
+    ],
+)
+def test_config_schema_rejects_invalid_hardware_profile(override: dict[str, Any]) -> None:
+    """Reject impossible GPIO and frequency values before build flag generation."""
+
+    with pytest.raises(cv.Invalid):
+        CONFIG_SCHEMA(
+            {
+                CONF_ID: "gateway_id",
+                **override,
+                **gateway_diagnostic_overrides("Invalid Hardware Fixture"),
+                **gateway_control_overrides("Invalid Hardware Fixture"),
+                CONF_KNOWN_SENSORS: [
+                    compact_known_sensor_config("Invalid Hardware Fixture", ["temperature"])
+                ],
+            }
+        )
 
 
 def test_validate_radio_module_accepts_build_flag_suffixes() -> None:
