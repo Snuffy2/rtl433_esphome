@@ -167,9 +167,7 @@ bool matches_mapping(const DecodedPacket &packet, const SensorMapping &mapping) 
 void GatewayState::set_mapping(const std::string &logical_key, const std::string &mapping_value) {
   auto parsed = parse_sensor_mapping(mapping_value);
   if (!parsed.has_value()) {
-    ESP_LOGW(TAG, "Removing mapping for '%s' due to invalid mapping '%s'", logical_key.c_str(), mapping_value.c_str());
-    mappings_.erase(logical_key);
-    logical_states_.erase(logical_key);
+    ESP_LOGW(TAG, "Ignoring invalid mapping for '%s': '%s'", logical_key.c_str(), mapping_value.c_str());
     return;
   }
   const auto existing = mappings_.find(logical_key);

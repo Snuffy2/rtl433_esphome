@@ -40,6 +40,10 @@ entity is optional; include it when you want a Home Assistant text entity for
 changing the rtl_433 mapping at runtime. Compact RSSI and last-updated entities
 are disabled by default.
 
+Mapping text entity values are saved on the device. After a mapping is changed
+from Home Assistant, the saved value continues to override the YAML default
+across reboots and OTA updates until the mapping text entity is changed again.
+
 Use the verbose form instead when an entity needs custom options:
 
 ```yaml
