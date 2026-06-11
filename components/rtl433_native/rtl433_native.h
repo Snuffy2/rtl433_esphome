@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "esphome/components/binary_sensor/binary_sensor.h"
@@ -98,6 +99,7 @@ class Gateway : public Component {
   std::unordered_map<std::string, EntitySet> entities_{};
   std::vector<std::string> logical_keys_{};
   std::unordered_map<std::string, ESPPreferenceObject> preferences_{};
+  std::unordered_set<std::string> remapped_before_restore_{};
   std::unordered_map<std::string, uint32_t> last_updated_values_{};
   std::unordered_map<std::string, uint32_t> last_updated_ms_{};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};

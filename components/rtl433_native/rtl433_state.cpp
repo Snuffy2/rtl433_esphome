@@ -164,18 +164,19 @@ bool matches_mapping(const DecodedPacket &packet, const SensorMapping &mapping) 
   });
 }
 
-void GatewayState::set_mapping(const std::string &logical_key, const std::string &mapping_value) {
+bool GatewayState::set_mapping(const std::string &logical_key, const std::string &mapping_value) {
   auto parsed = parse_sensor_mapping(mapping_value);
   if (!parsed.has_value()) {
     ESP_LOGW(TAG, "Ignoring invalid mapping for '%s': '%s'", logical_key.c_str(), mapping_value.c_str());
-    return;
+    return false;
   }
   const auto existing = mappings_.find(logical_key);
   if (existing != mappings_.end() && same_mapping(existing->second, *parsed)) {
-    return;
+    return false;
   }
   mappings_[logical_key] = std::move(*parsed);
   logical_states_[logical_key] = LogicalSensorState{};
+  return true;
 }
 
 void GatewayState::restore_logical_state(const std::string &logical_key, const LogicalSensorState &state) {

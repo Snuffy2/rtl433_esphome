@@ -119,7 +119,9 @@ void Gateway::add_mapping(const std::string &logical_key, const std::string &map
 
 void Gateway::set_override(const std::string &logical_key, const std::string &sensor_key) {
   this->entities_.try_emplace(logical_key);
-  this->state_.set_mapping(logical_key, sensor_key);
+  if (this->state_.set_mapping(logical_key, sensor_key) && !this->restored_states_) {
+    this->remapped_before_restore_.insert(logical_key);
+  }
 }
 
 void Gateway::set_candidate_limit(std::size_t limit) { this->state_.set_candidate_limit(limit); }
@@ -323,6 +325,9 @@ void Gateway::restore_saved_states() {
     auto preference = global_preferences->make_preference<SavedLogicalState>(preference_key(logical_key), true);
     SavedLogicalState saved;
     this->preferences_[logical_key] = preference;
+    if (this->remapped_before_restore_.find(logical_key) != this->remapped_before_restore_.end()) {
+      continue;
+    }
     if (!preference.load(&saved) || !saved.has_value) {
       continue;
     }
@@ -348,6 +353,7 @@ void Gateway::restore_saved_states() {
       }
     });
   }
+  this->remapped_before_restore_.clear();
 }
 
 void Gateway::sync_time_base() {

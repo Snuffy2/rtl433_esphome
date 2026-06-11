@@ -414,7 +414,10 @@ CONFIG_SCHEMA = cv.All(
                 _validate_mapping_text_ids,
             ),
             cv.Optional(CONF_CANDIDATE_LIMIT, default=10): cv.int_range(min=1, max=20),
-            cv.Optional(CONF_LED_PIN, default=25): cv.int_range(min=0, max=ESP32_OUTPUT_GPIO_MAX),
+            cv.Optional(CONF_LED_PIN, default=25): cv.All(
+                cv.int_range(min=0, max=ESP32_OUTPUT_GPIO_MAX),
+                _validate_esp32_gpio,
+            ),
             cv.Optional(CONF_RADIO, default=DEFAULT_RADIO_CONFIG): RADIO_SCHEMA,
             cv.Optional(CONF_STALE_AFTER, default="1h"): _validate_stale_after,
             cv.Optional(CONF_TIME_ID): cv.use_id(time.RealTimeClock),
