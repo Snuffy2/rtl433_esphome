@@ -557,22 +557,48 @@ def test_validate_known_sensor_keys_accepts_unique_keys() -> None:
 
 
 @pytest.mark.parametrize("key", ["garage-freezer-1", "Acurite-986/1R/11932", "1_freezer"])
-def test_config_schema_rejects_known_sensor_keys_that_cannot_generate_ids(key: str) -> None:
-    """Reject logical keys that cannot safely form generated ESPHome IDs."""
+def test_config_schema_accepts_legacy_known_sensor_keys(key: str) -> None:
+    """Accept existing logical keys even when generated ESPHome IDs need sanitizing."""
 
-    fixture_name = f"Invalid Key {key}"
-    with pytest.raises(cv.Invalid):
+    fixture_name = f"Legacy Key {key}"
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            **gateway_diagnostic_overrides(fixture_name),
+            **gateway_control_overrides(fixture_name),
+            CONF_KNOWN_SENSORS: [
+                {
+                    CONF_KEY: key,
+                    CONF_MAPPING: "Acurite-986/1R/11932",
+                    CONF_TEMPERATURE: {"name": f"{fixture_name} Temperature"},
+                }
+            ],
+        }
+    )
+
+    assert config[CONF_KNOWN_SENSORS][0][CONF_KEY] == key
+
+
+def test_config_schema_rejects_duplicate_generated_mapping_text_ids() -> None:
+    """Reject distinct logical keys that collide after mapping text ID sanitizing."""
+
+    with pytest.raises(cv.Invalid, match="duplicate mapping text ID 'garage_freezer_1_mapping'"):
         CONFIG_SCHEMA(
             {
                 CONF_ID: "gateway_id",
-                **gateway_diagnostic_overrides(fixture_name),
-                **gateway_control_overrides(fixture_name),
+                **gateway_diagnostic_overrides("Duplicate Mapping ID Fixture"),
+                **gateway_control_overrides("Duplicate Mapping ID Fixture"),
                 CONF_KNOWN_SENSORS: [
                     {
-                        CONF_KEY: key,
+                        CONF_KEY: "garage-freezer-1",
                         CONF_MAPPING: "Acurite-986/1R/11932",
-                        CONF_TEMPERATURE: {"name": f"{fixture_name} Temperature"},
-                    }
+                        CONF_TEMPERATURE: {"name": "Garage Freezer Dashed Temperature"},
+                    },
+                    {
+                        CONF_KEY: "garage_freezer_1",
+                        CONF_MAPPING: "Acurite-986/2F/31274",
+                        CONF_TEMPERATURE: {"name": "Garage Freezer Underscore Temperature"},
+                    },
                 ],
             }
         )
@@ -717,6 +743,47 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
         assert call in fake_env.codegen.added
     for call in fake_env.text.texts[0].calls:
         assert call in fake_env.codegen.added
+
+
+async def test_to_code_sanitizes_generated_mapping_text_id_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep legacy logical keys while generating a valid mapping text component ID."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            CONF_CANDIDATE_LIMIT: 1,
+            CONF_CANDIDATES: [],
+            CONF_STALE_AFTER: "1min",
+            **gateway_diagnostic_overrides("Sanitized ID Fixture"),
+            **gateway_control_overrides("Sanitized ID Fixture"),
+            CONF_KNOWN_SENSORS: [
+                {
+                    CONF_KEY: "garage-freezer-1",
+                    CONF_MAPPING: "Acurite-986/1R/11932",
+                    CONF_TEMPERATURE: {"name": "Garage Freezer Temperature"},
+                }
+            ],
+        }
+    )
+    fake_env = install_codegen_fakes(monkeypatch)
+
+    await to_code(config)
+
+    mapping_text_id = fake_env.text.created[0][CONF_ID]
+    assert getattr(mapping_text_id, "id") == "garage_freezer_1_mapping"
+    assert fake_env.text.texts[0].calls == [
+        ("set_parent", (fake_env.gateway,)),
+        ("set_logical_key", ("garage-freezer-1",)),
+        ("set_initial_value", ("Acurite-986/1R/11932",)),
+    ]
+    expected_gateway_calls = [
+        ("add_mapping", ("garage-freezer-1", "Acurite-986/1R/11932")),
+        ("set_temperature_sensor", ("garage-freezer-1", "sensor:Garage Freezer Temperature")),
+    ]
+    for call in expected_gateway_calls:
+        assert call in fake_env.gateway.calls
 
 
 def test_config_schema_generates_candidate_sensors_from_limit() -> None:

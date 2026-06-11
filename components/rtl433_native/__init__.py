@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from esphome import automation
@@ -118,6 +119,8 @@ KNOWN_SENSOR_ENTITIES = (
     CONF_LAST_UPDATED,
     ENTITY_MAPPING,
 )
+MAPPING_TEXT_ID_UNSAFE_CHARS = re.compile(r"[^0-9A-Za-z_]+")
+KEY_SCHEMA = cv.All(cv.string_strict, cv.Length(min=1))
 
 
 def _validate_known_sensor_keys(value: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -129,6 +132,24 @@ def _validate_known_sensor_keys(value: list[dict[str, Any]]) -> list[dict[str, A
         if key_value in seen:
             raise cv.Invalid(f"Duplicate known sensor key '{key_value}'")
         seen.add(key_value)
+    return value
+
+
+def _validate_mapping_text_ids(value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ensure generated mapping text entity IDs are unique."""
+
+    seen: dict[str, str] = {}
+    for entry in value:
+        if not _entry_has_mapping_text(entry):
+            continue
+        mapping_text_id = _mapping_text_id(entry)
+        if mapping_text_id in seen:
+            raise cv.Invalid(
+                "Known sensor keys "
+                f"'{seen[mapping_text_id]}' and '{entry[CONF_KEY]}' generate duplicate "
+                f"mapping text ID '{mapping_text_id}'"
+            )
+        seen[mapping_text_id] = entry[CONF_KEY]
     return value
 
 
@@ -215,6 +236,31 @@ def _mapping_text_name(entry: dict[str, Any]) -> str:
     return f"{entry[CONF_TEMPERATURE]['name']} Mapping"
 
 
+def _mapping_text_id_fragment(logical_key: str) -> str:
+    """Return a C++ ID-safe fragment for a known sensor mapping text entity."""
+
+    try:
+        return str(cv.validate_id_name(logical_key))
+    except cv.Invalid:
+        sanitized_key = MAPPING_TEXT_ID_UNSAFE_CHARS.sub("_", logical_key.strip()).strip("_")
+        if sanitized_key == "":
+            raise cv.Invalid("Known sensor key must generate a non-empty mapping text ID")
+        if sanitized_key[0].isdigit():
+            sanitized_key = f"sensor_{sanitized_key}"
+        try:
+            return str(cv.validate_id_name(sanitized_key))
+        except cv.Invalid as err:
+            raise cv.Invalid(
+                f"Known sensor key '{logical_key}' cannot generate a valid mapping text ID"
+            ) from err
+
+
+def _mapping_text_id(entry: dict[str, Any]) -> str:
+    """Return the generated ESPHome ID for a known sensor mapping text entity."""
+
+    return f"{_mapping_text_id_fragment(entry[CONF_KEY])}_mapping"
+
+
 def _entity_title(entity: str) -> str:
     """Return the generated title suffix for a known sensor entity type."""
 
@@ -261,7 +307,7 @@ def _expand_compact_sensor_entry(entry: dict[str, Any]) -> dict[str, Any]:
 
 SENSOR_ENTRY_SCHEMA = cv.Schema(
     {
-        cv.Required(CONF_KEY): cv.validate_id_name,
+        cv.Required(CONF_KEY): KEY_SCHEMA,
         cv.Required(CONF_MAPPING): _validate_mapping,
         cv.Required(CONF_TEMPERATURE): sensor.sensor_schema(
             unit_of_measurement="°F",
@@ -293,7 +339,7 @@ SENSOR_ENTRY_SCHEMA = cv.Schema(
 COMPACT_SENSOR_ENTRY_SCHEMA = cv.All(
     cv.Schema(
         {
-            cv.Required(CONF_KEY): cv.validate_id_name,
+            cv.Required(CONF_KEY): KEY_SCHEMA,
             cv.Required(CONF_NAME): cv.string_strict,
             cv.Required(CONF_MAPPING): _validate_mapping,
             cv.Required(CONF_ENTITIES): cv.All(
@@ -329,6 +375,7 @@ CONFIG_SCHEMA = cv.All(
                 cv.ensure_list(KNOWN_SENSOR_ENTRY_SCHEMA),
                 cv.Length(min=1),
                 _validate_known_sensor_keys,
+                _validate_mapping_text_ids,
             ),
             cv.Optional(CONF_CANDIDATE_LIMIT, default=10): cv.int_range(min=1, max=20),
             cv.Optional(CONF_LED_PIN, default=25): cv.int_range(min=0),
@@ -448,9 +495,7 @@ async def to_code(config: dict[str, Any]) -> None:
             )
         )
         if _entry_has_mapping_text(entry):
-            mapping_text_id = ID(
-                f"{entry[CONF_KEY]}_mapping", is_declaration=True, type=MappingText
-            )
+            mapping_text_id = ID(_mapping_text_id(entry), is_declaration=True, type=MappingText)
             mapping_text_config = {
                 CONF_ID: mapping_text_id,
                 "name": _mapping_text_name(entry),
