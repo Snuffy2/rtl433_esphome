@@ -976,12 +976,15 @@ def test_config_schema_accepts_valid_custom_hardware_profile() -> None:
     [
         {CONF_LED_PIN: 999},
         {CONF_LED_PIN: 35},
+        {CONF_LED_PIN: 6},
         {CONF_LED_PIN: -1},
         {CONF_RADIO: {CONF_FREQUENCY: 0}},
         {CONF_RADIO: {CONF_FREQUENCY: -1}},
         {CONF_RADIO: {CONF_PINS: {CONF_DIO0: 999}}},
         {CONF_RADIO: {CONF_PINS: {CONF_DIO0: -1}}},
+        {CONF_RADIO: {CONF_PINS: {CONF_DIO0: 6}}},
         {CONF_RADIO: {CONF_PINS: {CONF_CS: 35}}},
+        {CONF_RADIO: {CONF_PINS: {CONF_CS: 6}}},
         {CONF_RADIO: {CONF_PINS: {CONF_RST: 34}}},
         {CONF_RADIO: {CONF_PINS: {CONF_SCK: 39}}},
         {CONF_RADIO: {CONF_PINS: {CONF_MOSI: 36}}},
@@ -1017,6 +1020,13 @@ def test_validate_radio_module_rejects_unsafe_build_flag_suffixes() -> None:
         _validate_radio_module("RF-CC1101")
 
 
+def test_validate_radio_module_rejects_unsupported_modules() -> None:
+    """Reject unknown radio module names before build flag generation."""
+
+    with pytest.raises(cv.Invalid, match="Unsupported rtl_433_ESP radio module 'BANANA'"):
+        _validate_radio_module("banana")
+
+
 async def test_to_code_uses_configured_radio_module(monkeypatch: pytest.MonkeyPatch) -> None:
     """Generate RF module build flags from configured non-default modules."""
 
@@ -1038,6 +1048,10 @@ async def test_to_code_uses_configured_radio_module(monkeypatch: pytest.MonkeyPa
     assert config[CONF_RADIO][CONF_MODULE] == "CC1101"
     assert "-DRF_CC1101" in fake_env.codegen.build_flags
     assert "-DRF_SX1278" not in fake_env.codegen.build_flags
+    assert "-DRF_MODULE_GDO0=26" in fake_env.codegen.build_flags
+    assert "-DRF_MODULE_GDO2=34" in fake_env.codegen.build_flags
+    assert "-DRF_MODULE_DIO0=26" not in fake_env.codegen.build_flags
+    assert "-DRF_MODULE_DIO2=34" not in fake_env.codegen.build_flags
 
 
 def test_config_schema_expands_compact_known_sensor_entities() -> None:

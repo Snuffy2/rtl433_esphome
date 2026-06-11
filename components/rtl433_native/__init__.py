@@ -80,6 +80,8 @@ RTL433_NATIVE_LIBRARIES = (
     ("EEPROM", None, None),
 )
 DEFAULT_RADIO_MODULE = "SX1278"
+SUPPORTED_RADIO_MODULES = frozenset({"CC1101", "SX1276", "SX1278"})
+ESP32_FLASH_GPIO_RANGE = range(6, 12)
 DEFAULT_RADIO_FREQUENCY = 433.92
 DEFAULT_RADIO_PINS = {
     CONF_DIO0: 26,
@@ -101,6 +103,14 @@ RADIO_PIN_BUILD_FLAGS: tuple[tuple[str, str], ...] = (
     (CONF_MISO, "MISO"),
     (CONF_MOSI, "MOSI"),
 )
+CC1101_PIN_BUILD_FLAGS: tuple[tuple[str, str], ...] = (
+    (CONF_DIO0, "GDO0"),
+    (CONF_DIO2, "GDO2"),
+    (CONF_CS, "CS"),
+    (CONF_SCK, "SCK"),
+    (CONF_MISO, "MISO"),
+    (CONF_MOSI, "MOSI"),
+)
 DEFAULT_RADIO_CONFIG = {
     CONF_MODULE: DEFAULT_RADIO_MODULE,
     CONF_FREQUENCY: DEFAULT_RADIO_FREQUENCY,
@@ -112,9 +122,12 @@ RADIO_PINS_SCHEMA = cv.Schema(
         cv.Optional(
             pin_key,
             default=DEFAULT_RADIO_PINS[pin_key],
-        ): cv.int_range(
-            min=0,
-            max=ESP32_GPIO_MAX if pin_key in RADIO_INPUT_PINS else ESP32_OUTPUT_GPIO_MAX,
+        ): cv.All(
+            cv.int_range(
+                min=0,
+                max=ESP32_GPIO_MAX if pin_key in RADIO_INPUT_PINS else ESP32_OUTPUT_GPIO_MAX,
+            ),
+            lambda value: _validate_esp32_gpio(value),
         )
         for pin_key, _ in RADIO_PIN_BUILD_FLAGS
     }
@@ -212,7 +225,21 @@ def _validate_stale_after(value: Any) -> Any:
 def _validate_radio_module(value: Any) -> str:
     """Validate and normalize an rtl_433_ESP radio module build flag suffix."""
 
-    return str(cv.validate_id_name(value)).upper()
+    module = str(cv.validate_id_name(value)).upper()
+    if module not in SUPPORTED_RADIO_MODULES:
+        supported = ", ".join(sorted(SUPPORTED_RADIO_MODULES))
+        raise cv.Invalid(
+            f"Unsupported rtl_433_ESP radio module '{module}'. Expected one of: {supported}"
+        )
+    return module
+
+
+def _validate_esp32_gpio(value: int) -> int:
+    """Reject ESP32 GPIO numbers reserved for integrated flash."""
+
+    if value in ESP32_FLASH_GPIO_RANGE:
+        raise cv.Invalid(f"GPIO {value} is reserved for ESP32 flash")
+    return value
 
 
 def _add_default_candidates(config: dict[str, Any]) -> dict[str, Any]:
@@ -481,7 +508,10 @@ async def to_code(config: dict[str, Any]) -> None:
     radio_pins = radio_config[CONF_PINS]
     cg.add_build_flag(f"-DRF_{radio_config[CONF_MODULE]}")
     cg.add_build_flag(f"-DRF_MODULE_FREQUENCY={radio_config[CONF_FREQUENCY]:g}")
-    for pin_key, build_flag_name in RADIO_PIN_BUILD_FLAGS:
+    pin_build_flags = (
+        CC1101_PIN_BUILD_FLAGS if radio_config[CONF_MODULE] == "CC1101" else RADIO_PIN_BUILD_FLAGS
+    )
+    for pin_key, build_flag_name in pin_build_flags:
         cg.add_build_flag(f"-DRF_MODULE_{build_flag_name}={radio_pins[pin_key]}")
     for name, version, repository in RTL433_NATIVE_LIBRARIES:
         cg.add_library(name, version, repository)
