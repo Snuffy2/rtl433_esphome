@@ -29,6 +29,7 @@ from components.rtl433_native import (
     CONF_LAST_UPDATED,
     CONF_LED_PIN,
     CONF_MAPPING,
+    CONF_MODULE,
     CONF_PACKET_COUNT,
     CONF_RADIO,
     CONF_RSSI,
@@ -43,6 +44,7 @@ from components.rtl433_native import (
     to_code,
     _validate_known_sensor_keys,
     _validate_mapping,
+    _validate_radio_module,
     _validate_stale_after,
 )
 
@@ -857,6 +859,42 @@ def test_config_schema_supplies_default_hardware_profile() -> None:
 
     assert config[CONF_LED_PIN] == 25
     assert config[CONF_RADIO] == DEFAULT_RADIO_CONFIG
+
+
+def test_validate_radio_module_accepts_build_flag_suffixes() -> None:
+    """Accept non-default rtl_433_ESP radio module build flag suffixes."""
+
+    assert _validate_radio_module("cc1101") == "CC1101"
+
+
+def test_validate_radio_module_rejects_unsafe_build_flag_suffixes() -> None:
+    """Reject radio module names that cannot safely form a build flag."""
+
+    with pytest.raises(cv.Invalid):
+        _validate_radio_module("RF-CC1101")
+
+
+async def test_to_code_uses_configured_radio_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Generate RF module build flags from configured non-default modules."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            CONF_CANDIDATES: [],
+            CONF_STALE_AFTER: "1min",
+            CONF_RADIO: {CONF_MODULE: "cc1101"},
+            **gateway_diagnostic_overrides("Radio Fixture"),
+            **gateway_control_overrides("Radio Fixture"),
+            CONF_KNOWN_SENSORS: [compact_known_sensor_config("Radio Fixture", ["temperature"])],
+        }
+    )
+    fake_env = install_codegen_fakes(monkeypatch)
+
+    await to_code(config)
+
+    assert config[CONF_RADIO][CONF_MODULE] == "CC1101"
+    assert "-DRF_CC1101" in fake_env.codegen.build_flags
+    assert "-DRF_SX1278" not in fake_env.codegen.build_flags
 
 
 def test_config_schema_expands_compact_known_sensor_entities() -> None:

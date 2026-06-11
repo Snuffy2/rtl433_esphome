@@ -179,6 +179,12 @@ def _validate_stale_after(value: Any) -> Any:
     return result
 
 
+def _validate_radio_module(value: Any) -> str:
+    """Validate and normalize an rtl_433_ESP radio module build flag suffix."""
+
+    return str(cv.validate_id_name(value)).upper()
+
+
 def _add_default_candidates(config: dict[str, Any]) -> dict[str, Any]:
     """Create default candidate text sensors from the configured limit."""
 
@@ -309,7 +315,7 @@ KNOWN_SENSOR_ENTRY_SCHEMA = cv.Any(COMPACT_SENSOR_ENTRY_SCHEMA, SENSOR_ENTRY_SCH
 
 RADIO_SCHEMA = cv.Schema(
     {
-        cv.Optional(CONF_MODULE, default=DEFAULT_RADIO_MODULE): cv.one_of("SX1278", upper=True),
+        cv.Optional(CONF_MODULE, default=DEFAULT_RADIO_MODULE): _validate_radio_module,
         cv.Optional(CONF_FREQUENCY, default=DEFAULT_RADIO_FREQUENCY): cv.float_,
         cv.Optional(CONF_PINS, default=DEFAULT_RADIO_PINS): RADIO_PINS_SCHEMA,
     }
