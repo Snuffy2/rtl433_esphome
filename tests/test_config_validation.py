@@ -975,11 +975,16 @@ def test_config_schema_accepts_valid_custom_hardware_profile() -> None:
     "override",
     [
         {CONF_LED_PIN: 999},
+        {CONF_LED_PIN: 35},
         {CONF_LED_PIN: -1},
         {CONF_RADIO: {CONF_FREQUENCY: 0}},
         {CONF_RADIO: {CONF_FREQUENCY: -1}},
         {CONF_RADIO: {CONF_PINS: {CONF_DIO0: 999}}},
         {CONF_RADIO: {CONF_PINS: {CONF_DIO0: -1}}},
+        {CONF_RADIO: {CONF_PINS: {CONF_CS: 35}}},
+        {CONF_RADIO: {CONF_PINS: {CONF_RST: 34}}},
+        {CONF_RADIO: {CONF_PINS: {CONF_SCK: 39}}},
+        {CONF_RADIO: {CONF_PINS: {CONF_MOSI: 36}}},
     ],
 )
 def test_config_schema_rejects_invalid_hardware_profile(override: dict[str, Any]) -> None:

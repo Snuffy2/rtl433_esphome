@@ -65,6 +65,7 @@ ClearCandidatesAction = rtl433_native_ns.class_("ClearCandidatesAction", automat
 
 UINT32_MAX_MILLISECONDS = 4_294_967_295
 ESP32_GPIO_MAX = 39
+ESP32_OUTPUT_GPIO_MAX = 33
 MAPPING_TEXT_MAX_LENGTH = 240
 MAPPING_TEXT_MIN_LENGTH = 3
 ARDUINO_NETWORK_INCLUDE_FLAG = (
@@ -105,10 +106,15 @@ DEFAULT_RADIO_CONFIG = {
     CONF_FREQUENCY: DEFAULT_RADIO_FREQUENCY,
     CONF_PINS: DEFAULT_RADIO_PINS,
 }
+RADIO_INPUT_PINS = frozenset({CONF_DIO0, CONF_DIO1, CONF_DIO2, CONF_MISO})
 RADIO_PINS_SCHEMA = cv.Schema(
     {
-        cv.Optional(pin_key, default=DEFAULT_RADIO_PINS[pin_key]): cv.int_range(
-            min=0, max=ESP32_GPIO_MAX
+        cv.Optional(
+            pin_key,
+            default=DEFAULT_RADIO_PINS[pin_key],
+        ): cv.int_range(
+            min=0,
+            max=ESP32_GPIO_MAX if pin_key in RADIO_INPUT_PINS else ESP32_OUTPUT_GPIO_MAX,
         )
         for pin_key, _ in RADIO_PIN_BUILD_FLAGS
     }
@@ -381,7 +387,7 @@ CONFIG_SCHEMA = cv.All(
                 _validate_mapping_text_ids,
             ),
             cv.Optional(CONF_CANDIDATE_LIMIT, default=10): cv.int_range(min=1, max=20),
-            cv.Optional(CONF_LED_PIN, default=25): cv.int_range(min=0, max=ESP32_GPIO_MAX),
+            cv.Optional(CONF_LED_PIN, default=25): cv.int_range(min=0, max=ESP32_OUTPUT_GPIO_MAX),
             cv.Optional(CONF_RADIO, default=DEFAULT_RADIO_CONFIG): RADIO_SCHEMA,
             cv.Optional(CONF_STALE_AFTER, default="1h"): _validate_stale_after,
             cv.Optional(CONF_TIME_ID): cv.use_id(time.RealTimeClock),
