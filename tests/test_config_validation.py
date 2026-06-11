@@ -60,6 +60,14 @@ EXPECTED_BUILD_FLAGS = [
     "-DRF_MODULE_MISO=19",
     "-DRF_MODULE_MOSI=27",
 ]
+EXPECTED_LIBRARIES = [
+    ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"),
+    ("RadioLib", "6.2.0", None),
+    ("Networking", None, None),
+    ("SPI", None, None),
+    ("EEPROM", None, None),
+]
+EXPECTED_PLATFORMIO_OPTIONS = [("lib_ldf_mode", "chain+")]
 
 GENERATED_GATEWAY_METHODS = frozenset(
     {
@@ -445,6 +453,14 @@ def _entity_name_and_category(config: dict[str, Any]) -> tuple[str, str]:
     return config["name"], config["entity_category"]
 
 
+def assert_codegen_dependencies(fake_env: FakeCodegenEnvironment) -> None:
+    """Assert generated PlatformIO dependencies and build flags."""
+
+    assert fake_env.codegen.build_flags == EXPECTED_BUILD_FLAGS
+    assert fake_env.codegen.platformio_options == EXPECTED_PLATFORMIO_OPTIONS
+    assert fake_env.codegen.libraries == EXPECTED_LIBRARIES
+
+
 def gateway_diagnostic_overrides(prefix: str) -> dict[str, dict[str, str]]:
     """Return unique gateway diagnostic configs for schema test isolation."""
 
@@ -594,15 +610,7 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
 
     await to_code(config)
 
-    assert fake_env.codegen.build_flags == EXPECTED_BUILD_FLAGS
-    assert fake_env.codegen.platformio_options == [("lib_ldf_mode", "chain+")]
-    assert fake_env.codegen.libraries == [
-        ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"),
-        ("RadioLib", "6.2.0", None),
-        ("Networking", None, None),
-        ("SPI", None, None),
-        ("EEPROM", None, None),
-    ]
+    assert_codegen_dependencies(fake_env)
     assert fake_env.codegen.new_pvariable_calls == [("gateway_id",)]
     assert fake_env.codegen.registered_components[0] == (fake_env.gateway, config)
     assert fake_env.sensor.created == [
@@ -684,15 +692,7 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
 
     await to_code(config)
 
-    assert fake_env.codegen.build_flags == EXPECTED_BUILD_FLAGS
-    assert fake_env.codegen.platformio_options == [("lib_ldf_mode", "chain+")]
-    assert fake_env.codegen.libraries == [
-        ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"),
-        ("RadioLib", "6.2.0", None),
-        ("Networking", None, None),
-        ("SPI", None, None),
-        ("EEPROM", None, None),
-    ]
+    assert_codegen_dependencies(fake_env)
     assert fake_env.codegen.new_pvariable_calls == [("gateway_id",)]
     assert fake_env.codegen.registered_components[0] == (fake_env.gateway, config)
     assert fake_env.sensor.created == [{"name": "temperature"}]
