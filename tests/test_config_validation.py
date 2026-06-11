@@ -926,7 +926,7 @@ def test_config_schema_expands_compact_known_sensor_entities() -> None:
 
     entry = config[CONF_KNOWN_SENSORS][0]
 
-    assert entry[CONF_TEMPERATURE]["name"] == "Garage Combo Fridge"
+    assert entry[CONF_TEMPERATURE]["name"] == "Garage Combo Fridge Temperature"
     assert entry[CONF_HUMIDITY]["name"] == "Garage Combo Fridge Humidity"
     assert entry[CONF_BATTERY]["name"] == "Garage Combo Fridge Battery"
     assert entry[CONF_RSSI]["name"] == "Garage Combo Fridge RSSI"
@@ -967,7 +967,7 @@ async def test_compact_known_sensor_mapping_entity_is_optional(
         ("set_stale_after_ms", (60_000,)),
         ("set_led_pin", (25,)),
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
-        ("set_temperature_sensor", ("garage_freezer_1", "sensor:Garage Freezer 1")),
+        ("set_temperature_sensor", ("garage_freezer_1", "sensor:Garage Freezer 1 Temperature")),
     ]
     for call in expected_calls:
         assert call in fake_env.gateway.calls

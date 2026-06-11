@@ -33,12 +33,12 @@ rtl433_native:
         - mapping
 ```
 
-Compact entries use the base name for the primary temperature entity and append
-the entity type for secondary entities, such as `Garage Combo Fridge Humidity`,
-`Garage Combo Fridge RSSI`, and `Garage Combo Fridge Last Updated`. The
-`mapping` entity is optional; include it when you want a Home Assistant text
-entity for changing the rtl_433 mapping at runtime. Compact RSSI and
-last-updated entities are disabled by default.
+Compact entries generate entity names by appending the entity type, such as
+`Garage Combo Fridge Temperature`, `Garage Combo Fridge Humidity`, `Garage
+Combo Fridge RSSI`, and `Garage Combo Fridge Last Updated`. The `mapping`
+entity is optional; include it when you want a Home Assistant text entity for
+changing the rtl_433 mapping at runtime. Compact RSSI and last-updated entities
+are disabled by default.
 
 Use the verbose form instead when an entity needs custom options:
 

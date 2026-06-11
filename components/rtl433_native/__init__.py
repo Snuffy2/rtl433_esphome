@@ -226,8 +226,7 @@ def _entity_title(entity: str) -> str:
 def _compact_entity_config(name: str, entity: str) -> dict[str, Any]:
     """Return the generated entity config for a compact known sensor entity."""
 
-    entity_name = name if entity == CONF_TEMPERATURE else f"{name} {_entity_title(entity)}"
-    entity_config: dict[str, Any] = {CONF_NAME: entity_name}
+    entity_config: dict[str, Any] = {CONF_NAME: f"{name} {_entity_title(entity)}"}
     if entity not in (CONF_TEMPERATURE, CONF_HUMIDITY):
         entity_config[CONF_ENTITY_CATEGORY] = "diagnostic"
     if entity in (CONF_RSSI, CONF_LAST_UPDATED):
