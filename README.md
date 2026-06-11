@@ -46,7 +46,6 @@ Use the verbose form instead when an entity needs custom options:
 rtl433_native:
   known_sensors:
     - key: garage_combo_fridge
-      name: "Garage Combo Fridge"
       mapping: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203"
       temperature:
         name: "Garage Combo Fridge Temperature"

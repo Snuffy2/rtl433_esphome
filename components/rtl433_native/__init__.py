@@ -162,7 +162,12 @@ def _validate_mapping(value: Any) -> str:
     if mapping_value == "":
         raise cv.Invalid("Expected at least one sensor key in model/channel/id format")
     sensor_keys = [sensor_key.strip() for sensor_key in mapping_value.split(";")]
-    return ";".join(_validate_sensor_key(sensor_key) for sensor_key in sensor_keys)
+    normalized_mapping = ";".join(_validate_sensor_key(sensor_key) for sensor_key in sensor_keys)
+    if len(normalized_mapping) > MAPPING_TEXT_MAX_LENGTH:
+        raise cv.Invalid(
+            f"Mapping string exceeds {MAPPING_TEXT_MAX_LENGTH} characters: {normalized_mapping}"
+        )
+    return normalized_mapping
 
 
 def _validate_stale_after(value: Any) -> Any:

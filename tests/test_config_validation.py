@@ -111,21 +111,21 @@ GATEWAY_CONTROL_DEFAULTS = (
 class FakeGateway:
     """Test double that records generated gateway method calls."""
 
-    calls: list[tuple[str, tuple[Any, ...]]] = field(default_factory=list)
+    calls: list[tuple[str, tuple[object, ...]]] = field(default_factory=list)
 
-    def _record(self, name: str, *args: Any) -> tuple[str, tuple[Any, ...]]:
+    def _record(self, name: str, *args: object) -> tuple[str, tuple[object, ...]]:
         """Record a generated gateway method call."""
 
         self.calls.append((name, args))
         return name, args
 
-    def __getattr__(self, name: str) -> Callable[..., tuple[str, tuple[Any, ...]]]:
+    def __getattr__(self, name: str) -> Callable[..., tuple[str, tuple[object, ...]]]:
         """Return a recorder for known generated gateway methods."""
 
         if name not in GENERATED_GATEWAY_METHODS:
             raise AttributeError(name)
 
-        def recorder(*args: Any) -> tuple[str, tuple[Any, ...]]:
+        def recorder(*args: object) -> tuple[str, tuple[object, ...]]:
             """Record a generated gateway method call."""
 
             return self._record(name, *args)
@@ -138,21 +138,21 @@ class FakeMappingText:
     """Test double that records generated mapping text method calls."""
 
     name: str
-    calls: list[tuple[str, tuple[Any, ...]]] = field(default_factory=list)
+    calls: list[tuple[str, tuple[object, ...]]] = field(default_factory=list)
 
-    def _record(self, name: str, *args: Any) -> tuple[str, tuple[Any, ...]]:
+    def _record(self, name: str, *args: object) -> tuple[str, tuple[object, ...]]:
         """Record a generated mapping text method call."""
 
         self.calls.append((name, args))
         return name, args
 
-    def __getattr__(self, name: str) -> Callable[..., tuple[str, tuple[Any, ...]]]:
+    def __getattr__(self, name: str) -> Callable[..., tuple[str, tuple[object, ...]]]:
         """Return a recorder for known generated mapping text methods."""
 
         if name not in GENERATED_MAPPING_TEXT_METHODS:
             raise AttributeError(name)
 
-        def recorder(*args: Any) -> tuple[str, tuple[Any, ...]]:
+        def recorder(*args: object) -> tuple[str, tuple[object, ...]]:
             """Record a generated mapping text method call."""
 
             return self._record(name, *args)
@@ -165,21 +165,21 @@ class FakeGatewayControl:
     """Test double that records generated gateway control method calls."""
 
     name: str
-    calls: list[tuple[str, tuple[Any, ...]]] = field(default_factory=list)
+    calls: list[tuple[str, tuple[object, ...]]] = field(default_factory=list)
 
-    def _record(self, name: str, *args: Any) -> tuple[str, tuple[Any, ...]]:
+    def _record(self, name: str, *args: object) -> tuple[str, tuple[object, ...]]:
         """Record a generated gateway control method call."""
 
         self.calls.append((name, args))
         return name, args
 
-    def __getattr__(self, name: str) -> Callable[..., tuple[str, tuple[Any, ...]]]:
+    def __getattr__(self, name: str) -> Callable[..., tuple[str, tuple[object, ...]]]:
         """Return a recorder for known generated gateway control methods."""
 
         if name not in GENERATED_GATEWAY_CONTROL_METHODS:
             raise AttributeError(name)
 
-        def recorder(*args: Any) -> tuple[str, tuple[Any, ...]]:
+        def recorder(*args: object) -> tuple[str, tuple[object, ...]]:
             """Record a generated gateway control method call."""
 
             return self._record(name, *args)
@@ -488,6 +488,16 @@ def test_validate_mapping_normalizes_slash_spaced_fields() -> None:
         _validate_mapping("TFA-303221 / 2 / 88 ; LaCrosse-TX141THBv2 / 1 / 88")
         == "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88"
     )
+
+
+def test_validate_mapping_rejects_values_exceeding_mapping_text_limit() -> None:
+    """Reject mappings that cannot fit in the runtime mapping text storage."""
+
+    sensor_key = "Acurite-986/1R/11932"
+    mapping = ";".join(sensor_key for _ in range(13))
+
+    with pytest.raises(cv.Invalid, match=f"exceeds {rtl433_native.MAPPING_TEXT_MAX_LENGTH}"):
+        _validate_mapping(mapping)
 
 
 def test_arduino_network_include_flag_quotes_platformio_path() -> None:
