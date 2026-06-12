@@ -327,24 +327,25 @@ def _id_value(value: Any) -> str:
     return str(getattr(value, "id", value))
 
 
-def _device_name_for_id(device_id: Any) -> str | None:
+def _device_name_for_id(device_id: Any, config: dict[str, Any] | None = None) -> str | None:
     """Return the configured ESPHome device name for a device ID."""
 
-    if CORE.config is None:
+    full_config = CORE.config if config is None else config
+    if full_config is None:
         return None
-    for device in CORE.config.get(CONF_ESPHOME, {}).get(CONF_DEVICES, []):
+    for device in full_config.get(CONF_ESPHOME, {}).get(CONF_DEVICES, []):
         if _id_value(device.get(CONF_ID)) == _id_value(device_id):
             return str(device[CONF_NAME])
     return None
 
 
-def _known_sensor_name(entry: dict[str, Any]) -> str:
+def _known_sensor_name(entry: dict[str, Any], config: dict[str, Any] | None = None) -> str:
     """Return the known sensor base name from entry config or linked device."""
 
     if CONF_NAME in entry:
         return str(entry[CONF_NAME])
     if CONF_DEVICE_ID in entry:
-        device_name = _device_name_for_id(entry[CONF_DEVICE_ID])
+        device_name = _device_name_for_id(entry[CONF_DEVICE_ID], config)
         if device_name is not None:
             return device_name
         return _id_value(entry[CONF_DEVICE_ID])
@@ -409,7 +410,9 @@ def _expand_compact_sensor_entry(entry: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
-def _refresh_compact_device_names(config: dict[str, Any]) -> dict[str, Any]:
+def _refresh_compact_device_names(
+    config: dict[str, Any], full_config: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Refresh compact known sensor names from linked ESPHome device names."""
 
     for entry in config.get(CONF_KNOWN_SENSORS, []):
@@ -418,7 +421,7 @@ def _refresh_compact_device_names(config: dict[str, Any]) -> dict[str, Any]:
         placeholder_name = _id_value(entry[CONF_DEVICE_ID])
         if entry.get(CONF_NAME) != placeholder_name:
             continue
-        device_name = _device_name_for_id(entry[CONF_DEVICE_ID])
+        device_name = _device_name_for_id(entry[CONF_DEVICE_ID], full_config)
         if device_name is not None:
             _set_compact_sensor_name(entry, device_name)
     return config
@@ -427,12 +430,7 @@ def _refresh_compact_device_names(config: dict[str, Any]) -> dict[str, Any]:
 def _final_validate_config(config: dict[str, Any]) -> None:
     """Refresh device-linked names after ESPHome has the full config."""
 
-    previous_config = CORE.config
-    CORE.config = fv.full_config.get()
-    try:
-        _refresh_compact_device_names(config)
-    finally:
-        CORE.config = previous_config
+    _refresh_compact_device_names(config, fv.full_config.get())
 
 
 def _apply_known_sensor_device_id(entry: dict[str, Any]) -> dict[str, Any]:
