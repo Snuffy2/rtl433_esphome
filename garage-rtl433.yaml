@@ -6,6 +6,15 @@ esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
   comment: "Heltec WiFi LoRa 32 V2-style 433 MHz rtl_433 ESPHome gateway"
+  devices:
+    - id: garage_combo_fridge_device
+      name: Garage Combo Fridge
+    - id: garage_combo_freezer_device
+      name: Garage Combo Freezer
+    - id: garage_freezer_1_device
+      name: Garage Freezer 1
+    - id: garage_freezer_2_device
+      name: Garage Freezer 2
 
 esp32:
   board: heltec_wifi_kit_32_v2
@@ -46,7 +55,7 @@ rtl433_native:
   stale_after: 1h
   known_sensors:
     - key: garage_combo_fridge
-      name: "Garage Combo Fridge"
+      device_id: garage_combo_fridge_device
       mapping: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203"
       entities:
         - temperature
@@ -57,7 +66,7 @@ rtl433_native:
         - last_updated
         - mapping
     - key: garage_combo_freezer
-      name: "Garage Combo Freezer"
+      device_id: garage_combo_freezer_device
       mapping: "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88"
       entities:
         - temperature
@@ -68,7 +77,7 @@ rtl433_native:
         - last_updated
         - mapping
     - key: garage_freezer_1
-      name: "Garage Freezer 1"
+      device_id: garage_freezer_1_device
       mapping: "Acurite-986/1R/11932"
       entities:
         - temperature
@@ -78,7 +87,7 @@ rtl433_native:
         - last_updated
         - mapping
     - key: garage_freezer_2
-      name: "Garage Freezer 2"
+      device_id: garage_freezer_2_device
       mapping: "Acurite-986/2F/31274"
       entities:
         - temperature

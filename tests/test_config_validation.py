@@ -9,7 +9,14 @@ from typing import Any
 
 import pytest
 from esphome import config_validation as cv
-from esphome.const import CONF_DISABLED_BY_DEFAULT, CONF_ID
+from esphome.const import (
+    CONF_DEVICE_ID,
+    CONF_DEVICES,
+    CONF_DISABLED_BY_DEFAULT,
+    CONF_ESPHOME,
+    CONF_ID,
+)
+from esphome.core import CORE
 
 import components.rtl433_native as rtl433_native
 from components.rtl433_native import (
@@ -1148,6 +1155,139 @@ def test_config_schema_expands_compact_known_sensor_entities() -> None:
     assert entry[CONF_LAST_UPDATED][CONF_DISABLED_BY_DEFAULT] is True
 
 
+def test_config_schema_assigns_compact_known_entities_to_sensor_device() -> None:
+    """Place each compact known sensor entity set on its own sub-device."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            **gateway_diagnostic_overrides("Device Fixture"),
+            **gateway_control_overrides("Device Fixture"),
+            CONF_KNOWN_SENSORS: [
+                {
+                    CONF_KEY: "garage_combo_fridge",
+                    "name": "Device Fixture Fridge",
+                    CONF_MAPPING: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203",
+                    CONF_ENTITIES: [
+                        "temperature",
+                        "humidity",
+                        "battery",
+                        "rssi",
+                        "stale",
+                        "last_updated",
+                        "mapping",
+                    ],
+                }
+            ],
+        }
+    )
+
+    entry = config[CONF_KNOWN_SENSORS][0]
+
+    for entity in (
+        CONF_TEMPERATURE,
+        CONF_HUMIDITY,
+        CONF_BATTERY,
+        CONF_RSSI,
+        CONF_STALE,
+        CONF_LAST_UPDATED,
+    ):
+        assert getattr(entry[entity][CONF_DEVICE_ID], "id") == "garage_combo_fridge_device"
+
+
+def test_config_schema_uses_explicit_known_sensor_device_id() -> None:
+    """Use an explicit known sensor device ID instead of deriving one from the key."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            **gateway_diagnostic_overrides("Explicit Device Fixture"),
+            **gateway_control_overrides("Explicit Device Fixture"),
+            CONF_KNOWN_SENSORS: [
+                {
+                    CONF_KEY: "garage_combo_fridge",
+                    CONF_DEVICE_ID: "combo_fridge_device",
+                    "name": "Explicit Device Fixture Fridge",
+                    CONF_MAPPING: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203",
+                    CONF_ENTITIES: [
+                        "temperature",
+                        "humidity",
+                        "battery",
+                        "rssi",
+                        "stale",
+                        "last_updated",
+                        "mapping",
+                    ],
+                }
+            ],
+        }
+    )
+
+    entry = config[CONF_KNOWN_SENSORS][0]
+
+    for entity in (
+        CONF_TEMPERATURE,
+        CONF_HUMIDITY,
+        CONF_BATTERY,
+        CONF_RSSI,
+        CONF_STALE,
+        CONF_LAST_UPDATED,
+    ):
+        assert getattr(entry[entity][CONF_DEVICE_ID], "id") == "combo_fridge_device"
+
+
+def test_config_schema_uses_device_name_when_compact_name_omitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Use the linked ESPHome device name when compact known sensor name is omitted."""
+
+    monkeypatch.setattr(
+        CORE,
+        "config",
+        {
+            CONF_ESPHOME: {
+                CONF_DEVICES: [
+                    {
+                        CONF_ID: "combo_fridge_device",
+                        "name": "Device Name Fixture Fridge",
+                    }
+                ]
+            }
+        },
+    )
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            **gateway_diagnostic_overrides("Device Name Fixture"),
+            **gateway_control_overrides("Device Name Fixture"),
+            CONF_KNOWN_SENSORS: [
+                {
+                    CONF_KEY: "garage_combo_fridge",
+                    CONF_DEVICE_ID: "combo_fridge_device",
+                    CONF_MAPPING: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203",
+                    CONF_ENTITIES: [
+                        "temperature",
+                        "humidity",
+                        "battery",
+                        "rssi",
+                        "stale",
+                        "last_updated",
+                        "mapping",
+                    ],
+                }
+            ],
+        }
+    )
+
+    entry = config[CONF_KNOWN_SENSORS][0]
+
+    assert entry["name"] == "Device Name Fixture Fridge"
+    assert entry[CONF_TEMPERATURE]["name"] == "Device Name Fixture Fridge Temperature"
+    assert entry[CONF_HUMIDITY]["name"] == "Device Name Fixture Fridge Humidity"
+    assert entry[CONF_BATTERY]["name"] == "Device Name Fixture Fridge Battery"
+
+
 async def test_compact_known_sensor_mapping_entity_is_optional(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1205,6 +1345,38 @@ async def test_compact_known_sensor_mapping_entity_uses_base_name(
     assert [text_config["name"] for text_config in fake_env.text.created] == [
         "Garage Mapping Fixture Mapping"
     ]
+    assert CONF_DEVICE_ID not in fake_env.text.created[0]
+
+
+async def test_compact_known_sensor_entities_keep_mapping_text_on_gateway(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Generate known sensor entities on a sub-device while mapping text stays on gateway."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            CONF_CANDIDATE_LIMIT: 1,
+            CONF_CANDIDATES: [],
+            CONF_STALE_AFTER: "1min",
+            **gateway_diagnostic_overrides("Mapping Device Fixture"),
+            **gateway_control_overrides("Mapping Device Fixture"),
+            CONF_KNOWN_SENSORS: [
+                compact_known_sensor_config(
+                    "Mapping Device Fixture Freezer",
+                    ["temperature", "battery", "rssi", "stale", "last_updated", "mapping"],
+                )
+            ],
+        }
+    )
+    fake_env = install_codegen_fakes(monkeypatch)
+
+    await to_code(config)
+
+    created_entity_configs = fake_env.sensor.created[:3] + fake_env.binary_sensor.created[:2]
+    for entity_config in created_entity_configs:
+        assert getattr(entity_config[CONF_DEVICE_ID], "id") == "garage_freezer_1_device"
+    assert CONF_DEVICE_ID not in fake_env.text.created[0]
 
 
 async def test_action_to_code_registers_parented_action(monkeypatch: pytest.MonkeyPatch) -> None:
