@@ -369,13 +369,12 @@ def _entity_title(entity: str) -> str:
     return entity.replace("_", " ").title()
 
 
-def _compact_entity_config(name: str, entity: str, device_id: Any) -> dict[str, Any]:
+def _compact_entity_config(name: str, entity: str, device_id: Any | None) -> dict[str, Any]:
     """Return the generated entity config for a compact known sensor entity."""
 
-    entity_config: dict[str, Any] = {
-        CONF_NAME: f"{name} {_entity_title(entity)}",
-        CONF_DEVICE_ID: device_id,
-    }
+    entity_config: dict[str, Any] = {CONF_NAME: f"{name} {_entity_title(entity)}"}
+    if device_id is not None:
+        entity_config[CONF_DEVICE_ID] = device_id
     if entity not in (CONF_TEMPERATURE, CONF_HUMIDITY):
         entity_config[CONF_ENTITY_CATEGORY] = "diagnostic"
     if entity in (CONF_RSSI, CONF_LAST_UPDATED):
@@ -402,7 +401,7 @@ def _expand_compact_sensor_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Expand a compact known sensor entry into the verbose schema shape."""
 
     name = _known_sensor_name(entry)
-    device_id = entry.get(CONF_DEVICE_ID, _known_sensor_device_id(entry[CONF_KEY]))
+    device_id = entry.get(CONF_DEVICE_ID)
     for entity in entry[CONF_ENTITIES]:
         if entity != ENTITY_MAPPING:
             entry[entity] = _compact_entity_config(name, entity, device_id)
@@ -422,8 +421,12 @@ def _refresh_compact_device_names(
         if entry.get(CONF_NAME) != placeholder_name:
             continue
         device_name = _device_name_for_id(entry[CONF_DEVICE_ID], full_config)
-        if device_name is not None:
-            _set_compact_sensor_name(entry, device_name)
+        if device_name is None:
+            raise cv.Invalid(
+                f"Known sensor device_id '{placeholder_name}' must reference an "
+                "esphome.devices entry with a name"
+            )
+        _set_compact_sensor_name(entry, device_name)
     return config
 
 

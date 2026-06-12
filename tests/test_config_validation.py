@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import esphome.final_validate as fv
 from esphome import config_validation as cv
 from esphome.const import (
     CONF_DEVICE_ID,
@@ -455,16 +456,22 @@ def install_codegen_fakes(
 
 
 def compact_known_sensor_config(
-    name: str, entities: list[str], key: str = "garage_freezer_1"
+    name: str,
+    entities: list[str],
+    key: str = "garage_freezer_1",
+    device_id: str | None = None,
 ) -> dict[str, Any]:
     """Return a compact known sensor test config."""
 
-    return {
+    config = {
         CONF_KEY: key,
         "name": name,
         CONF_MAPPING: "Acurite-986/1R/11932",
         CONF_ENTITIES: entities,
     }
+    if device_id is not None:
+        config[CONF_DEVICE_ID] = device_id
+    return config
 
 
 def long_mapping_fixture() -> str:
@@ -1155,8 +1162,8 @@ def test_config_schema_expands_compact_known_sensor_entities() -> None:
     assert entry[CONF_LAST_UPDATED][CONF_DISABLED_BY_DEFAULT] is True
 
 
-def test_config_schema_assigns_compact_known_entities_to_sensor_device() -> None:
-    """Place each compact known sensor entity set on its own sub-device."""
+def test_config_schema_leaves_name_only_compact_known_entities_on_gateway() -> None:
+    """Leave name-only compact known sensor entities on the main device."""
 
     config = CONFIG_SCHEMA(
         {
@@ -1192,7 +1199,7 @@ def test_config_schema_assigns_compact_known_entities_to_sensor_device() -> None
         CONF_STALE,
         CONF_LAST_UPDATED,
     ):
-        assert getattr(entry[entity][CONF_DEVICE_ID], "id") == "garage_combo_fridge_device"
+        assert CONF_DEVICE_ID not in entry[entity]
 
 
 def test_config_schema_uses_explicit_known_sensor_device_id() -> None:
@@ -1288,6 +1295,40 @@ def test_config_schema_uses_device_name_when_compact_name_omitted(
     assert entry[CONF_BATTERY]["name"] == "Device Name Fixture Fridge Battery"
 
 
+def test_final_validation_rejects_unresolved_compact_device_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reject compact known sensors that omit name and reference an unknown device."""
+
+    class FakeFullConfig:
+        """Return a full ESPHome config without matching sub-devices."""
+
+        def get(self) -> dict[str, Any]:
+            """Return the fake full config."""
+
+            return {CONF_ESPHOME: {CONF_DEVICES: []}}
+
+    monkeypatch.setattr(fv, "full_config", FakeFullConfig())
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            **gateway_diagnostic_overrides("Unknown Device Fixture"),
+            **gateway_control_overrides("Unknown Device Fixture"),
+            CONF_KNOWN_SENSORS: [
+                {
+                    CONF_KEY: "garage_combo_fridge",
+                    CONF_DEVICE_ID: "missing_fridge_device",
+                    CONF_MAPPING: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203",
+                    CONF_ENTITIES: ["temperature"],
+                }
+            ],
+        }
+    )
+
+    with pytest.raises(cv.Invalid, match="missing_fridge_device"):
+        rtl433_native.FINAL_VALIDATE_SCHEMA(config)
+
+
 async def test_compact_known_sensor_mapping_entity_is_optional(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1365,6 +1406,7 @@ async def test_compact_known_sensor_entities_keep_mapping_text_on_gateway(
                 compact_known_sensor_config(
                     "Mapping Device Fixture Freezer",
                     ["temperature", "battery", "rssi", "stale", "last_updated", "mapping"],
+                    device_id="garage_freezer_1_device",
                 )
             ],
         }
