@@ -215,12 +215,19 @@ def _validate_mapping(value: Any) -> str:
     if mapping_value == "":
         raise cv.Invalid("Expected at least one sensor key in model/channel/id format")
     sensor_keys = [sensor_key.strip() for sensor_key in mapping_value.split(";")]
-    normalized_mapping = ";".join(_validate_sensor_key(sensor_key) for sensor_key in sensor_keys)
-    if len(normalized_mapping) > MAPPING_TEXT_MAX_LENGTH:
-        raise cv.Invalid(
-            f"Mapping string exceeds {MAPPING_TEXT_MAX_LENGTH} characters: {normalized_mapping}"
-        )
-    return normalized_mapping
+    return ";".join(_validate_sensor_key(sensor_key) for sensor_key in sensor_keys)
+
+
+def _validate_mapping_text_lengths(value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ensure generated mapping text values fit the runtime text storage."""
+
+    for entry in value:
+        if _entry_has_mapping_text(entry) and len(entry[CONF_MAPPING]) > MAPPING_TEXT_MAX_LENGTH:
+            raise cv.Invalid(
+                f"Mapping string exceeds {MAPPING_TEXT_MAX_LENGTH} characters: "
+                f"{entry[CONF_MAPPING]}"
+            )
+    return value
 
 
 def _validate_stale_after(value: Any) -> Any:
@@ -414,6 +421,7 @@ CONFIG_SCHEMA = cv.All(
                 cv.Length(min=1),
                 _validate_known_sensor_keys,
                 _validate_mapping_text_ids,
+                _validate_mapping_text_lengths,
             ),
             cv.Optional(CONF_CANDIDATE_LIMIT, default=10): cv.int_range(min=1, max=20),
             cv.Optional(CONF_LED_PIN, default=25): cv.All(

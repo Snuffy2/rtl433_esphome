@@ -510,7 +510,7 @@ void MappingText::setup() {
     return;
   }
 
-  this->apply_value(this->initial_value_, true);
+  this->apply_value(this->initial_value_, false);
 }
 
 void MappingText::dump_config() {

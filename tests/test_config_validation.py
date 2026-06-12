@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -459,6 +460,13 @@ def compact_known_sensor_config(
     }
 
 
+def long_mapping_fixture() -> str:
+    """Return a valid mapping longer than the mapping text storage limit."""
+
+    sensor_key = "Acurite-986/1R/11932"
+    return ";".join(sensor_key for _ in range(13))
+
+
 def _entity_name_and_category(config: dict[str, Any]) -> tuple[str, str]:
     """Return stable entity identity fields from a generated config."""
 
@@ -518,14 +526,56 @@ def test_validate_mapping_normalizes_slash_spaced_fields() -> None:
     )
 
 
-def test_validate_mapping_rejects_values_exceeding_mapping_text_limit() -> None:
-    """Reject mappings that cannot fit in the runtime mapping text storage."""
+def test_validate_mapping_accepts_values_exceeding_mapping_text_limit() -> None:
+    """Allow long mappings when no runtime mapping text storage is involved."""
 
-    sensor_key = "Acurite-986/1R/11932"
-    mapping = ";".join(sensor_key for _ in range(13))
+    mapping = long_mapping_fixture()
+
+    assert _validate_mapping(mapping) == mapping
+
+
+def test_config_schema_rejects_long_generated_mapping_text_value() -> None:
+    """Reject mappings that cannot fit in generated runtime mapping text storage."""
+
+    config = compact_known_sensor_config("Long Mapping Text Fixture", ["temperature", "mapping"])
+    config[CONF_MAPPING] = long_mapping_fixture()
 
     with pytest.raises(cv.Invalid, match=f"exceeds {rtl433_native.MAPPING_TEXT_MAX_LENGTH}"):
-        _validate_mapping(mapping)
+        CONFIG_SCHEMA(
+            {
+                CONF_ID: "gateway_id",
+                **gateway_diagnostic_overrides("Long Mapping Text Fixture"),
+                **gateway_control_overrides("Long Mapping Text Fixture"),
+                CONF_KNOWN_SENSORS: [config],
+            }
+        )
+
+
+def test_config_schema_accepts_long_mapping_without_generated_text() -> None:
+    """Accept long mappings when compact config does not generate a mapping text entity."""
+
+    config = compact_known_sensor_config("Long Mapping No Text Fixture", ["temperature"])
+    config[CONF_MAPPING] = long_mapping_fixture()
+
+    validated = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            **gateway_diagnostic_overrides("Long Mapping No Text Fixture"),
+            **gateway_control_overrides("Long Mapping No Text Fixture"),
+            CONF_KNOWN_SENSORS: [config],
+        }
+    )
+
+    assert validated[CONF_KNOWN_SENSORS][0][CONF_MAPPING] == config[CONF_MAPPING]
+
+
+def test_mapping_text_setup_applies_initial_value_without_saving() -> None:
+    """Keep YAML defaults from becoming saved runtime mapping overrides."""
+
+    source = Path("components/rtl433_native/rtl433_native.cpp").read_text()
+
+    assert "this->apply_value(this->initial_value_, false);" in source
+    assert "this->apply_value(this->initial_value_, true);" not in source
 
 
 def test_arduino_network_include_flag_quotes_platformio_path() -> None:
