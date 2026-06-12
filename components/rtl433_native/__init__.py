@@ -315,12 +315,6 @@ def _mapping_text_id(entry: dict[str, Any]) -> str:
     return f"{_mapping_text_id_fragment(entry[CONF_KEY])}_mapping"
 
 
-def _known_sensor_device_id(logical_key: str) -> str:
-    """Return the generated ESPHome sub-device ID for a known sensor."""
-
-    return f"{_mapping_text_id_fragment(logical_key)}_device"
-
-
 def _id_value(value: Any) -> str:
     """Return the string value for an ESPHome ID or raw ID string."""
 
@@ -332,6 +326,16 @@ def _device_name_for_id(device_id: Any, config: dict[str, Any] | None = None) ->
 
     full_config = CORE.config if config is None else config
     if full_config is None:
+        return None
+    if hasattr(full_config, "get_path_for_id") and hasattr(full_config, "get_config_for_path"):
+        try:
+            device_config = full_config.get_config_for_path(
+                full_config.get_path_for_id(device_id)[:-1]
+            )
+        except KeyError:
+            return None
+        if isinstance(device_config, dict) and CONF_NAME in device_config:
+            return str(device_config[CONF_NAME])
         return None
     for device in full_config.get(CONF_ESPHOME, {}).get(CONF_DEVICES, []):
         if _id_value(device.get(CONF_ID)) == _id_value(device_id):

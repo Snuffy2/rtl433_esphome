@@ -474,6 +474,30 @@ def compact_known_sensor_config(
     return config
 
 
+class FakeFinalValidateConfig:
+    """Minimal ESPHome final-validation config for device ID lookups."""
+
+    def __init__(self, devices: dict[str, dict[str, Any]]) -> None:
+        """Initialize the fake with device configs keyed by ID."""
+
+        self._devices = devices
+
+    def get_path_for_id(self, id_value: Any) -> list[Any]:
+        """Return the validated config path for a declared device ID."""
+
+        id_string = str(getattr(id_value, "id", id_value))
+        device_ids = list(self._devices)
+        if id_string not in self._devices:
+            raise KeyError(id_string)
+        return [CONF_ESPHOME, CONF_DEVICES, device_ids.index(id_string), CONF_ID]
+
+    def get_config_for_path(self, path: list[Any]) -> dict[str, Any]:
+        """Return the device config for a validated config path."""
+
+        device_id = list(self._devices)[path[2]]
+        return self._devices[device_id]
+
+
 def long_mapping_fixture() -> str:
     """Return a valid mapping longer than the mapping text storage limit."""
 
@@ -1295,20 +1319,48 @@ def test_config_schema_uses_device_name_when_compact_name_omitted(
     assert entry[CONF_BATTERY]["name"] == "Device Name Fixture Fridge Battery"
 
 
-def test_final_validation_rejects_unresolved_compact_device_name(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_final_validation_uses_runtime_config_to_resolve_compact_device_name() -> None:
+    """Use ESPHome final-validation config to resolve omitted compact names."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            **gateway_diagnostic_overrides("Runtime Device Fixture"),
+            **gateway_control_overrides("Runtime Device Fixture"),
+            CONF_KNOWN_SENSORS: [
+                {
+                    CONF_KEY: "garage_combo_fridge",
+                    CONF_DEVICE_ID: "runtime_fridge_device",
+                    CONF_MAPPING: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203",
+                    CONF_ENTITIES: ["temperature"],
+                }
+            ],
+        }
+    )
+    token = fv.full_config.set(
+        FakeFinalValidateConfig(
+            {
+                "runtime_fridge_device": {
+                    CONF_ID: "runtime_fridge_device",
+                    "name": "Runtime Device Fridge",
+                }
+            }
+        )
+    )
+    try:
+        rtl433_native.FINAL_VALIDATE_SCHEMA(config)
+    finally:
+        fv.full_config.reset(token)
+
+    entry = config[CONF_KNOWN_SENSORS][0]
+
+    assert entry["name"] == "Runtime Device Fridge"
+    assert entry[CONF_TEMPERATURE]["name"] == "Runtime Device Fridge Temperature"
+
+
+def test_final_validation_rejects_unresolved_compact_device_name() -> None:
     """Reject compact known sensors that omit name and reference an unknown device."""
 
-    class FakeFullConfig:
-        """Return a full ESPHome config without matching sub-devices."""
-
-        def get(self) -> dict[str, Any]:
-            """Return the fake full config."""
-
-            return {CONF_ESPHOME: {CONF_DEVICES: []}}
-
-    monkeypatch.setattr(fv, "full_config", FakeFullConfig())
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
@@ -1324,9 +1376,12 @@ def test_final_validation_rejects_unresolved_compact_device_name(
             ],
         }
     )
-
-    with pytest.raises(cv.Invalid, match="missing_fridge_device"):
-        rtl433_native.FINAL_VALIDATE_SCHEMA(config)
+    token = fv.full_config.set(FakeFinalValidateConfig({}))
+    try:
+        with pytest.raises(cv.Invalid, match="missing_fridge_device"):
+            rtl433_native.FINAL_VALIDATE_SCHEMA(config)
+    finally:
+        fv.full_config.reset(token)
 
 
 async def test_compact_known_sensor_mapping_entity_is_optional(

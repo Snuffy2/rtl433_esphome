@@ -45,10 +45,10 @@ Set `device_id` on each compact known sensor to assign its generated entities
 to a per-sensor ESPHome sub-device, such as `Garage Combo Fridge` or `Garage
 Freezer 1`. If `name` is also set under a known sensor, that value overrides the
 linked device name for generated entity names. If `device_id` is omitted, the
-component falls back to a generated ID based on the known-sensor key. The
-`mapping` entity is optional; include it when you want a Home Assistant text
-entity for changing the rtl_433 mapping at runtime. Mapping text entities stay
-on the main `Garage RTL433` device with gateway diagnostics, discovery
+generated known-sensor entities stay on the main ESPHome device. The `mapping`
+entity is optional; include it when you want a Home Assistant text entity for
+changing the rtl_433 mapping at runtime. Mapping text entities stay on the main
+`Garage RTL433` device with gateway diagnostics, discovery
 candidates, controls, uptime, status, restart, IP address, Wi-Fi RSSI, and free
 heap. Compact RSSI and last-updated entities are disabled by default.
 
