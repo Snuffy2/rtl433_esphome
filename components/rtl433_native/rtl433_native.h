@@ -6,10 +6,14 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/button/button.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/switch/switch.h"
+#include "esphome/components/text/text.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/core/automation.h"
@@ -28,6 +32,8 @@
 
 namespace esphome::rtl433_native {
 
+constexpr std::size_t MAPPING_TEXT_MAX_LENGTH = 240;
+
 struct SavedLogicalState {
   bool has_value{false};
   float temperature_f{NAN};
@@ -35,6 +41,11 @@ struct SavedLogicalState {
   float battery{NAN};
   int rssi{0};
   uint32_t last_updated{0};
+};
+
+struct SavedMappingText {
+  bool has_value{false};
+  char value[MAPPING_TEXT_MAX_LENGTH + 1]{};
 };
 
 struct EntitySet {
@@ -48,6 +59,8 @@ struct EntitySet {
   bool last_stale{false};
 };
 
+class MappingText;
+
 class Gateway : public Component {
  public:
   Gateway();
@@ -60,6 +73,7 @@ class Gateway : public Component {
   void status();
   void clear_candidates();
   void set_discovery_enabled(bool enabled);
+  void set_led_pin(uint8_t led_pin) { this->led_pin_ = led_pin; }
   void add_mapping(const std::string &logical_key, const std::string &mapping);
   void set_override(const std::string &logical_key, const std::string &sensor_key);
   void set_candidate_limit(std::size_t limit);
@@ -85,6 +99,7 @@ class Gateway : public Component {
   std::unordered_map<std::string, EntitySet> entities_{};
   std::vector<std::string> logical_keys_{};
   std::unordered_map<std::string, ESPPreferenceObject> preferences_{};
+  std::unordered_set<std::string> remapped_before_restore_{};
   std::unordered_map<std::string, uint32_t> last_updated_values_{};
   std::unordered_map<std::string, uint32_t> last_updated_ms_{};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};
@@ -100,6 +115,8 @@ class Gateway : public Component {
   uint32_t packet_count_{0};
   uint32_t known_packet_count_{0};
   uint32_t unknown_packet_count_{0};
+  uint8_t led_pin_{25};
+  bool restored_states_{false};
   static Gateway *instance_;
 
   static void process_dispatch(char *message);
@@ -111,6 +128,62 @@ class Gateway : public Component {
   void publish_state(const std::string &logical_key);
   void publish_candidates();
   void publish_stale_states();
+};
+
+class DiscoverySwitch : public switch_::Switch, public Component {
+ public:
+  void setup() override;
+
+  void set_parent(Gateway *parent) { this->parent_ = parent; }
+
+ protected:
+  void write_state(bool state) override;
+
+ private:
+  Gateway *parent_{nullptr};
+};
+
+class ClearCandidatesButton : public button::Button {
+ public:
+  void set_parent(Gateway *parent) { this->parent_ = parent; }
+
+ protected:
+  void press_action() override;
+
+ private:
+  Gateway *parent_{nullptr};
+};
+
+class StatusButton : public button::Button {
+ public:
+  void set_parent(Gateway *parent) { this->parent_ = parent; }
+
+ protected:
+  void press_action() override;
+
+ private:
+  Gateway *parent_{nullptr};
+};
+
+class MappingText : public text::Text, public Component {
+ public:
+  void setup() override;
+  void dump_config() override;
+
+  void set_parent(Gateway *parent) { this->parent_ = parent; }
+  void set_logical_key(const std::string &logical_key) { this->logical_key_ = logical_key; }
+  void set_initial_value(const std::string &initial_value) { this->initial_value_ = initial_value; }
+
+ protected:
+  void control(const std::string &value) override;
+
+ private:
+  Gateway *parent_{nullptr};
+  std::string logical_key_{};
+  std::string initial_value_{};
+  ESPPreferenceObject preference_{};
+
+  void apply_value(const std::string &value, bool save);
 };
 
 template <typename... Ts>

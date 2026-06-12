@@ -1,8 +1,11 @@
 #include "rtl433_native.h"
 #include "ledc_compat.h"
 
+#include <Arduino.h>
+
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <ctime>
 #include <limits>
 
@@ -40,6 +43,10 @@ uint32_t preference_key(const std::string &logical_key) {
   return hash ^ 0xA4330E01UL;
 }
 
+uint32_t mapping_preference_key(const std::string &logical_key) {
+  return preference_key("mapping:" + logical_key) ^ 0x1A77B433UL;
+}
+
 }  // namespace
 
 Gateway *Gateway::instance_ = nullptr;
@@ -47,6 +54,8 @@ Gateway *Gateway::instance_ = nullptr;
 Gateway::Gateway() { instance_ = this; }
 
 void Gateway::setup() {
+  pinMode(this->led_pin_, OUTPUT);
+  digitalWrite(this->led_pin_, LOW);
   if (this->time_ != nullptr) {
     this->time_->add_on_time_sync_callback([this]() { this->sync_time_base(); });
     this->sync_time_base();
@@ -60,13 +69,16 @@ void Gateway::setup() {
   if (this->unknown_packet_count_sensor_ != nullptr) {
     this->unknown_packet_count_sensor_->publish_state(0);
   }
-  this->restore_saved_states();
   this->rf_.initReceiver(RF_MODULE_RECEIVER_GPIO, RF_MODULE_FREQUENCY);
   this->rf_.setCallback(&Gateway::process_dispatch, this->buffer_, sizeof(this->buffer_));
   this->rf_.enableReceiver();
 }
 
 void Gateway::loop() {
+  if (!this->restored_states_) {
+    this->restored_states_ = true;
+    this->restore_saved_states();
+  }
   this->rf_.loop();
   this->publish_stale_states();
 }
@@ -107,7 +119,9 @@ void Gateway::add_mapping(const std::string &logical_key, const std::string &map
 
 void Gateway::set_override(const std::string &logical_key, const std::string &sensor_key) {
   this->entities_.try_emplace(logical_key);
-  this->state_.set_mapping(logical_key, sensor_key);
+  if (this->state_.set_mapping(logical_key, sensor_key) && !this->restored_states_) {
+    this->remapped_before_restore_.insert(logical_key);
+  }
 }
 
 void Gateway::set_candidate_limit(std::size_t limit) { this->state_.set_candidate_limit(limit); }
@@ -164,6 +178,37 @@ void Gateway::set_discovery_enabled_sensor(binary_sensor::BinarySensor *sensor) 
   this->discovery_enabled_sensor_ = sensor;
   if (this->discovery_enabled_sensor_ != nullptr) {
     this->discovery_enabled_sensor_->publish_state(this->state_.discovery_enabled());
+  }
+}
+
+void DiscoverySwitch::setup() {
+  bool enabled = false;
+  optional<bool> initial_state = this->get_initial_state_with_restore_mode();
+  if (initial_state.has_value()) {
+    enabled = initial_state.value();
+  }
+  if (this->parent_ != nullptr) {
+    this->parent_->set_discovery_enabled(enabled);
+  }
+  this->publish_state(enabled);
+}
+
+void DiscoverySwitch::write_state(bool state) {
+  if (this->parent_ != nullptr) {
+    this->parent_->set_discovery_enabled(state);
+  }
+  this->publish_state(state);
+}
+
+void ClearCandidatesButton::press_action() {
+  if (this->parent_ != nullptr) {
+    this->parent_->clear_candidates();
+  }
+}
+
+void StatusButton::press_action() {
+  if (this->parent_ != nullptr) {
+    this->parent_->status();
   }
 }
 
@@ -280,6 +325,9 @@ void Gateway::restore_saved_states() {
     auto preference = global_preferences->make_preference<SavedLogicalState>(preference_key(logical_key), true);
     SavedLogicalState saved;
     this->preferences_[logical_key] = preference;
+    if (this->remapped_before_restore_.find(logical_key) != this->remapped_before_restore_.end()) {
+      continue;
+    }
     if (!preference.load(&saved) || !saved.has_value) {
       continue;
     }
@@ -305,6 +353,7 @@ void Gateway::restore_saved_states() {
       }
     });
   }
+  this->remapped_before_restore_.clear();
 }
 
 void Gateway::sync_time_base() {
@@ -449,6 +498,48 @@ void Gateway::publish_stale_states() {
       }
     }
   }
+}
+
+void MappingText::setup() {
+  this->preference_ = global_preferences->make_preference<SavedMappingText>(
+      mapping_preference_key(this->logical_key_), true);
+
+  SavedMappingText saved;
+  if (this->preference_.load(&saved) && saved.has_value && saved.value[0] != '\0') {
+    this->apply_value(saved.value, false);
+    return;
+  }
+
+  this->apply_value(this->initial_value_, false);
+}
+
+void MappingText::dump_config() {
+  ESP_LOGCONFIG(TAG, "RTL433 mapping text");
+  ESP_LOGCONFIG(TAG, "  Logical key: %s", this->logical_key_.c_str());
+}
+
+void MappingText::control(const std::string &value) { this->apply_value(value, true); }
+
+void MappingText::apply_value(const std::string &value, bool save) {
+  if (!parse_sensor_mapping(value).has_value()) {
+    ESP_LOGW(TAG, "Rejected invalid mapping text for '%s': %s", this->logical_key_.c_str(), value.c_str());
+    return;
+  }
+
+  this->publish_state(value);
+  if (this->parent_ != nullptr) {
+    this->parent_->set_override(this->logical_key_, value);
+  }
+
+  if (!save) {
+    return;
+  }
+
+  SavedMappingText saved;
+  saved.has_value = true;
+  std::strncpy(saved.value, value.c_str(), sizeof(saved.value) - 1);
+  saved.value[sizeof(saved.value) - 1] = '\0';
+  this->preference_.save(&saved);
 }
 
 }  // namespace esphome::rtl433_native
