@@ -549,6 +549,15 @@ void test_candidate_age_pruning_is_uint32_wrap_safe() {
   require(state.candidates().front().key.id == "002", "newer wrapped candidate should be retained");
 }
 
+void test_last_updated_adjustment_does_not_create_future_timestamp() {
+  uint32_t adjusted = 1700000000;
+  for (uint32_t index = 0; index < 90; ++index) {
+    adjusted = rtl433::adjust_last_updated_timestamp(1700000000, adjusted);
+  }
+
+  require(adjusted == 1700000000, "last_updated adjustment should not move past wall clock time");
+}
+
 }  // namespace
 
 int main() {
@@ -577,5 +586,6 @@ int main() {
   test_candidate_order_is_deterministic_for_equal_seen_time();
   test_candidates_pruned_by_age();
   test_candidate_age_pruning_is_uint32_wrap_safe();
+  test_last_updated_adjustment_does_not_create_future_timestamp();
   return 0;
 }
