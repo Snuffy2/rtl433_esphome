@@ -155,7 +155,7 @@ bool matches_key(const DecodedPacket &packet, const SensorKey &key) {
   return packet.model == key.model && packet.channel == key.channel && packet.id == key.id;
 }
 
-uint32_t adjust_last_updated_timestamp(uint32_t current_timestamp, uint32_t previous_timestamp) {
+uint32_t resolve_last_updated_timestamp(uint32_t current_timestamp, uint32_t previous_timestamp) {
   if (current_timestamp > 0) {
     return current_timestamp;
   }

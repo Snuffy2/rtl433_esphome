@@ -413,12 +413,10 @@ void Gateway::save_state(const std::string &logical_key, uint32_t last_updated) 
   saved.humidity = logical->humidity;
   saved.battery = logical->battery;
   saved.rssi = logical->rssi;
-  uint32_t previous_timestamp = 0;
   const auto previous_last_updated = this->last_updated_values_.find(logical_key);
-  if (previous_last_updated != this->last_updated_values_.end()) {
-    previous_timestamp = previous_last_updated->second;
-  }
-  const uint32_t adjusted_last_updated = adjust_last_updated_timestamp(last_updated, previous_timestamp);
+  const uint32_t previous_timestamp =
+      previous_last_updated == this->last_updated_values_.end() ? 0 : previous_last_updated->second;
+  const uint32_t adjusted_last_updated = resolve_last_updated_timestamp(last_updated, previous_timestamp);
   if (adjusted_last_updated > 0) {
     this->last_updated_values_[logical_key] = adjusted_last_updated;
   }
