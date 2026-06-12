@@ -68,6 +68,7 @@ ESP32_GPIO_MAX = 39
 ESP32_OUTPUT_GPIO_MAX = 33
 MAPPING_TEXT_MAX_LENGTH = 240
 MAPPING_TEXT_MIN_LENGTH = 3
+ESP32_FLASH_GPIO_RANGE = range(6, 12)
 ARDUINO_NETWORK_INCLUDE_FLAG = (
     '-I"${platformio.packages_dir}/framework-arduinoespressif32/libraries/Network/src"'
 )
@@ -81,7 +82,6 @@ RTL433_NATIVE_LIBRARIES = (
 )
 DEFAULT_RADIO_MODULE = "SX1278"
 SUPPORTED_RADIO_MODULES = frozenset({"CC1101", "SX1276", "SX1278"})
-ESP32_FLASH_GPIO_RANGE = range(6, 12)
 DEFAULT_RADIO_FREQUENCY = 433.92
 DEFAULT_RADIO_PINS = {
     CONF_DIO0: 26,
@@ -111,6 +111,16 @@ CC1101_PIN_BUILD_FLAGS: tuple[tuple[str, str], ...] = (
     (CONF_MISO, "MISO"),
     (CONF_MOSI, "MOSI"),
 )
+
+
+def _validate_esp32_gpio(value: int) -> int:
+    """Reject ESP32 GPIO numbers reserved for integrated flash."""
+
+    if value in ESP32_FLASH_GPIO_RANGE:
+        raise cv.Invalid(f"GPIO {value} is reserved for ESP32 flash")
+    return value
+
+
 DEFAULT_RADIO_CONFIG = {
     CONF_MODULE: DEFAULT_RADIO_MODULE,
     CONF_FREQUENCY: DEFAULT_RADIO_FREQUENCY,
@@ -127,7 +137,7 @@ RADIO_PINS_SCHEMA = cv.Schema(
                 min=0,
                 max=ESP32_GPIO_MAX if pin_key in RADIO_INPUT_PINS else ESP32_OUTPUT_GPIO_MAX,
             ),
-            lambda value: _validate_esp32_gpio(value),
+            _validate_esp32_gpio,
         )
         for pin_key, _ in RADIO_PIN_BUILD_FLAGS
     }
@@ -232,14 +242,6 @@ def _validate_radio_module(value: Any) -> str:
             f"Unsupported rtl_433_ESP radio module '{module}'. Expected one of: {supported}"
         )
     return module
-
-
-def _validate_esp32_gpio(value: int) -> int:
-    """Reject ESP32 GPIO numbers reserved for integrated flash."""
-
-    if value in ESP32_FLASH_GPIO_RANGE:
-        raise cv.Invalid(f"GPIO {value} is reserved for ESP32 flash")
-    return value
 
 
 def _add_default_candidates(config: dict[str, Any]) -> dict[str, Any]:
