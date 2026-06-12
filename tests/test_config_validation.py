@@ -1436,6 +1436,44 @@ def test_final_validation_rejects_unresolved_compact_device_name() -> None:
         fv.full_config.reset(token)
 
 
+async def test_to_code_rejects_compact_device_without_name_in_core_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reject compact device IDs that match a nameless CORE config device."""
+
+    monkeypatch.setattr(
+        CORE,
+        "config",
+        {
+            CONF_ESPHOME: {
+                CONF_DEVICES: [
+                    {
+                        CONF_ID: "nameless_fridge_device",
+                    }
+                ]
+            }
+        },
+    )
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            **gateway_diagnostic_overrides("Nameless Device Fixture"),
+            **gateway_control_overrides("Nameless Device Fixture"),
+            CONF_KNOWN_SENSORS: [
+                {
+                    CONF_KEY: "garage_combo_fridge",
+                    CONF_DEVICE_ID: "nameless_fridge_device",
+                    CONF_MAPPING: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203",
+                    CONF_ENTITIES: ["temperature"],
+                }
+            ],
+        }
+    )
+
+    with pytest.raises(cv.Invalid, match="nameless_fridge_device"):
+        await to_code(config)
+
+
 async def test_compact_known_sensor_mapping_entity_is_optional(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

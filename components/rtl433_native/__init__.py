@@ -340,6 +340,8 @@ def _device_name_for_id(device_id: Any, config: dict[str, Any] | None = None) ->
         return None
     for device in full_config.get(CONF_ESPHOME, {}).get(CONF_DEVICES, []):
         if _id_value(device.get(CONF_ID)) == _id_value(device_id):
+            if CONF_NAME not in device:
+                return None
             return str(device[CONF_NAME])
     return None
 
