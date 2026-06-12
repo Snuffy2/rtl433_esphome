@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import pytest
 import esphome.final_validate as fv
@@ -16,6 +16,7 @@ from esphome.const import (
     CONF_DISABLED_BY_DEFAULT,
     CONF_ESPHOME,
     CONF_ID,
+    CONF_NAME,
 )
 from esphome.core import CORE
 
@@ -81,6 +82,14 @@ EXPECTED_BUILD_FLAGS = [
     "-DRF_MODULE_MISO=19",
     "-DRF_MODULE_MOSI=27",
 ]
+
+
+class IdLike(Protocol):
+    """Protocol for ESPHome ID-like objects used by test fakes."""
+
+    id: str
+
+
 EXPECTED_LIBRARIES = [
     ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"),
     ("RadioLib", "6.2.0", None),
@@ -482,10 +491,10 @@ class FakeFinalValidateConfig:
 
         self._devices = devices
 
-    def get_path_for_id(self, id_value: Any) -> list[Any]:
+    def get_path_for_id(self, id_value: IdLike | str) -> list[Any]:
         """Return the validated config path for a declared device ID."""
 
-        id_string = str(getattr(id_value, "id", id_value))
+        id_string = id_value if isinstance(id_value, str) else id_value.id
         device_ids = list(self._devices)
         if id_string not in self._devices:
             raise KeyError(id_string)
@@ -1264,7 +1273,7 @@ def test_config_schema_uses_explicit_known_sensor_device_id() -> None:
         CONF_STALE,
         CONF_LAST_UPDATED,
     ):
-        assert getattr(entry[entity][CONF_DEVICE_ID], "id") == "combo_fridge_device"
+        assert entry[entity][CONF_DEVICE_ID].id == "combo_fridge_device"
 
 
 def test_config_schema_uses_device_name_when_compact_name_omitted(
@@ -1317,6 +1326,49 @@ def test_config_schema_uses_device_name_when_compact_name_omitted(
     assert entry[CONF_TEMPERATURE]["name"] == "Device Name Fixture Fridge Temperature"
     assert entry[CONF_HUMIDITY]["name"] == "Device Name Fixture Fridge Humidity"
     assert entry[CONF_BATTERY]["name"] == "Device Name Fixture Fridge Battery"
+
+
+def test_config_schema_preserves_explicit_compact_name_matching_device_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preserve explicit compact names that match the linked device ID."""
+
+    monkeypatch.setattr(
+        CORE,
+        "config",
+        {
+            CONF_ESPHOME: {
+                CONF_DEVICES: [
+                    {
+                        CONF_ID: "combo_fridge_device",
+                        "name": "Explicit Name Fixture Fridge",
+                    }
+                ]
+            }
+        },
+    )
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            **gateway_diagnostic_overrides("Explicit Name Fixture"),
+            **gateway_control_overrides("Explicit Name Fixture"),
+            CONF_KNOWN_SENSORS: [
+                {
+                    CONF_KEY: "garage_combo_fridge",
+                    CONF_NAME: "combo_fridge_device",
+                    CONF_DEVICE_ID: "combo_fridge_device",
+                    CONF_MAPPING: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203",
+                    CONF_ENTITIES: ["temperature"],
+                }
+            ],
+        }
+    )
+
+    entry = config[CONF_KNOWN_SENSORS][0]
+
+    assert entry["name"] == "combo_fridge_device"
+    assert entry[CONF_TEMPERATURE]["name"] == "combo_fridge_device Temperature"
 
 
 def test_final_validation_uses_runtime_config_to_resolve_compact_device_name() -> None:
@@ -1472,7 +1524,7 @@ async def test_compact_known_sensor_entities_keep_mapping_text_on_gateway(
 
     created_entity_configs = fake_env.sensor.created[:3] + fake_env.binary_sensor.created[:2]
     for entity_config in created_entity_configs:
-        assert getattr(entity_config[CONF_DEVICE_ID], "id") == "garage_freezer_1_device"
+        assert entity_config[CONF_DEVICE_ID].id == "garage_freezer_1_device"
     assert CONF_DEVICE_ID not in fake_env.text.created[0]
 
 

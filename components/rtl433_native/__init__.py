@@ -61,6 +61,7 @@ CONF_TIME_ID = "time_id"
 CONF_UNKNOWN_PACKET_COUNT = "unknown_packet_count"
 
 ENTITY_MAPPING = CONF_MAPPING
+_REFRESH_NAME_FROM_DEVICE = "_refresh_name_from_device"
 
 rtl433_native_ns = cg.esphome_ns.namespace("rtl433_native")
 Gateway = rtl433_native_ns.class_("Gateway", cg.Component)
@@ -404,12 +405,15 @@ def _add_generated_component_count(extra_count: int) -> None:
 def _expand_compact_sensor_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Expand a compact known sensor entry into the verbose schema shape."""
 
+    name_was_omitted = CONF_NAME not in entry
     name = _known_sensor_name(entry)
     device_id = entry.get(CONF_DEVICE_ID)
     for entity in entry[CONF_ENTITIES]:
         if entity != ENTITY_MAPPING:
             entry[entity] = _compact_entity_config(name, entity, device_id)
     entry[CONF_NAME] = name
+    if name_was_omitted and device_id is not None:
+        entry[_REFRESH_NAME_FROM_DEVICE] = True
     return entry
 
 
@@ -421,9 +425,9 @@ def _refresh_compact_device_names(
     for entry in config.get(CONF_KNOWN_SENSORS, []):
         if CONF_ENTITIES not in entry or CONF_DEVICE_ID not in entry:
             continue
-        placeholder_name = _id_value(entry[CONF_DEVICE_ID])
-        if entry.get(CONF_NAME) != placeholder_name:
+        if not entry.pop(_REFRESH_NAME_FROM_DEVICE, False):
             continue
+        placeholder_name = _id_value(entry[CONF_DEVICE_ID])
         device_name = _device_name_for_id(entry[CONF_DEVICE_ID], full_config)
         if device_name is None:
             raise cv.Invalid(
@@ -503,6 +507,7 @@ COMPACT_SENSOR_ENTRY_SCHEMA = cv.All(
         {
             cv.Required(CONF_NAME): cv.string_strict,
             cv.Optional(CONF_DEVICE_ID): cv.sub_device_id,
+            cv.Optional(_REFRESH_NAME_FROM_DEVICE): cv.boolean,
             cv.Required(CONF_ENTITIES): cv.ensure_list(cv.one_of(*KNOWN_SENSOR_ENTITIES)),
         }
     ),
