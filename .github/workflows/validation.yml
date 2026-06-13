@@ -35,6 +35,18 @@ jobs:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
 
+      - name: Cache ESPHome and PlatformIO
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            .esphome/external_components
+          key: ${{ runner.os }}-esphome-pio-${{ hashFiles('pyproject.toml', 'rtl433-esphome-heltec-lora-32-v2.yaml', 'components/rtl433_native/__init__.py') }}
+          restore-keys: |
+            ${{ runner.os }}-esphome-pio-
+
       - name: Install dependencies
         run: uv sync --dev
 
