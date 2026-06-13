@@ -50,6 +50,8 @@ args = ["--config-file=pyproject.toml"]
 additional_dependencies = [
     "esphome>=2026.5.3,<2027.0.0",
     "pytest",
+    "PyYAML",
+    "types-PyYAML",
 ]
 
 [[repos]]

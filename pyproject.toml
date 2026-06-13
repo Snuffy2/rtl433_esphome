@@ -17,12 +17,14 @@ authors = [
 dev = [
     "esphome>=2026.5.3,<2027.0.0",
     "mypy",
+    "PyYAML",
     "pytest",
     "ruff",
     "prek",
     "pytest-asyncio",
     "pytest-cov",
     "pytest-timeout",
+    "types-PyYAML",
 ]
 
 [tool.ruff]

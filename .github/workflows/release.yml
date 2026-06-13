@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Update version and validate release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.target_commitish }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+
+      - name: Update pyproject version
+        run: python .github/scripts/update_pyproject_version.py "${{ github.event.release.tag_name }}"
+
+      - name: Commit and push version changes
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          branch: ${{ github.event.release.target_commitish }}
+          commit_message: "Updating to version ${{ github.event.release.tag_name }} [skip ci]"
+
+      - name: Update release tag with version changes commit
+        run: |
+          git tag -f "${{ github.event.release.tag_name }}"
+          git push -f origin "${{ github.event.release.tag_name }}"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Prepare ESPHome config secrets
+        run: cp secrets.yaml.example secrets.yaml
+
+      - name: Validate release firmware build
+        run: ./scripts/build
+        env:
+          RTL433_ESPHOME_REF: ${{ github.event.release.tag_name }}

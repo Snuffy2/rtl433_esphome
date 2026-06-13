@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-import hashlib
-import json
 import os
 from pathlib import Path
 import shlex
@@ -17,6 +15,7 @@ import pytest
 
 REPO_ROOT: Path = Path(__file__).resolve().parents[1]
 PLATFORMIO_SCRIPT_ROOT: Path = REPO_ROOT / "scripts" / "platformio"
+FIRMWARE_CONFIG = "rtl433-esphome-heltec-lora-32-v2.yaml"
 
 
 def copy_script(tmp_path: Path, name: str) -> Path:
@@ -37,13 +36,22 @@ def copy_script(tmp_path: Path, name: str) -> Path:
     return destination
 
 
-def install_python_stub(tmp_path: Path, generated_platformio_ini: Path | None = None) -> Path:
+def install_python_stub(
+    tmp_path: Path,
+    generated_platformio_ini: Path | None = None,
+    latest_release_tag: str = "v9.8.7",
+    latest_release_exit_code: int = 0,
+) -> Path:
     """Install a fake venv Python executable that logs invocations.
 
     Args:
         tmp_path: Temporary repository root.
         generated_platformio_ini: Optional PlatformIO config to create when
             the fake ESPHome command generates build files.
+        latest_release_tag: Tag emitted when the script asks Python to resolve
+            the latest GitHub release.
+        latest_release_exit_code: Exit code emitted for the latest-release
+            resolver stub.
 
     Returns:
         Path to the invocation log file.
@@ -53,12 +61,20 @@ def install_python_stub(tmp_path: Path, generated_platformio_ini: Path | None = 
     log_path = tmp_path / "python.log"
     script_lines = [
         "#!/usr/bin/env bash",
+        'if [[ "${1:-}" == "-c" ]]; then',
+        f"  printf '%s\\n' {shlex.quote(latest_release_tag)}",
+        f"  exit {latest_release_exit_code}",
+        "fi",
         f"printf '%s\\n' \"$*\" >> {shlex.quote(str(log_path))}",
     ]
     if generated_platformio_ini is not None:
         script_lines.extend(
             [
-                ('if [[ "$*" == "-m esphome compile --only-generate garage-rtl433.yaml" ]]; then'),
+                (
+                    'if [[ "$*" == '
+                    f'"-m esphome -s rtl433_esphome_ref {latest_release_tag} '
+                    f'compile --only-generate {FIRMWARE_CONFIG}" ]]; then'
+                ),
                 f"  mkdir -p {shlex.quote(str(generated_platformio_ini.parent))}",
                 (
                     "  printf '%s\\n' "
@@ -92,12 +108,15 @@ def install_preflight_stub(tmp_path: Path) -> Path:
     return preflight_log
 
 
-def run_script(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def run_script(
+    script: Path, *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     """Run a copied shell script from its temporary repo root.
 
     Args:
         script: Script path under the temporary repo root.
         *args: Arguments to pass to the script.
+        env: Optional extra environment variables.
 
     Returns:
         Completed process for assertions.
@@ -108,6 +127,7 @@ def run_script(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
         check=False,
         text=True,
         capture_output=True,
+        env={**os.environ, **(env or {})},
     )
 
 
@@ -193,10 +213,69 @@ def test_build_defaults_to_compile_without_preflight(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert python_log.read_text(encoding="utf-8").splitlines() == [
-        "-m esphome config garage-rtl433.yaml",
-        "-m esphome compile garage-rtl433.yaml",
+        f"-m esphome -s rtl433_esphome_ref v9.8.7 config {FIRMWARE_CONFIG}",
+        f"-m esphome -s rtl433_esphome_ref v9.8.7 compile {FIRMWARE_CONFIG}",
     ]
     assert not preflight_log.exists()
+
+
+def test_build_accepts_explicit_component_ref(tmp_path: Path) -> None:
+    """An explicit component ref should not be replaced by latest release lookup."""
+    script = copy_script(tmp_path, "build")
+    python_log = install_python_stub(tmp_path, latest_release_tag="v9.8.7")
+
+    result = run_script(script, env={"RTL433_ESPHOME_REF": "v1.2.3"})
+
+    assert result.returncode == 0, result.stderr
+    assert python_log.read_text(encoding="utf-8").splitlines() == [
+        f"-m esphome -s rtl433_esphome_ref v1.2.3 config {FIRMWARE_CONFIG}",
+        f"-m esphome -s rtl433_esphome_ref v1.2.3 compile {FIRMWARE_CONFIG}",
+    ]
+
+
+def test_build_accepts_explicit_component_url(tmp_path: Path) -> None:
+    """An explicit component URL should be passed through to ESPHome."""
+    script = copy_script(tmp_path, "build")
+    python_log = install_python_stub(tmp_path, latest_release_tag="v9.8.7")
+    component_url = "https://github.com/example/rtl433_esphome.git"
+
+    result = run_script(
+        script,
+        env={
+            "RTL433_ESPHOME_URL": component_url,
+            "RTL433_ESPHOME_REF": "abc123",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert python_log.read_text(encoding="utf-8").splitlines() == [
+        (
+            "-m esphome "
+            f"-s rtl433_esphome_url {component_url} "
+            f"-s rtl433_esphome_ref abc123 config {FIRMWARE_CONFIG}"
+        ),
+        (
+            "-m esphome "
+            f"-s rtl433_esphome_url {component_url} "
+            f"-s rtl433_esphome_ref abc123 compile {FIRMWARE_CONFIG}"
+        ),
+    ]
+
+
+def test_build_fails_when_latest_release_lookup_fails(tmp_path: Path) -> None:
+    """Default latest builds should fail before ESPHome when release lookup fails."""
+    script = copy_script(tmp_path, "build")
+    python_log = install_python_stub(
+        tmp_path,
+        latest_release_tag="",
+        latest_release_exit_code=1,
+    )
+
+    result = run_script(script)
+
+    assert result.returncode == 1
+    assert "Could not resolve latest rtl433_esphome release tag." in result.stderr
+    assert not python_log.exists()
 
 
 @pytest.mark.parametrize(
@@ -226,9 +305,9 @@ def test_build_preflight_modes(
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "python.log").read_text(encoding="utf-8").splitlines() == [
-        "-m esphome config garage-rtl433.yaml",
-        "-m esphome compile --only-generate garage-rtl433.yaml",
-        "-m esphome compile garage-rtl433.yaml",
+        f"-m esphome -s rtl433_esphome_ref v9.8.7 config {FIRMWARE_CONFIG}",
+        (f"-m esphome -s rtl433_esphome_ref v9.8.7 compile --only-generate {FIRMWARE_CONFIG}"),
+        f"-m esphome -s rtl433_esphome_ref v9.8.7 compile {FIRMWARE_CONFIG}",
     ]
     assert preflight_log.read_text(encoding="utf-8").splitlines() == [expected_preflight_args]
 
@@ -252,51 +331,6 @@ def test_esphome_preflight_discovers_generated_platformio_ini(tmp_path: Path) ->
     ]
 
 
-def test_package_firmware_copies_binaries_and_manifest(tmp_path: Path) -> None:
-    """Packaging should preserve firmware outputs and create a web manifest."""
-    script = copy_script(tmp_path, "package-firmware")
-    firmware_dir = tmp_path / ".esphome" / "build" / "node" / ".pioenvs" / "node"
-    firmware_dir.mkdir(parents=True)
-    expected_files = {
-        "bootloader.bin",
-        "firmware.bin",
-        "firmware.elf",
-        "firmware.factory.bin",
-        "firmware.ota.bin",
-        "partitions.bin",
-    }
-    for filename in expected_files:
-        (firmware_dir / filename).write_text(filename, encoding="utf-8")
-    output_dir = tmp_path / "output" / "v1.2.3"
-
-    result = run_script(script, "v1.2.3", str(output_dir))
-
-    assert result.returncode == 0, result.stderr
-    assert expected_files.issubset({path.name for path in output_dir.iterdir()})
-    manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
-    factory_content = (firmware_dir / "firmware.factory.bin").read_bytes()
-    ota_content = (firmware_dir / "firmware.ota.bin").read_bytes()
-    assert manifest == {
-        "name": "Garage RTL433",
-        "version": "v1.2.3",
-        "home_assistant_domain": "esphome",
-        "new_install_prompt_erase": False,
-        "builds": [
-            {
-                "chipFamily": "ESP32",
-                "ota": {
-                    "path": "firmware.ota.bin",
-                    "md5": hashlib.md5(ota_content).hexdigest(),
-                    "sha256": hashlib.sha256(ota_content).hexdigest(),
-                },
-                "parts": [
-                    {
-                        "path": "firmware.factory.bin",
-                        "offset": 0,
-                        "md5": hashlib.md5(factory_content).hexdigest(),
-                        "sha256": hashlib.sha256(factory_content).hexdigest(),
-                    }
-                ],
-            }
-        ],
-    }
+def test_firmware_packaging_script_is_not_present() -> None:
+    """Do not publish packaged firmware for the personal local-device YAML."""
+    assert not (REPO_ROOT / "scripts" / "package-firmware").exists()

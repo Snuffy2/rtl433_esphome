@@ -1,0 +1,47 @@
+name: Validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    name: Test and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run tests
+        run: ./.venv/bin/pytest
+
+      - name: Prepare ESPHome config secrets
+        run: cp secrets.yaml.example secrets.yaml
+
+      - name: Compile PR component firmware
+        run: ./scripts/build
+        env:
+          RTL433_ESPHOME_URL: https://github.com/${{ github.event.pull_request.head.repo.full_name || github.repository }}.git
+          RTL433_ESPHOME_REF: ${{ github.event.pull_request.head.sha || github.sha }}

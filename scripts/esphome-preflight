@@ -52,7 +52,7 @@ if [[ -z "$platformio_ini" ]]; then
 
   case "${#matches[@]}" in
     0)
-      echo "No generated ESPHome platformio.ini found. Run ./.venv/bin/python -m esphome compile --only-generate garage-rtl433.yaml first." >&2
+      echo "No generated ESPHome platformio.ini found. Run ./.venv/bin/python -m esphome compile --only-generate <firmware-config>.yaml first." >&2
       exit 1
       ;;
     1)

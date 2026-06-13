@@ -15,7 +15,7 @@
 ## Project Context
 
 - This project replaces an OpenMQTTGateway device with an ESPHome build using `rtl_433_ESP`.
-- The main firmware configuration is `garage-rtl433.yaml`.
+- The current firmware profile is `rtl433-esphome-heltec-lora-32-v2.yaml`.
 - The local custom component is in `components/rtl433_native/`.
 - Tests live in `tests/`.
 
