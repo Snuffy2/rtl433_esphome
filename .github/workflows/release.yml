@@ -32,12 +32,14 @@ jobs:
         run: python .github/scripts/update_pyproject_version.py "${{ github.event.release.tag_name }}"
 
       - name: Commit and push version changes
+        if: ${{ !github.event.release.prerelease }}
         uses: stefanzweifel/git-auto-commit-action@v7
         with:
           branch: ${{ github.event.release.target_commitish }}
           commit_message: "Updating to version ${{ github.event.release.tag_name }} [skip ci]"
 
       - name: Update release tag with version changes commit
+        if: ${{ !github.event.release.prerelease }}
         run: |
           git tag -f "${{ github.event.release.tag_name }}"
           git push -f origin "${{ github.event.release.tag_name }}"
