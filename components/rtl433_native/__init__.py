@@ -19,6 +19,7 @@ from esphome.const import (
     CONF_ESPHOME,
     CONF_ID,
     CONF_NAME,
+    CONF_PLATFORMIO_OPTIONS,
 )
 from esphome.core import CORE, Define, ID
 
@@ -94,6 +95,7 @@ RTL433_NATIVE_LIBRARIES = (
     ("SPI", None, None),
     ("EEPROM", None, None),
 )
+CONF_EXTRA_SCRIPTS = "extra_scripts"
 DEFAULT_RADIO_MODULE = "SX1278"
 SUPPORTED_RADIO_MODULES = frozenset({"CC1101", "SX1276", "SX1278"})
 DEFAULT_RADIO_FREQUENCY = 433.92
@@ -637,11 +639,12 @@ async def to_code(config: dict[str, Any]) -> None:
     """Generate C++ for the rtl433_native component."""
 
     _refresh_compact_device_names(config)
+    _normalize_extra_scripts_platformio_option()
 
     cg.add_build_flag(ARDUINO_NETWORK_INCLUDE_FLAG)
     cg.add_build_flag(LEDC_COMPAT_INCLUDE_FLAG)
     cg.add_platformio_option("lib_ldf_mode", "chain+")
-    cg.add_platformio_option("extra_scripts", [RTL433_ESP_PREBUILD_SCRIPT])
+    cg.add_platformio_option(CONF_EXTRA_SCRIPTS, [RTL433_ESP_PREBUILD_SCRIPT])
     radio_config = config[CONF_RADIO]
     radio_pins = radio_config[CONF_PINS]
     cg.add_build_flag(f"-DRF_{radio_config[CONF_MODULE]}")
@@ -741,6 +744,22 @@ async def to_code(config: dict[str, Any]) -> None:
     if CONF_STATUS_BUTTON in config:
         status_button = await button.new_button(config[CONF_STATUS_BUTTON])
         cg.add(status_button.set_parent(var))
+
+
+def _normalize_extra_scripts_platformio_option() -> None:
+    """Normalize user extra scripts before ESPHome merges component scripts."""
+
+    core_config = CORE.config
+    if not isinstance(core_config, dict):
+        return
+
+    platformio_options = core_config.get(CONF_ESPHOME, {}).get(CONF_PLATFORMIO_OPTIONS)
+    if not isinstance(platformio_options, dict):
+        return
+
+    extra_scripts = platformio_options.get(CONF_EXTRA_SCRIPTS)
+    if isinstance(extra_scripts, str):
+        platformio_options[CONF_EXTRA_SCRIPTS] = [extra_scripts]
 
 
 def _entry_has_mapping_text(entry: dict[str, Any]) -> bool:

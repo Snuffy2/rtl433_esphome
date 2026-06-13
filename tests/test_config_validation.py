@@ -17,6 +17,7 @@ from esphome.const import (
     CONF_ESPHOME,
     CONF_ID,
     CONF_NAME,
+    CONF_PLATFORMIO_OPTIONS,
 )
 from esphome.core import CORE
 
@@ -35,6 +36,7 @@ from components.rtl433_native import (
     CONF_DISCOVERY_ENABLED,
     CONF_DISCOVERY_MODE,
     CONF_ENTITIES,
+    CONF_EXTRA_SCRIPTS,
     CONF_FREQUENCY,
     CONF_HUMIDITY,
     CONF_KEY,
@@ -93,7 +95,7 @@ class IdLike(Protocol):
 
 EXPECTED_PLATFORMIO_OPTIONS = [
     ("lib_ldf_mode", "chain+"),
-    ("extra_scripts", [RTL433_ESP_PREBUILD_SCRIPT]),
+    (CONF_EXTRA_SCRIPTS, [RTL433_ESP_PREBUILD_SCRIPT]),
 ]
 EXPECTED_LIBRARY_NAMES = ["rtl_433_ESP", "RadioLib", "Networking", "SPI", "EEPROM"]
 
@@ -858,6 +860,45 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
         assert call in fake_env.codegen.added
     for call in fake_env.text.texts[0].calls:
         assert call in fake_env.codegen.added
+
+
+async def test_to_code_normalizes_user_extra_script_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preserve ESPHome shorthand extra scripts when adding the prebuild hook."""
+
+    fake_env = install_codegen_fakes(monkeypatch)
+    core_config: dict[str, Any] = {
+        CONF_ESPHOME: {
+            CONF_PLATFORMIO_OPTIONS: {
+                CONF_EXTRA_SCRIPTS: "user_script.py",
+            }
+        }
+    }
+    monkeypatch.setattr(CORE, "config", core_config)
+
+    config: dict[str, Any] = {
+        CONF_ID: "gateway_id",
+        CONF_CANDIDATE_LIMIT: 1,
+        CONF_LED_PIN: 25,
+        CONF_RADIO: DEFAULT_RADIO_CONFIG,
+        CONF_STALE_AFTER: FakeTimePeriod(total_milliseconds=60_000),
+        CONF_KNOWN_SENSORS: [
+            {
+                CONF_KEY: "garage_freezer_1",
+                CONF_MAPPING: "Acurite-986/1R/11932",
+                CONF_TEMPERATURE: {"name": "temperature"},
+            }
+        ],
+        CONF_CANDIDATES: [],
+    }
+
+    await to_code(config)
+
+    assert core_config[CONF_ESPHOME][CONF_PLATFORMIO_OPTIONS][CONF_EXTRA_SCRIPTS] == [
+        "user_script.py"
+    ]
+    assert fake_env.codegen.platformio_options == EXPECTED_PLATFORMIO_OPTIONS
 
 
 async def test_to_code_sanitizes_generated_mapping_text_id_only(
