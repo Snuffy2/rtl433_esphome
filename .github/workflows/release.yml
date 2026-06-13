@@ -6,6 +6,7 @@ on:
 
 concurrency:
   group: release-latest-${{ github.repository }}
+  queue: max
   cancel-in-progress: false
 
 permissions:

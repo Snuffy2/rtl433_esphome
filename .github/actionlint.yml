@@ -1,0 +1,6 @@
+paths:
+  .github/workflows/release.yml:
+    ignore:
+      # GitHub Actions supports concurrency.queue, but the pinned actionlint
+      # release does not yet recognize the key.
+      - 'unexpected key "queue" for "concurrency" section'
