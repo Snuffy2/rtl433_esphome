@@ -40,6 +40,7 @@ def install_python_stub(
     tmp_path: Path,
     generated_platformio_ini: Path | None = None,
     latest_release_tag: str = "v9.8.7",
+    latest_release_exit_code: int = 0,
 ) -> Path:
     """Install a fake venv Python executable that logs invocations.
 
@@ -49,6 +50,8 @@ def install_python_stub(
             the fake ESPHome command generates build files.
         latest_release_tag: Tag emitted when the script asks Python to resolve
             the latest GitHub release.
+        latest_release_exit_code: Exit code emitted for the latest-release
+            resolver stub.
 
     Returns:
         Path to the invocation log file.
@@ -60,7 +63,7 @@ def install_python_stub(
         "#!/usr/bin/env bash",
         'if [[ "${1:-}" == "-c" ]]; then',
         f"  printf '%s\\n' {shlex.quote(latest_release_tag)}",
-        "  exit 0",
+        f"  exit {latest_release_exit_code}",
         "fi",
         f"printf '%s\\n' \"$*\" >> {shlex.quote(str(log_path))}",
     ]
@@ -228,6 +231,22 @@ def test_build_accepts_explicit_component_ref(tmp_path: Path) -> None:
         f"-m esphome -s rtl433_esphome_ref v1.2.3 config {FIRMWARE_CONFIG}",
         f"-m esphome -s rtl433_esphome_ref v1.2.3 compile {FIRMWARE_CONFIG}",
     ]
+
+
+def test_build_fails_when_latest_release_lookup_fails(tmp_path: Path) -> None:
+    """Default latest builds should fail before ESPHome when release lookup fails."""
+    script = copy_script(tmp_path, "build")
+    python_log = install_python_stub(
+        tmp_path,
+        latest_release_tag="",
+        latest_release_exit_code=1,
+    )
+
+    result = run_script(script)
+
+    assert result.returncode == 1
+    assert "Could not resolve latest rtl433_esphome release tag." in result.stderr
+    assert not python_log.exists()
 
 
 @pytest.mark.parametrize(

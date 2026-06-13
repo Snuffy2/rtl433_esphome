@@ -10,6 +10,7 @@ Current firmware profile:
 - Component source for local builds: latest GitHub release tag by default
 - Local component source for development/tests: `components/rtl433_native/`
 - Firmware binaries: not published, because the checked-in YAML contains deployment-specific sensor names and mappings
+- The checked-in profile uses this deployment's current device and entity names. Review or replace them before OTA if your Home Assistant instance already uses different entity IDs.
 
 ## Example Known Sensor Mappings
 
@@ -154,6 +155,7 @@ uv sync --dev
 - Compiles with `PLATFORMIO_BUILD_JOBS=1`.
 - Builds `rtl433-esphome-heltec-lora-32-v2.yaml` by default.
 - Resolves `rtl433_esphome_ref: latest` to the latest GitHub release tag before ESPHome fetches the external component.
+- Requires GitHub API access when `rtl433_esphome_ref` is `latest`.
 
 ### Build from a specific component release or Git ref
 
