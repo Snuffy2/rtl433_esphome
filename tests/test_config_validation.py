@@ -7,8 +7,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-import pytest
-import esphome.final_validate as fv
 from esphome import config_validation as cv
 from esphome.const import (
     CONF_DEVICE_ID,
@@ -20,11 +18,12 @@ from esphome.const import (
     CONF_PLATFORMIO_OPTIONS,
 )
 from esphome.core import CORE
+import esphome.final_validate as fv
+import pytest
 
 import components.rtl433_native as rtl433_native
 from components.rtl433_native import (
     ARDUINO_NETWORK_INCLUDE_FLAG,
-    CONFIG_SCHEMA,
     CONF_BATTERY,
     CONF_CANDIDATE_LIMIT,
     CONF_CANDIDATES,
@@ -61,14 +60,15 @@ from components.rtl433_native import (
     CONF_TEMPERATURE,
     CONF_TIME_ID,
     CONF_UNKNOWN_PACKET_COUNT,
+    CONFIG_SCHEMA,
     DEFAULT_RADIO_CONFIG,
     RTL433_ESP_PREBUILD_SCRIPT,
-    action_to_code,
-    to_code,
     _validate_known_sensor_keys,
     _validate_mapping,
     _validate_radio_module,
     _validate_stale_after,
+    action_to_code,
+    to_code,
 )
 
 EXPECTED_BUILD_FLAGS = [

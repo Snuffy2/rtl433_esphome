@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-import json
-import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
+import hashlib
+import json
 import os
 from pathlib import Path
-import shutil
 import shlex
+import shutil
 import subprocess
-from typing import Callable, cast
+from typing import cast
 
 import pytest
-
 
 REPO_ROOT: Path = Path(__file__).resolve().parents[1]
 PLATFORMIO_SCRIPT_ROOT: Path = REPO_ROOT / "scripts" / "platformio"
