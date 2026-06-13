@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ESPHOME_VERSION: ${{ inputs.esphome_version || 'latest' }}
+      ESPHOME_SUPPORTED_RANGE: esphome>=2026.5.3,<2027.0.0
 
     steps:
       - name: Checkout code
@@ -58,7 +59,7 @@ jobs:
 
       - name: Update ESPHome to latest
         if: ${{ env.ESPHOME_VERSION == 'latest' }}
-        run: uv pip install --upgrade esphome
+        run: uv pip install --upgrade "${ESPHOME_SUPPORTED_RANGE}"
 
       - name: Build firmware
         run: ./scripts/build --preflight
