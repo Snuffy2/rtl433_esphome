@@ -78,7 +78,7 @@ convention = "google"
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["tests", "components/rtl433_native"]
+files = ["tests", "components/rtl433_native", ".github/scripts"]
 disable_error_code = [
     "untyped-decorator",
 ]

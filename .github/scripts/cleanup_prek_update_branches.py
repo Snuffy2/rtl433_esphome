@@ -289,9 +289,10 @@ def _head_ref(pull: Mapping[str, object]) -> str:
         Pull request head ref.
     """
     head = pull["head"]
-    if not isinstance(head, dict) or not isinstance(head.get("ref"), str):
+    ref = head.get("ref") if isinstance(head, dict) else None
+    if not isinstance(ref, str):
         raise TypeError("Pull request is missing a head ref")
-    return head["ref"]
+    return ref
 
 
 def _pull_number(pull: Mapping[str, object]) -> int:
