@@ -12,6 +12,29 @@ usage() {
   echo "Usage: ./scripts/build [--preflight] [--update-global]" >&2
 }
 
+generated_platformio_ini() {
+  local candidate
+  local latest=""
+
+  if [[ ! -d .esphome/build ]]; then
+    echo "No generated PlatformIO build directory found under .esphome/build." >&2
+    exit 1
+  fi
+
+  while IFS= read -r candidate; do
+    if [[ -z "$latest" || "$candidate" -nt "$latest" ]]; then
+      latest="$candidate"
+    fi
+  done < <(find .esphome/build -mindepth 2 -maxdepth 2 -name platformio.ini -type f -print)
+
+  if [[ -z "$latest" ]]; then
+    echo "No generated PlatformIO config found under .esphome/build." >&2
+    exit 1
+  fi
+
+  printf '%s\n' "$latest"
+}
+
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --preflight)
@@ -42,11 +65,12 @@ fi
 
 if [[ "$run_preflight" -eq 1 ]]; then
   ./.venv/bin/python -m esphome compile --only-generate garage-rtl433.yaml
+  platformio_ini="$(generated_platformio_ini)"
 
   if [[ "$update_global" -eq 1 ]]; then
-    ./scripts/esphome-preflight --update-global
+    ./scripts/esphome-preflight --update-global "$platformio_ini"
   else
-    ./scripts/esphome-preflight
+    ./scripts/esphome-preflight "$platformio_ini"
   fi
 fi
 
