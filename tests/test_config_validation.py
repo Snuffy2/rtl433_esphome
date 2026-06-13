@@ -631,6 +631,16 @@ def test_arduino_network_include_flag_quotes_platformio_path() -> None:
     )
 
 
+def test_rtl433_esp_prebuild_script_uses_absolute_path() -> None:
+    """Keep PlatformIO extra_scripts independent from generated build directory depth."""
+
+    script_scope, script_path = RTL433_ESP_PREBUILD_SCRIPT.split(":", 1)
+
+    assert script_scope == "pre"
+    assert Path(script_path).is_absolute()
+    assert Path(script_path).name == "rtl433_esp_prebuild.py"
+
+
 def test_validate_stale_after_accepts_uint32_millisecond_value() -> None:
     """Accept stale durations that fit C++ uint32_t millisecond storage."""
 

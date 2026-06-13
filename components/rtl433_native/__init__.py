@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 from esphome import automation
@@ -83,7 +84,9 @@ ARDUINO_NETWORK_INCLUDE_FLAG = (
     '-I"${platformio.packages_dir}/framework-arduinoespressif32/libraries/Network/src"'
 )
 LEDC_COMPAT_INCLUDE_FLAG = "-include src/esphome/components/rtl433_native/ledc_compat.h"
-RTL433_ESP_PREBUILD_SCRIPT = "pre:../../../scripts/platformio/rtl433_esp_prebuild.py"
+RTL433_ESP_PREBUILD_SCRIPT = (
+    f"pre:{Path(__file__).resolve().parents[2] / 'scripts/platformio/rtl433_esp_prebuild.py'}"
+)
 RTL433_NATIVE_LIBRARIES = (
     ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.5.0"),
     ("RadioLib", "^7.2.1", None),
