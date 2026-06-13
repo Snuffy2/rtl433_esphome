@@ -41,4 +41,4 @@ jobs:
         run: cp secrets.yaml.example secrets.yaml
 
       - name: Validate ESPHome config
-        run: ./.venv/bin/python -m esphome -s rtl433_esphome_ref v0.1.0 config rtl433-esphome-heltec-lora-32-v2.yaml
+        run: ./.venv/bin/python -m esphome -s rtl433_esphome_ref "${GITHUB_SHA}" config rtl433-esphome-heltec-lora-32-v2.yaml
