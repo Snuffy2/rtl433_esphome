@@ -18,8 +18,8 @@ The checked-in YAML includes one local deployment. Replace or remove these entri
 
 | Logical sensor | Mapping | Current HA entity |
 | --- | --- | --- |
-| Garage Fridge | `LaCrosse-TX141THBv2/0/203;TFA-303221/1/203` | `sensor.garage_fridge` |
-| Garage Freezer | `TFA-303221/2/88;LaCrosse-TX141THBv2/1/88` | `sensor.garage_freezer` |
+| Garage Fridge | `LaCrosse-TX141THBv2/0/203;TFA-303221/1/203` | `sensor.garage_fridge_temperature` |
+| Garage Freezer | `TFA-303221/2/88;LaCrosse-TX141THBv2/1/88` | `sensor.garage_freezer_temperature` |
 
 ### Mapping notes
 
