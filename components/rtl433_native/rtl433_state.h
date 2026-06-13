@@ -64,6 +64,7 @@ std::optional<SensorMapping> parse_sensor_mapping(const std::string &value);
 std::string format_sensor_key(const SensorKey &key);
 std::string format_candidate(const CandidateRow &candidate);
 bool matches_key(const DecodedPacket &packet, const SensorKey &key);
+uint32_t resolve_last_updated_timestamp(uint32_t current_timestamp, uint32_t previous_timestamp);
 
 class GatewayState {
  public:

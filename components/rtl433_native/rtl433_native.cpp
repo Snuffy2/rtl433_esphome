@@ -341,7 +341,6 @@ void Gateway::restore_saved_states() {
     restored.last_seen_ms = millis();
     this->state_.restore_logical_state(logical_key, restored);
     this->last_updated_values_[logical_key] = saved.last_updated;
-    this->last_updated_ms_[logical_key] = millis();
     this->publish_state(logical_key);
     restored_any = true;
   }
@@ -414,23 +413,12 @@ void Gateway::save_state(const std::string &logical_key, uint32_t last_updated) 
   saved.humidity = logical->humidity;
   saved.battery = logical->battery;
   saved.rssi = logical->rssi;
-  uint32_t adjusted_last_updated = last_updated;
   const auto previous_last_updated = this->last_updated_values_.find(logical_key);
-  if (previous_last_updated != this->last_updated_values_.end() &&
-      adjusted_last_updated <= previous_last_updated->second) {
-    uint32_t elapsed_seconds = 0;
-    const auto previous_ms = this->last_updated_ms_.find(logical_key);
-    if (previous_ms != this->last_updated_ms_.end()) {
-      elapsed_seconds = (millis() - previous_ms->second) / 1000;
-    }
-    if (elapsed_seconds == 0) {
-      elapsed_seconds = 1;
-    }
-    adjusted_last_updated = previous_last_updated->second + elapsed_seconds;
-  }
+  const uint32_t previous_timestamp =
+      previous_last_updated == this->last_updated_values_.end() ? 0 : previous_last_updated->second;
+  const uint32_t adjusted_last_updated = resolve_last_updated_timestamp(last_updated, previous_timestamp);
   if (adjusted_last_updated > 0) {
     this->last_updated_values_[logical_key] = adjusted_last_updated;
-    this->last_updated_ms_[logical_key] = millis();
   }
   const auto last_updated_item = this->last_updated_values_.find(logical_key);
   if (last_updated_item != this->last_updated_values_.end()) {

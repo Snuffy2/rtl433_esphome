@@ -101,7 +101,6 @@ class Gateway : public Component {
   std::unordered_map<std::string, ESPPreferenceObject> preferences_{};
   std::unordered_set<std::string> remapped_before_restore_{};
   std::unordered_map<std::string, uint32_t> last_updated_values_{};
-  std::unordered_map<std::string, uint32_t> last_updated_ms_{};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};
   std::array<std::string, 20> last_candidate_values_{};
   text_sensor::TextSensor *last_packet_sensor_{nullptr};
