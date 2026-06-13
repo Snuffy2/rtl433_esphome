@@ -16,25 +16,30 @@ fi
 
 version="$1"
 output_dir="$2"
+build_name="${FIRMWARE_BUILD_NAME:-rtl433_esphome-heltec_lora_32_v2}"
+display_name="${FIRMWARE_DISPLAY_NAME:-rtl433_esphome heltec_lora_32_v2}"
+build_env="${FIRMWARE_BUILD_ENV:-rtl433-heltec-lora-32-v2}"
 
-firmware_bin="$(find .esphome/build -path '*/.pioenvs/*/firmware.bin' -print | sort)"
-firmware_count="$(printf '%s\n' "$firmware_bin" | sed '/^$/d' | wc -l | tr -d ' ')"
-if [[ "$firmware_count" -ne 1 ]]; then
-  printf 'Expected one firmware.bin, found %s:\n' "$firmware_count" >&2
-  printf '%s\n' "$firmware_bin" | sed '/^$/d; s/^/  /' >&2
+firmware_dir=".esphome/build/$build_env/.pioenvs/$build_env"
+if [[ ! -d "$firmware_dir" ]]; then
+  printf 'Expected firmware build directory %s. Run FIRMWARE_CONFIG for this profile through ./scripts/build first.\n' "$firmware_dir" >&2
   exit 1
 fi
 
-firmware_dir="$(dirname "$firmware_bin")"
+for filename in bootloader.bin firmware.bin firmware.elf firmware.factory.bin firmware.ota.bin partitions.bin; do
+  if [[ ! -f "$firmware_dir/$filename" ]]; then
+    printf 'Missing firmware output %s/%s. Run ./scripts/build for this profile first.\n' "$firmware_dir" "$filename" >&2
+    exit 1
+  fi
+done
+
 mkdir -p "$output_dir"
-cp \
-  "$firmware_dir/bootloader.bin" \
-  "$firmware_dir/firmware.bin" \
-  "$firmware_dir/firmware.elf" \
-  "$firmware_dir/firmware.factory.bin" \
-  "$firmware_dir/firmware.ota.bin" \
-  "$firmware_dir/partitions.bin" \
-  "$output_dir/"
+cp "$firmware_dir/bootloader.bin" "$output_dir/$build_name.bootloader.bin"
+cp "$firmware_dir/firmware.bin" "$output_dir/$build_name.bin"
+cp "$firmware_dir/firmware.elf" "$output_dir/$build_name.elf"
+cp "$firmware_dir/firmware.factory.bin" "$output_dir/$build_name.factory.bin"
+cp "$firmware_dir/firmware.ota.bin" "$output_dir/$build_name.ota.bin"
+cp "$firmware_dir/partitions.bin" "$output_dir/$build_name.partitions.bin"
 
 checksum() {
   local algorithm="$1"
@@ -44,14 +49,17 @@ checksum() {
 }
 
 escaped_version="$(printf '%s' "$version" | sed 's/\\/\\\\/g; s/"/\\"/g')"
-factory_md5="$(checksum md5 "$output_dir/firmware.factory.bin")"
-factory_sha256="$(checksum sha256 "$output_dir/firmware.factory.bin")"
-ota_md5="$(checksum md5 "$output_dir/firmware.ota.bin")"
-ota_sha256="$(checksum sha256 "$output_dir/firmware.ota.bin")"
+escaped_display_name="$(printf '%s' "$display_name" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+factory_path="$build_name.factory.bin"
+ota_path="$build_name.ota.bin"
+factory_md5="$(checksum md5 "$output_dir/$factory_path")"
+factory_sha256="$(checksum sha256 "$output_dir/$factory_path")"
+ota_md5="$(checksum md5 "$output_dir/$ota_path")"
+ota_sha256="$(checksum sha256 "$output_dir/$ota_path")"
 
 cat >"$output_dir/manifest.json" <<EOF
 {
-  "name": "Garage RTL433",
+  "name": "$escaped_display_name",
   "version": "$escaped_version",
   "home_assistant_domain": "esphome",
   "new_install_prompt_erase": false,
@@ -59,13 +67,13 @@ cat >"$output_dir/manifest.json" <<EOF
     {
       "chipFamily": "ESP32",
       "ota": {
-        "path": "firmware.ota.bin",
+        "path": "$ota_path",
         "md5": "$ota_md5",
         "sha256": "$ota_sha256"
       },
       "parts": [
         {
-          "path": "firmware.factory.bin",
+          "path": "$factory_path",
           "offset": 0,
           "md5": "$factory_md5",
           "sha256": "$factory_sha256"

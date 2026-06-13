@@ -17,6 +17,9 @@ import pytest
 
 REPO_ROOT: Path = Path(__file__).resolve().parents[1]
 PLATFORMIO_SCRIPT_ROOT: Path = REPO_ROOT / "scripts" / "platformio"
+FIRMWARE_CONFIG = "rtl433-esphome-heltec-lora-32-v2.yaml"
+FIRMWARE_BUILD_ENV = "rtl433-heltec-lora-32-v2"
+FIRMWARE_BUILD_NAME = "rtl433_esphome-heltec_lora_32_v2"
 
 
 def copy_script(tmp_path: Path, name: str) -> Path:
@@ -58,7 +61,7 @@ def install_python_stub(tmp_path: Path, generated_platformio_ini: Path | None = 
     if generated_platformio_ini is not None:
         script_lines.extend(
             [
-                ('if [[ "$*" == "-m esphome compile --only-generate garage-rtl433.yaml" ]]; then'),
+                (f'if [[ "$*" == "-m esphome compile --only-generate {FIRMWARE_CONFIG}" ]]; then'),
                 f"  mkdir -p {shlex.quote(str(generated_platformio_ini.parent))}",
                 (
                     "  printf '%s\\n' "
@@ -193,8 +196,8 @@ def test_build_defaults_to_compile_without_preflight(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert python_log.read_text(encoding="utf-8").splitlines() == [
-        "-m esphome config garage-rtl433.yaml",
-        "-m esphome compile garage-rtl433.yaml",
+        f"-m esphome config {FIRMWARE_CONFIG}",
+        f"-m esphome compile {FIRMWARE_CONFIG}",
     ]
     assert not preflight_log.exists()
 
@@ -226,9 +229,9 @@ def test_build_preflight_modes(
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "python.log").read_text(encoding="utf-8").splitlines() == [
-        "-m esphome config garage-rtl433.yaml",
-        "-m esphome compile --only-generate garage-rtl433.yaml",
-        "-m esphome compile garage-rtl433.yaml",
+        f"-m esphome config {FIRMWARE_CONFIG}",
+        f"-m esphome compile --only-generate {FIRMWARE_CONFIG}",
+        f"-m esphome compile {FIRMWARE_CONFIG}",
     ]
     assert preflight_log.read_text(encoding="utf-8").splitlines() == [expected_preflight_args]
 
@@ -255,7 +258,12 @@ def test_esphome_preflight_discovers_generated_platformio_ini(tmp_path: Path) ->
 def test_package_firmware_copies_binaries_and_manifest(tmp_path: Path) -> None:
     """Packaging should preserve firmware outputs and create a web manifest."""
     script = copy_script(tmp_path, "package-firmware")
-    firmware_dir = tmp_path / ".esphome" / "build" / "node" / ".pioenvs" / "node"
+    stale_firmware_dir = tmp_path / ".esphome" / "build" / "old-node" / ".pioenvs" / "old-node"
+    stale_firmware_dir.mkdir(parents=True)
+    (stale_firmware_dir / "firmware.bin").write_text("stale", encoding="utf-8")
+    firmware_dir = (
+        tmp_path / ".esphome" / "build" / FIRMWARE_BUILD_ENV / ".pioenvs" / FIRMWARE_BUILD_ENV
+    )
     firmware_dir.mkdir(parents=True)
     expected_files = {
         "bootloader.bin",
@@ -272,12 +280,20 @@ def test_package_firmware_copies_binaries_and_manifest(tmp_path: Path) -> None:
     result = run_script(script, "v1.2.3", str(output_dir))
 
     assert result.returncode == 0, result.stderr
-    assert expected_files.issubset({path.name for path in output_dir.iterdir()})
+    expected_output_files = {
+        f"{FIRMWARE_BUILD_NAME}.bootloader.bin",
+        f"{FIRMWARE_BUILD_NAME}.bin",
+        f"{FIRMWARE_BUILD_NAME}.elf",
+        f"{FIRMWARE_BUILD_NAME}.factory.bin",
+        f"{FIRMWARE_BUILD_NAME}.ota.bin",
+        f"{FIRMWARE_BUILD_NAME}.partitions.bin",
+    }
+    assert expected_output_files.issubset({path.name for path in output_dir.iterdir()})
     manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
     factory_content = (firmware_dir / "firmware.factory.bin").read_bytes()
     ota_content = (firmware_dir / "firmware.ota.bin").read_bytes()
     assert manifest == {
-        "name": "Garage RTL433",
+        "name": "rtl433_esphome heltec_lora_32_v2",
         "version": "v1.2.3",
         "home_assistant_domain": "esphome",
         "new_install_prompt_erase": False,
@@ -285,13 +301,13 @@ def test_package_firmware_copies_binaries_and_manifest(tmp_path: Path) -> None:
             {
                 "chipFamily": "ESP32",
                 "ota": {
-                    "path": "firmware.ota.bin",
+                    "path": f"{FIRMWARE_BUILD_NAME}.ota.bin",
                     "md5": hashlib.md5(ota_content).hexdigest(),
                     "sha256": hashlib.sha256(ota_content).hexdigest(),
                 },
                 "parts": [
                     {
-                        "path": "firmware.factory.bin",
+                        "path": f"{FIRMWARE_BUILD_NAME}.factory.bin",
                         "offset": 0,
                         "md5": hashlib.md5(factory_content).hexdigest(),
                         "sha256": hashlib.sha256(factory_content).hexdigest(),

@@ -1,11 +1,12 @@
 substitutions:
-  device_name: garage-rtl433-native
-  friendly_name: Garage RTL433
+  device_name: rtl433-heltec-lora-32-v2
+  friendly_name: rtl433_esphome heltec_lora_32_v2
+  fallback_ssid: rtl433_esphome Fallback
 
 esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
-  comment: "Heltec WiFi LoRa 32 V2-style 433 MHz rtl_433 ESPHome gateway"
+  comment: "Heltec WiFi LoRa 32 V2 rtl_433 ESPHome gateway"
   devices:
     - id: garage_combo_fridge_device
       name: Garage Combo Fridge
@@ -38,7 +39,7 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
   ap:
-    ssid: "${friendly_name} Fallback"
+    ssid: "${fallback_ssid}"
     password: !secret fallback_ap_password
 
 captive_portal:

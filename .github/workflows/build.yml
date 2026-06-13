@@ -16,15 +16,19 @@ on:
         default: ""
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
-    name: Build garage-rtl433.yaml
+    name: Build rtl433-esphome-heltec-lora-32-v2.yaml
     runs-on: ubuntu-latest
     env:
       ESPHOME_VERSION: ${{ inputs.esphome_version || 'latest' }}
       ESPHOME_SUPPORTED_RANGE: esphome>=2026.5.3,<2027.0.0
+      FIRMWARE_CONFIG: rtl433-esphome-heltec-lora-32-v2.yaml
+      FIRMWARE_BUILD_ENV: rtl433-heltec-lora-32-v2
+      FIRMWARE_BUILD_NAME: rtl433_esphome-heltec_lora_32_v2
+      FIRMWARE_DISPLAY_NAME: rtl433_esphome heltec_lora_32_v2
 
     steps:
       - name: Checkout code
@@ -70,5 +74,11 @@ jobs:
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v7
         with:
-          name: garage-rtl433-${{ steps.version.outputs.version }}
+          name: rtl433_esphome-heltec_lora_32_v2-${{ steps.version.outputs.version }}
           path: output
+
+      - name: Upload release binaries
+        if: ${{ github.event_name == 'release' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: output/${{ steps.version.outputs.version }}/*.bin

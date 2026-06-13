@@ -1,8 +1,22 @@
-# Garage RTL433 ESPHome Gateway
+# rtl433_esphome
 
-ESPHome replacement for an OpenMQTTGateway receiver. The firmware uses `rtl_433_ESP` on a Heltec WiFi LoRa 32 V2-style 433 MHz board and publishes native Home Assistant entities for the known sensors.
+ESPHome firmware and a local custom component for building native Home
+Assistant entities from `rtl_433_ESP` packets.
 
-## Known Sensor Mappings
+The current checked-in firmware profile targets a Heltec WiFi LoRa 32 V2-style
+433 MHz ESP32 board:
+
+- Config: `rtl433-esphome-heltec-lora-32-v2.yaml`
+- ESPHome device name: `rtl433-heltec-lora-32-v2`
+- Release build name: `rtl433_esphome-heltec_lora_32_v2`
+
+Future profiles can add more board-specific YAML files while reusing the same
+`components/rtl433_native/` component and build scripts.
+
+## Example Known Sensor Mappings
+
+The default YAML includes four garage freezer/fridge sensors as an example
+deployment. Replace or remove these entries for your own transmitters.
 
 | Logical sensor | Mapping | Current HA entity |
 | --- | --- | --- |
@@ -48,7 +62,7 @@ linked device name for generated entity names. If `device_id` is omitted, the
 generated known-sensor entities stay on the main ESPHome device. The `mapping`
 entity is optional; include it when you want a Home Assistant text entity for
 changing the rtl_433 mapping at runtime. Mapping text entities stay on the main
-`Garage RTL433` device with gateway diagnostics, discovery
+ESPHome device with gateway diagnostics, discovery
 candidates, controls, uptime, status, restart, IP address, Wi-Fi RSSI, and free
 heap. Compact RSSI and last-updated entities are disabled by default.
 
@@ -76,7 +90,7 @@ rtl433_native:
 ```
 
 Gateway diagnostics are created by default and do not need to be listed in
-`garage-rtl433.yaml`:
+the board profile YAML:
 
 - `last_packet`
 - `packet_count`
@@ -92,7 +106,7 @@ Candidate text sensors are created from `candidate_limit` as diagnostic entities
 and are enabled by default, but they are not part of the primary sensor view.
 
 Gateway controls are also created by default and do not need template `switch`
-or `button` entries in `garage-rtl433.yaml`:
+or `button` entries in the board profile YAML:
 
 - `discovery_mode`
 - `clear_candidates_button`
@@ -103,8 +117,8 @@ name or other entity settings.
 
 ## Hardware Configuration
 
-`garage-rtl433.yaml` uses the `rtl433_native` component-supplied hardware
-defaults:
+`rtl433-esphome-heltec-lora-32-v2.yaml` uses the `rtl433_native`
+component-supplied hardware defaults for the Heltec LoRa 32 V2 profile:
 
 ```yaml
 rtl433_native:
@@ -165,8 +179,16 @@ uv sync --dev
 ```
 
 `./scripts/build` validates the ESPHome config and compiles with
-`PLATFORMIO_BUILD_JOBS=1`. Use `./scripts/build --preflight` when the generated
-PlatformIO platform cache may need repair before compiling.
+`PLATFORMIO_BUILD_JOBS=1`. By default it builds
+`rtl433-esphome-heltec-lora-32-v2.yaml`. Override `FIRMWARE_CONFIG` to build a
+future board profile:
+
+```bash
+FIRMWARE_CONFIG=path/to/another-board.yaml ./scripts/build
+```
+
+Use `./scripts/build --preflight` when the generated PlatformIO platform cache
+may need repair before compiling.
 
 Run `./scripts/esphome-preflight` before OTA upload when the PlatformIO cache
 may be stale, after changing Python versions, or after ESPHome updates. It
@@ -177,15 +199,19 @@ global update step.
 
 ## Discovery Workflow
 
-1. Turn on `Garage RTL433 Discovery Mode`.
-2. Press `Garage RTL433 Clear Candidates`.
+The entity names below use the default Heltec profile friendly name. If you
+change `friendly_name`, Home Assistant will use that name instead.
+
+1. Turn on `rtl433_esphome heltec_lora_32_v2 Discovery Mode`.
+2. Press `rtl433_esphome heltec_lora_32_v2 Clear Candidates`.
 3. Insert batteries into one sensor or force it to transmit.
-4. Watch `Garage RTL433 Candidate 1` through `Garage RTL433 Candidate 10`.
+4. Watch `rtl433_esphome heltec_lora_32_v2 Candidate 1` through
+   `rtl433_esphome heltec_lora_32_v2 Candidate 10`.
 5. Copy the candidate key in `model/channel/id` format.
 6. Paste it into the matching mapping text entity. Use semicolons to list
    multiple keys for the same physical sensor.
 7. Confirm the logical temperature entity updates.
-8. Turn off `Garage RTL433 Discovery Mode`.
+8. Turn off `rtl433_esphome heltec_lora_32_v2 Discovery Mode`.
 
 The firmware never creates normal entities for unknown packets and never
 automatically rebinds a freezer/fridge mapping.
