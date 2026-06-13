@@ -160,11 +160,20 @@ rtl433_native:
 ## Build
 
 ```bash
-uv venv .venv
-uv sync --group dev
-./.venv/bin/python -m esphome config garage-rtl433.yaml
-./.venv/bin/python -m esphome compile garage-rtl433.yaml
+uv sync --dev
+./scripts/build
 ```
+
+`./scripts/build` validates the ESPHome config and compiles with
+`PLATFORMIO_BUILD_JOBS=1`. Use `./scripts/build --preflight` when the generated
+PlatformIO platform cache may need repair before compiling.
+
+Run `./scripts/esphome-preflight` before OTA upload when the PlatformIO cache
+may be stale, after changing Python versions, or after ESPHome updates. It
+finds ESPHome's generated `platformio.ini` and force-reinstalls the URL-pinned
+ESP32 platform selected by ESPHome. Add `--update-global` to also refresh
+PlatformIO Core/global packages when you intentionally want the network-backed
+global update step.
 
 ## Discovery Workflow
 

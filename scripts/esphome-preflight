@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Repair ESPHome's generated PlatformIO platform cache before firmware builds.
+
+cd "$(dirname "$0")/.."
+
+if [[ ! -x ./.venv/bin/python ]]; then
+  echo "Missing ./.venv/bin/python. Run uv sync --dev first." >&2
+  exit 1
+fi
+
+update_global=0
+platformio_ini=""
+
+usage() {
+  echo "Usage: ./scripts/esphome-preflight [--update-global] [path/to/platformio.ini]" >&2
+}
+
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --update-global)
+      update_global=1
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      if [[ -n "$platformio_ini" ]]; then
+        usage
+        exit 2
+      fi
+      platformio_ini="$1"
+      ;;
+  esac
+  shift
+done
+
+if [[ "$update_global" -eq 1 ]]; then
+  ./.venv/bin/python -m platformio upgrade
+  ./.venv/bin/python -m platformio pkg update -g
+fi
+
+if [[ -z "$platformio_ini" ]]; then
+  matches=()
+  if [[ -d .esphome/build ]]; then
+    while IFS= read -r candidate; do
+      matches+=("$candidate")
+    done < <(find .esphome/build -mindepth 2 -maxdepth 2 -name platformio.ini -print | sort)
+  fi
+
+  case "${#matches[@]}" in
+    0)
+      echo "No generated ESPHome platformio.ini found. Run ./.venv/bin/python -m esphome compile --only-generate garage-rtl433.yaml first." >&2
+      exit 1
+      ;;
+    1)
+      platformio_ini="${matches[0]}"
+      ;;
+    *)
+      echo "Multiple generated ESPHome platformio.ini files found; pass one explicitly:" >&2
+      printf '  %s\n' "${matches[@]}" >&2
+      exit 1
+      ;;
+  esac
+fi
+
+if [[ ! -f "$platformio_ini" ]]; then
+  echo "PlatformIO config not found: $platformio_ini" >&2
+  exit 1
+fi
+
+platform_spec="$(sed -nE 's/^platform[[:space:]]*=[[:space:]]*//p' "$platformio_ini" | tail -n 1)"
+if [[ "$platform_spec" == http://* || "$platform_spec" == https://* ]]; then
+  ./.venv/bin/python -m platformio pkg install -g -f -p "$platform_spec"
+else
+  echo "No URL-pinned platform found in $platformio_ini; nothing to force reinstall."
+fi
