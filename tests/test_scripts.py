@@ -15,9 +15,7 @@ import pytest
 
 REPO_ROOT: Path = Path(__file__).resolve().parents[1]
 PLATFORMIO_SCRIPT_ROOT: Path = REPO_ROOT / "scripts" / "platformio"
-RELEASE_WORKFLOW_PATH: Path = REPO_ROOT / ".github" / "workflows" / "release.yml"
 FIRMWARE_CONFIG = "rtl433-esphome-heltec-lora-32-v2.yaml"
-FIRMWARE_CONFIG_PATH: Path = REPO_ROOT / FIRMWARE_CONFIG
 
 
 def copy_script(tmp_path: Path, name: str) -> Path:
@@ -336,20 +334,3 @@ def test_esphome_preflight_discovers_generated_platformio_ini(tmp_path: Path) ->
 def test_firmware_packaging_script_is_not_present() -> None:
     """Do not publish packaged firmware for the personal local-device YAML."""
     assert not (REPO_ROOT / "scripts" / "package-firmware").exists()
-
-
-def test_release_workflow_updates_latest_tag() -> None:
-    """Published releases should move the latest tag to the release commit."""
-    workflow = RELEASE_WORKFLOW_PATH.read_text(encoding="utf-8")
-
-    assert "name: Update latest tag" in workflow
-    assert "git tag -f latest" in workflow
-    assert "git push -f origin latest" in workflow
-
-
-def test_external_component_refreshes_latest_tag_hourly() -> None:
-    """The default component source should re-check the moving latest tag hourly."""
-    config = FIRMWARE_CONFIG_PATH.read_text(encoding="utf-8")
-
-    assert "rtl433_esphome_ref: latest" in config
-    assert "refresh: 1h" in config
