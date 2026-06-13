@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+from dataclasses import dataclass
 import os
 from pathlib import Path
 import shutil
@@ -110,52 +111,76 @@ def run_script(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def load_platformio_prebuild_script(script_name: str) -> dict[str, object]:
+class FakePlatformIOEnv:
+    """Test double for PlatformIO's SCons environment."""
+
+    def __init__(self) -> None:
+        """Initialize recorded build middleware callbacks."""
+
+        self.build_middlewares: list[Callable[[object], object | None]] = []
+
+    def AddBuildMiddleware(self, callback: Callable[[object], object | None]) -> None:  # noqa: N802
+        """Record a PlatformIO build middleware callback."""
+
+        self.build_middlewares.append(callback)
+
+
+@dataclass(frozen=True)
+class FakeSourceNode:
+    """Test double for a SCons source node."""
+
+    path: str
+
+    def srcnode(self) -> FakeSourceNode:
+        """Return the original source node."""
+
+        return self
+
+    def get_path(self) -> str:
+        """Return the source path."""
+
+        return self.path
+
+
+def load_platformio_prebuild_script(
+    script_name: str,
+) -> tuple[dict[str, object], FakePlatformIOEnv]:
     """Load a PlatformIO prebuild script without requiring SCons.
 
     Args:
         script_name: Filename under scripts/platformio.
 
     Returns:
-        Executed script globals.
+        Executed script globals and fake PlatformIO environment.
     """
 
+    fake_env = FakePlatformIOEnv()
     namespace: dict[str, object] = {
         "Import": lambda *_args: None,
-        "env": {
-            "PROJECT_LIBDEPS_DIR": "/tmp/unused-libdeps",
-            "PIOENV": "unused-env",
-        },
+        "env": fake_env,
     }
     script = PLATFORMIO_SCRIPT_ROOT / script_name
     exec(script.read_text(encoding="utf-8"), namespace)
-    return namespace
+    return namespace, fake_env
 
 
-def test_rtl433_esp_prebuild_removes_duplicate_decoder_source(tmp_path: Path) -> None:
+def test_rtl433_esp_prebuild_skips_duplicate_decoder_source() -> None:
     """rtl_433_ESP v0.5.0 should not compile its duplicate decoder utility file."""
-    namespace = load_platformio_prebuild_script("rtl433_esp_prebuild.py")
-    remove_duplicate_decoder_util = cast(
-        Callable[[Path, str], None], namespace["remove_duplicate_decoder_util"]
+    namespace, fake_env = load_platformio_prebuild_script("rtl433_esp_prebuild.py")
+    is_duplicate_decoder_util_source = cast(
+        Callable[[str], bool], namespace["is_duplicate_decoder_util_source"]
     )
-    libdeps_dir = tmp_path / "libdeps"
-    duplicate_source = (
-        libdeps_dir
-        / "garage-rtl433-native"
-        / "rtl_433_ESP"
-        / "src"
-        / "rtl_433"
-        / "decoder_util copy.c"
+    middleware = fake_env.build_middlewares[0]
+    duplicate_node = FakeSourceNode(
+        "/tmp/libdeps/garage-rtl433-native/rtl_433_ESP/src/rtl_433/decoder_util copy.c"
     )
-    duplicate_source.parent.mkdir(parents=True)
-    duplicate_source.write_text("duplicate", encoding="utf-8")
-    canonical_source = duplicate_source.with_name("decoder_util.c")
-    canonical_source.write_text("canonical", encoding="utf-8")
+    canonical_node = FakeSourceNode(
+        "/tmp/libdeps/garage-rtl433-native/rtl_433_ESP/src/rtl_433/decoder_util.c"
+    )
 
-    remove_duplicate_decoder_util(libdeps_dir, "garage-rtl433-native")
-
-    assert not duplicate_source.exists()
-    assert canonical_source.read_text(encoding="utf-8") == "canonical"
+    assert is_duplicate_decoder_util_source(duplicate_node.path)
+    assert middleware(duplicate_node) is None
+    assert middleware(canonical_node) == canonical_node
 
 
 def test_build_defaults_to_compile_without_preflight(tmp_path: Path) -> None:

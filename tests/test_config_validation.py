@@ -95,6 +95,7 @@ EXPECTED_PLATFORMIO_OPTIONS = [
     ("lib_ldf_mode", "chain+"),
     ("extra_scripts", [RTL433_ESP_PREBUILD_SCRIPT]),
 ]
+EXPECTED_LIBRARY_NAMES = ["rtl_433_ESP", "RadioLib", "Networking", "SPI", "EEPROM"]
 
 GENERATED_GATEWAY_METHODS = frozenset(
     {
@@ -522,6 +523,7 @@ def assert_codegen_dependencies(fake_env: FakeCodegenEnvironment) -> None:
 
     assert fake_env.codegen.build_flags == EXPECTED_BUILD_FLAGS
     assert fake_env.codegen.platformio_options == EXPECTED_PLATFORMIO_OPTIONS
+    assert [library[0] for library in fake_env.codegen.libraries] == EXPECTED_LIBRARY_NAMES
 
 
 def gateway_diagnostic_overrides(prefix: str) -> dict[str, dict[str, str]]:
