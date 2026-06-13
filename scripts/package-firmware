@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Collect compiled firmware binaries and write the ESP Web Tools manifest.
+
 cd "$(dirname "$0")/.."
 
 usage() {

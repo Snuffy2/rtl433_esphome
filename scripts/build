@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Validate and compile the garage RTL433 ESPHome firmware from the repo-local venv.
+
 cd "$(dirname "$0")/.."
 
 run_preflight=0
