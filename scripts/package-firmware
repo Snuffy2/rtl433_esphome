@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+usage() {
+  echo "Usage: ./scripts/package-firmware <version> <output-dir>" >&2
+}
+
+if [[ "$#" -ne 2 ]]; then
+  usage
+  exit 2
+fi
+
+version="$1"
+output_dir="$2"
+
+firmware_bin="$(find .esphome/build -path '*/.pioenvs/*/firmware.bin' -print | sort)"
+firmware_count="$(printf '%s\n' "$firmware_bin" | sed '/^$/d' | wc -l | tr -d ' ')"
+if [[ "$firmware_count" -ne 1 ]]; then
+  printf 'Expected one firmware.bin, found %s:\n' "$firmware_count" >&2
+  printf '%s\n' "$firmware_bin" | sed '/^$/d; s/^/  /' >&2
+  exit 1
+fi
+
+firmware_dir="$(dirname "$firmware_bin")"
+mkdir -p "$output_dir"
+cp \
+  "$firmware_dir/bootloader.bin" \
+  "$firmware_dir/firmware.bin" \
+  "$firmware_dir/firmware.elf" \
+  "$firmware_dir/firmware.factory.bin" \
+  "$firmware_dir/firmware.ota.bin" \
+  "$firmware_dir/partitions.bin" \
+  "$output_dir/"
+
+escaped_version="$(printf '%s' "$version" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+cat >"$output_dir/manifest.json" <<EOF
+{
+  "name": "Garage RTL433",
+  "version": "$escaped_version",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        {
+          "path": "firmware.factory.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}
+EOF

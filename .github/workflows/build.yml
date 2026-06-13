@@ -34,9 +34,6 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v6
-
       - name: Prepare CI secrets
         run: cp secrets.yaml.example secrets.yaml
 
@@ -48,6 +45,9 @@ jobs:
             version="dev-${GITHUB_RUN_NUMBER}"
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install uv
+        run: python -m pip install uv
 
       - name: Install build dependencies
         run: uv sync --dev
@@ -64,24 +64,7 @@ jobs:
         run: ./scripts/build --preflight
 
       - name: Move files for versioning
-        run: |
-          mkdir -p "output/${{ steps.version.outputs.version }}"
-          firmware_bin="$(find .esphome/build -path '*/.pioenvs/*/firmware.bin' -print | sort)"
-          firmware_count="$(printf '%s\n' "$firmware_bin" | sed '/^$/d' | wc -l | tr -d ' ')"
-          if [ "$firmware_count" -ne 1 ]; then
-            printf 'Expected one firmware.bin, found %s:\n' "$firmware_count" >&2
-            printf '%s\n' "$firmware_bin" | sed '/^$/d; s/^/  /' >&2
-            exit 1
-          fi
-          firmware_dir="$(dirname "$firmware_bin")"
-          cp \
-            "$firmware_dir/bootloader.bin" \
-            "$firmware_dir/firmware.bin" \
-            "$firmware_dir/firmware.elf" \
-            "$firmware_dir/firmware.factory.bin" \
-            "$firmware_dir/firmware.ota.bin" \
-            "$firmware_dir/partitions.bin" \
-            "output/${{ steps.version.outputs.version }}/"
+        run: ./scripts/package-firmware "${{ steps.version.outputs.version }}" "output/${{ steps.version.outputs.version }}"
 
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v7
