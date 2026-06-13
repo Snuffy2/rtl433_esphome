@@ -36,6 +36,14 @@
 
 - Use the repo's `prek`, and `pytest` commands inside `./.venv`. You must always run these inside `./.venv`.
 - By default, run the full pytest suite. If running targeted tests, explain why.
+- Use `./scripts/build` for ESPHome firmware builds. It runs config
+  validation, refreshes PlatformIO's cached/global packages through
+  `./scripts/esphome-preflight`, and compiles with `PLATFORMIO_BUILD_JOBS=1`.
+- Use `./scripts/build --skip-preflight` only for offline or fast rebuilds when
+  the PlatformIO cache is already known-good.
+- Before OTA upload, run `./scripts/esphome-preflight` if Python, ESPHome, or
+  PlatformIO platform versions changed, or if a stale `espressif32@src-*`
+  platform cache may exist.
 
 ## Error handling & logging
 

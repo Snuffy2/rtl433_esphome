@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+if [[ ! -x ./.venv/bin/python ]]; then
+  echo "Missing ./.venv/bin/python. Run uv sync --dev first." >&2
+  exit 1
+fi
+
+platformio_ini=".esphome/build/garage-rtl433-native/platformio.ini"
+
+./.venv/bin/python -m platformio upgrade
+./.venv/bin/python -m platformio pkg update -g
+
+if [[ -f "$platformio_ini" ]]; then
+  platform_spec="$(sed -n 's/^platform = //p' "$platformio_ini" | tail -n 1)"
+  if [[ "$platform_spec" == http://* || "$platform_spec" == https://* ]]; then
+    ./.venv/bin/python -m platformio pkg install -g -f -p "$platform_spec"
+  fi
+fi

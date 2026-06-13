@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+skip_preflight=0
+
+if [[ "${1:-}" == "--skip-preflight" ]]; then
+  skip_preflight=1
+  shift
+fi
+
+if [[ "$#" -gt 0 ]]; then
+  echo "Usage: ./scripts/build [--skip-preflight]" >&2
+  exit 2
+fi
+
+if [[ ! -x ./.venv/bin/python ]]; then
+  echo "Missing ./.venv/bin/python. Run uv sync --dev first." >&2
+  exit 1
+fi
+
+./.venv/bin/python -m esphome config garage-rtl433.yaml
+
+if [[ "$skip_preflight" -eq 0 ]]; then
+  ./scripts/esphome-preflight
+fi
+
+PLATFORMIO_BUILD_JOBS=1 ./.venv/bin/python -m esphome compile garage-rtl433.yaml
