@@ -1,14 +1,10 @@
 substitutions:
   device_name: rtl433-heltec-lora-32-v2
-  friendly_name: rtl433_esphome heltec_lora_32_v2
-  fallback_ssid: rtl433_esphome Fallback
-  rtl433_esphome_url: https://github.com/Snuffy2/rtl433_esphome.git
-  rtl433_esphome_ref: latest
+  friendly_name: rtl433_esphome
 
 esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
-  comment: "Heltec WiFi LoRa 32 V2 rtl_433 ESPHome gateway"
   devices:
     - id: garage_fridge_device
       name: Garage Fridge
@@ -37,7 +33,7 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
   ap:
-    ssid: "${fallback_ssid}"
+    ssid: "${friendly_name} Fallback"
     password: !secret fallback_ap_password
 
 captive_portal:
@@ -45,8 +41,8 @@ captive_portal:
 external_components:
   - source:
       type: git
-      url: ${rtl433_esphome_url}
-      ref: ${rtl433_esphome_ref}
+      url: https://github.com/Snuffy2/rtl433_esphome.git
+      ref: latest
     refresh: never
     components:
       - rtl433_native
@@ -79,6 +75,7 @@ rtl433_native:
         - stale
         - last_updated
         - mapping
+
 sensor:
   - platform: uptime
     name: "Uptime"
