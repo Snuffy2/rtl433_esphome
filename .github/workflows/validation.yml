@@ -40,8 +40,13 @@ jobs:
       - name: Prepare ESPHome config secrets
         run: cp secrets.yaml.example secrets.yaml
 
-      - name: Validate ESPHome config
-        run: ./.venv/bin/python -m esphome -s rtl433_esphome_url "${RTL433_ESPHOME_URL}" -s rtl433_esphome_ref "${RTL433_ESPHOME_REF}" config rtl433-esphome-heltec-lora-32-v2.yaml
+      - name: Compile latest released firmware
+        run: ./scripts/build
         env:
-          RTL433_ESPHOME_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Compile PR component firmware
+        run: ./scripts/build
+        env:
           RTL433_ESPHOME_URL: https://github.com/${{ github.event.pull_request.head.repo.full_name || github.repository }}.git
+          RTL433_ESPHOME_REF: ${{ github.event.pull_request.head.sha || github.sha }}

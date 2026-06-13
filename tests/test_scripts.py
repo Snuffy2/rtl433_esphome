@@ -233,6 +233,35 @@ def test_build_accepts_explicit_component_ref(tmp_path: Path) -> None:
     ]
 
 
+def test_build_accepts_explicit_component_url(tmp_path: Path) -> None:
+    """An explicit component URL should be passed through to ESPHome."""
+    script = copy_script(tmp_path, "build")
+    python_log = install_python_stub(tmp_path, latest_release_tag="v9.8.7")
+    component_url = "https://github.com/example/rtl433_esphome.git"
+
+    result = run_script(
+        script,
+        env={
+            "RTL433_ESPHOME_URL": component_url,
+            "RTL433_ESPHOME_REF": "abc123",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert python_log.read_text(encoding="utf-8").splitlines() == [
+        (
+            "-m esphome "
+            f"-s rtl433_esphome_url {component_url} "
+            f"-s rtl433_esphome_ref abc123 config {FIRMWARE_CONFIG}"
+        ),
+        (
+            "-m esphome "
+            f"-s rtl433_esphome_url {component_url} "
+            f"-s rtl433_esphome_ref abc123 compile {FIRMWARE_CONFIG}"
+        ),
+    ]
+
+
 def test_build_fails_when_latest_release_lookup_fails(tmp_path: Path) -> None:
     """Default latest builds should fail before ESPHome when release lookup fails."""
     script = copy_script(tmp_path, "build")

@@ -10,6 +10,7 @@ cd "$(dirname "$0")/.."
 run_preflight=0
 update_global=0
 firmware_config="${FIRMWARE_CONFIG:-rtl433-esphome-heltec-lora-32-v2.yaml}"
+rtl433_esphome_url="${RTL433_ESPHOME_URL:-}"
 rtl433_esphome_ref="${RTL433_ESPHOME_REF:-latest}"
 
 usage() {
@@ -99,7 +100,11 @@ if [[ ! -x ./.venv/bin/python ]]; then
 fi
 
 resolved_ref="$(resolved_rtl433_esphome_ref)"
-esphome_command=(./.venv/bin/python -m esphome -s rtl433_esphome_ref "$resolved_ref")
+esphome_command=(./.venv/bin/python -m esphome)
+if [[ -n "$rtl433_esphome_url" ]]; then
+  esphome_command+=(-s rtl433_esphome_url "$rtl433_esphome_url")
+fi
+esphome_command+=(-s rtl433_esphome_ref "$resolved_ref")
 
 "${esphome_command[@]}" config "$firmware_config"
 
