@@ -43,7 +43,8 @@ def test_local_device_yaml_uses_release_constrained_github_component() -> None:
     firmware_yaml = FIRMWARE_CONFIG.read_text(encoding="utf-8")
 
     assert "type: git" in firmware_yaml
-    assert "url: https://github.com/Snuffy2/rtl433_esphome.git" in firmware_yaml
+    assert "rtl433_esphome_url: https://github.com/Snuffy2/rtl433_esphome.git" in firmware_yaml
+    assert "url: ${rtl433_esphome_url}" in firmware_yaml
     assert "rtl433_esphome_ref: latest" in firmware_yaml
     assert "ref: ${rtl433_esphome_ref}" in firmware_yaml
     assert "refresh: never" in firmware_yaml

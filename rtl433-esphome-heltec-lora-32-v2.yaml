@@ -2,6 +2,7 @@ substitutions:
   device_name: rtl433-heltec-lora-32-v2
   friendly_name: rtl433_esphome heltec_lora_32_v2
   fallback_ssid: rtl433_esphome Fallback
+  rtl433_esphome_url: https://github.com/Snuffy2/rtl433_esphome.git
   rtl433_esphome_ref: latest
 
 esphome:
@@ -44,7 +45,7 @@ captive_portal:
 external_components:
   - source:
       type: git
-      url: https://github.com/Snuffy2/rtl433_esphome.git
+      url: ${rtl433_esphome_url}
       ref: ${rtl433_esphome_ref}
     refresh: never
     components:
