@@ -45,7 +45,7 @@ external_components:
       type: git
       url: ${rtl433_esphome_url}
       ref: ${rtl433_esphome_ref}
-    refresh: never
+    refresh: 1h
     components:
       - rtl433_native
 

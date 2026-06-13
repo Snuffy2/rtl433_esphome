@@ -42,6 +42,11 @@ jobs:
           git tag -f "${{ github.event.release.tag_name }}"
           git push -f origin "${{ github.event.release.tag_name }}"
 
+      - name: Update latest tag
+        run: |
+          git tag -f latest
+          git push -f origin latest
+
       - name: Install dependencies
         run: uv sync --dev
 
