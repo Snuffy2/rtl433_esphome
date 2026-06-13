@@ -50,6 +50,25 @@ def install_python_stub(tmp_path: Path) -> Path:
     return log_path
 
 
+def install_preflight_stub(tmp_path: Path) -> Path:
+    """Install a fake preflight executable that logs invocations.
+
+    Args:
+        tmp_path: Temporary repository root.
+
+    Returns:
+        Path to the invocation log file.
+    """
+    preflight_log = tmp_path / "preflight.log"
+    preflight = tmp_path / "scripts" / "esphome-preflight"
+    preflight.write_text(
+        f"#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> {preflight_log}\n",
+        encoding="utf-8",
+    )
+    preflight.chmod(0o755)
+    return preflight_log
+
+
 def run_script(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
     """Run a copied shell script from its temporary repo root.
 
@@ -73,13 +92,7 @@ def test_build_defaults_to_compile_without_preflight(tmp_path: Path) -> None:
     """The default build path should not run package-maintenance preflight."""
     script = copy_script(tmp_path, "build")
     python_log = install_python_stub(tmp_path)
-    preflight_log = tmp_path / "preflight.log"
-    preflight = tmp_path / "scripts" / "esphome-preflight"
-    preflight.write_text(
-        f"#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> {preflight_log}\n",
-        encoding="utf-8",
-    )
-    preflight.chmod(0o755)
+    preflight_log = install_preflight_stub(tmp_path)
 
     result = run_script(script)
 
@@ -95,13 +108,7 @@ def test_build_preflight_forwards_global_update(tmp_path: Path) -> None:
     """The build wrapper should pass global update requests to preflight."""
     script = copy_script(tmp_path, "build")
     install_python_stub(tmp_path)
-    preflight_log = tmp_path / "preflight.log"
-    preflight = tmp_path / "scripts" / "esphome-preflight"
-    preflight.write_text(
-        f"#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> {preflight_log}\n",
-        encoding="utf-8",
-    )
-    preflight.chmod(0o755)
+    preflight_log = install_preflight_stub(tmp_path)
 
     result = run_script(script, "--preflight", "--update-global")
 
@@ -118,13 +125,7 @@ def test_build_preflight_runs_without_extra_args(tmp_path: Path) -> None:
     """The preflight build path should work without optional preflight args."""
     script = copy_script(tmp_path, "build")
     install_python_stub(tmp_path)
-    preflight_log = tmp_path / "preflight.log"
-    preflight = tmp_path / "scripts" / "esphome-preflight"
-    preflight.write_text(
-        f"#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> {preflight_log}\n",
-        encoding="utf-8",
-    )
-    preflight.chmod(0o755)
+    preflight_log = install_preflight_stub(tmp_path)
 
     result = run_script(script, "--preflight")
 
