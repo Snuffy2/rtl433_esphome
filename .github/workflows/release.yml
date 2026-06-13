@@ -5,8 +5,8 @@ on:
     types: [published]
 
 concurrency:
-  group: release-${{ github.event.release.tag_name || github.ref }}
-  cancel-in-progress: true
+  group: release-latest-${{ github.repository }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
