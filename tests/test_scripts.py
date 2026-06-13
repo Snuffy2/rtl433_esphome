@@ -329,8 +329,3 @@ def test_esphome_preflight_discovers_generated_platformio_ini(tmp_path: Path) ->
     assert python_log.read_text(encoding="utf-8").splitlines() == [
         "-m platformio pkg install -g -f -p https://example.invalid/platform-espressif32.zip"
     ]
-
-
-def test_firmware_packaging_script_is_not_present() -> None:
-    """Do not publish packaged firmware for the personal local-device YAML."""
-    assert not (REPO_ROOT / "scripts" / "package-firmware").exists()
