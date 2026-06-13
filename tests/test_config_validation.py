@@ -60,6 +60,7 @@ from components.rtl433_native import (
     CONF_TIME_ID,
     CONF_UNKNOWN_PACKET_COUNT,
     DEFAULT_RADIO_CONFIG,
+    RTL433_ESP_PREBUILD_SCRIPT,
     action_to_code,
     to_code,
     _validate_known_sensor_keys,
@@ -90,14 +91,10 @@ class IdLike(Protocol):
     id: str
 
 
-EXPECTED_LIBRARIES = [
-    ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"),
-    ("RadioLib", "6.2.0", None),
-    ("Networking", None, None),
-    ("SPI", None, None),
-    ("EEPROM", None, None),
+EXPECTED_PLATFORMIO_OPTIONS = [
+    ("lib_ldf_mode", "chain+"),
+    ("extra_scripts", [RTL433_ESP_PREBUILD_SCRIPT]),
 ]
-EXPECTED_PLATFORMIO_OPTIONS = [("lib_ldf_mode", "chain+")]
 
 GENERATED_GATEWAY_METHODS = frozenset(
     {
@@ -521,11 +518,10 @@ def _entity_name_and_category(config: dict[str, Any]) -> tuple[str, str]:
 
 
 def assert_codegen_dependencies(fake_env: FakeCodegenEnvironment) -> None:
-    """Assert generated PlatformIO dependencies and build flags."""
+    """Assert generated PlatformIO build flags and options."""
 
     assert fake_env.codegen.build_flags == EXPECTED_BUILD_FLAGS
     assert fake_env.codegen.platformio_options == EXPECTED_PLATFORMIO_OPTIONS
-    assert fake_env.codegen.libraries == EXPECTED_LIBRARIES
 
 
 def gateway_diagnostic_overrides(prefix: str) -> dict[str, dict[str, str]]:

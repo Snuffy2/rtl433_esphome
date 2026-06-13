@@ -9,11 +9,13 @@ from pathlib import Path
 import shutil
 import shlex
 import subprocess
+from typing import Callable, cast
 
 import pytest
 
 
 REPO_ROOT: Path = Path(__file__).resolve().parents[1]
+PLATFORMIO_SCRIPT_ROOT: Path = REPO_ROOT / "scripts" / "platformio"
 
 
 def copy_script(tmp_path: Path, name: str) -> Path:
@@ -106,6 +108,54 @@ def run_script(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
         text=True,
         capture_output=True,
     )
+
+
+def load_platformio_prebuild_script(script_name: str) -> dict[str, object]:
+    """Load a PlatformIO prebuild script without requiring SCons.
+
+    Args:
+        script_name: Filename under scripts/platformio.
+
+    Returns:
+        Executed script globals.
+    """
+
+    namespace: dict[str, object] = {
+        "Import": lambda *_args: None,
+        "env": {
+            "PROJECT_LIBDEPS_DIR": "/tmp/unused-libdeps",
+            "PIOENV": "unused-env",
+        },
+    }
+    script = PLATFORMIO_SCRIPT_ROOT / script_name
+    exec(script.read_text(encoding="utf-8"), namespace)
+    return namespace
+
+
+def test_rtl433_esp_prebuild_removes_duplicate_decoder_source(tmp_path: Path) -> None:
+    """rtl_433_ESP v0.5.0 should not compile its duplicate decoder utility file."""
+    namespace = load_platformio_prebuild_script("rtl433_esp_prebuild.py")
+    remove_duplicate_decoder_util = cast(
+        Callable[[Path, str], None], namespace["remove_duplicate_decoder_util"]
+    )
+    libdeps_dir = tmp_path / "libdeps"
+    duplicate_source = (
+        libdeps_dir
+        / "garage-rtl433-native"
+        / "rtl_433_ESP"
+        / "src"
+        / "rtl_433"
+        / "decoder_util copy.c"
+    )
+    duplicate_source.parent.mkdir(parents=True)
+    duplicate_source.write_text("duplicate", encoding="utf-8")
+    canonical_source = duplicate_source.with_name("decoder_util.c")
+    canonical_source.write_text("canonical", encoding="utf-8")
+
+    remove_duplicate_decoder_util(libdeps_dir, "garage-rtl433-native")
+
+    assert not duplicate_source.exists()
+    assert canonical_source.read_text(encoding="utf-8") == "canonical"
 
 
 def test_build_defaults_to_compile_without_preflight(tmp_path: Path) -> None:

@@ -48,13 +48,13 @@ id = "mypy"
 language_version = "python3.12"
 args = ["--config-file=pyproject.toml"]
 additional_dependencies = [
-    "esphome>=2026.4.5",
+    "esphome>=2026.5.3,<2027.0.0",
     "pytest",
 ]
 
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
-rev = "v0.15.14"
+rev = "v0.15.17"
 
 [[repos.hooks]]
 id = "ruff-check"
