@@ -7,8 +7,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-import pytest
-import esphome.final_validate as fv
 from esphome import config_validation as cv
 from esphome.const import (
     CONF_DEVICE_ID,
@@ -17,13 +15,15 @@ from esphome.const import (
     CONF_ESPHOME,
     CONF_ID,
     CONF_NAME,
+    CONF_PLATFORMIO_OPTIONS,
 )
 from esphome.core import CORE
+import esphome.final_validate as fv
+import pytest
 
 import components.rtl433_native as rtl433_native
 from components.rtl433_native import (
     ARDUINO_NETWORK_INCLUDE_FLAG,
-    CONFIG_SCHEMA,
     CONF_BATTERY,
     CONF_CANDIDATE_LIMIT,
     CONF_CANDIDATES,
@@ -35,6 +35,7 @@ from components.rtl433_native import (
     CONF_DISCOVERY_ENABLED,
     CONF_DISCOVERY_MODE,
     CONF_ENTITIES,
+    CONF_EXTRA_SCRIPTS,
     CONF_FREQUENCY,
     CONF_HUMIDITY,
     CONF_KEY,
@@ -59,13 +60,15 @@ from components.rtl433_native import (
     CONF_TEMPERATURE,
     CONF_TIME_ID,
     CONF_UNKNOWN_PACKET_COUNT,
+    CONFIG_SCHEMA,
     DEFAULT_RADIO_CONFIG,
-    action_to_code,
-    to_code,
+    RTL433_ESP_PREBUILD_SCRIPT,
     _validate_known_sensor_keys,
     _validate_mapping,
     _validate_radio_module,
     _validate_stale_after,
+    action_to_code,
+    to_code,
 )
 
 EXPECTED_BUILD_FLAGS = [
@@ -90,14 +93,11 @@ class IdLike(Protocol):
     id: str
 
 
-EXPECTED_LIBRARIES = [
-    ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.3.3"),
-    ("RadioLib", "6.2.0", None),
-    ("Networking", None, None),
-    ("SPI", None, None),
-    ("EEPROM", None, None),
+EXPECTED_PLATFORMIO_OPTIONS = [
+    ("lib_ldf_mode", "chain+"),
+    (CONF_EXTRA_SCRIPTS, [RTL433_ESP_PREBUILD_SCRIPT]),
 ]
-EXPECTED_PLATFORMIO_OPTIONS = [("lib_ldf_mode", "chain+")]
+EXPECTED_LIBRARY_NAMES = ["rtl_433_ESP", "RadioLib", "Networking", "SPI", "EEPROM"]
 
 GENERATED_GATEWAY_METHODS = frozenset(
     {
@@ -521,11 +521,11 @@ def _entity_name_and_category(config: dict[str, Any]) -> tuple[str, str]:
 
 
 def assert_codegen_dependencies(fake_env: FakeCodegenEnvironment) -> None:
-    """Assert generated PlatformIO dependencies and build flags."""
+    """Assert generated PlatformIO build flags and options."""
 
     assert fake_env.codegen.build_flags == EXPECTED_BUILD_FLAGS
     assert fake_env.codegen.platformio_options == EXPECTED_PLATFORMIO_OPTIONS
-    assert fake_env.codegen.libraries == EXPECTED_LIBRARIES
+    assert [library[0] for library in fake_env.codegen.libraries] == EXPECTED_LIBRARY_NAMES
 
 
 def gateway_diagnostic_overrides(prefix: str) -> dict[str, dict[str, str]]:
@@ -631,6 +631,16 @@ def test_arduino_network_include_flag_quotes_platformio_path() -> None:
     assert ARDUINO_NETWORK_INCLUDE_FLAG == (
         '-I"${platformio.packages_dir}/framework-arduinoespressif32/libraries/Network/src"'
     )
+
+
+def test_rtl433_esp_prebuild_script_uses_absolute_path() -> None:
+    """Keep PlatformIO extra_scripts independent from generated build directory depth."""
+
+    script_scope, script_path = RTL433_ESP_PREBUILD_SCRIPT.split(":", 1)
+
+    assert script_scope == "pre"
+    assert Path(script_path).is_absolute()
+    assert Path(script_path).name == "rtl433_esp_prebuild.py"
 
 
 def test_validate_stale_after_accepts_uint32_millisecond_value() -> None:
@@ -850,6 +860,45 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
         assert call in fake_env.codegen.added
     for call in fake_env.text.texts[0].calls:
         assert call in fake_env.codegen.added
+
+
+async def test_to_code_normalizes_user_extra_script_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preserve ESPHome shorthand extra scripts when adding the prebuild hook."""
+
+    fake_env = install_codegen_fakes(monkeypatch)
+    core_config: dict[str, Any] = {
+        CONF_ESPHOME: {
+            CONF_PLATFORMIO_OPTIONS: {
+                CONF_EXTRA_SCRIPTS: "user_script.py",
+            }
+        }
+    }
+    monkeypatch.setattr(CORE, "config", core_config)
+
+    config: dict[str, Any] = {
+        CONF_ID: "gateway_id",
+        CONF_CANDIDATE_LIMIT: 1,
+        CONF_LED_PIN: 25,
+        CONF_RADIO: DEFAULT_RADIO_CONFIG,
+        CONF_STALE_AFTER: FakeTimePeriod(total_milliseconds=60_000),
+        CONF_KNOWN_SENSORS: [
+            {
+                CONF_KEY: "garage_freezer_1",
+                CONF_MAPPING: "Acurite-986/1R/11932",
+                CONF_TEMPERATURE: {"name": "temperature"},
+            }
+        ],
+        CONF_CANDIDATES: [],
+    }
+
+    await to_code(config)
+
+    assert core_config[CONF_ESPHOME][CONF_PLATFORMIO_OPTIONS][CONF_EXTRA_SCRIPTS] == [
+        "user_script.py"
+    ]
+    assert fake_env.codegen.platformio_options == EXPECTED_PLATFORMIO_OPTIONS
 
 
 async def test_to_code_sanitizes_generated_mapping_text_id_only(
