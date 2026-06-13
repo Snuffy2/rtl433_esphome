@@ -154,8 +154,8 @@ uv sync --dev
 - Validates the ESPHome config.
 - Compiles with `PLATFORMIO_BUILD_JOBS=1`.
 - Builds `rtl433-esphome-heltec-lora-32-v2.yaml` by default.
-- Resolves `rtl433_esphome_ref: latest` to the latest GitHub release tag before ESPHome fetches the external component.
-- Requires GitHub API access when `rtl433_esphome_ref` is `latest`.
+- Passes `rtl433_esphome_ref` through to ESPHome as the external component Git ref.
+- Uses the moving `latest` Git tag by default.
 
 ### Build from a specific component release or Git ref
 
