@@ -7,6 +7,10 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: validation-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -30,6 +34,17 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
+
+      - name: Cache ESPHome and PlatformIO
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            .esphome/external_components
+          key: ${{ runner.os }}-validation-${{ github.event.pull_request.head.repo.full_name || github.repository }}-esphome-pio-${{ hashFiles('pyproject.toml', 'rtl433-esphome-heltec-lora-32-v2.yaml', 'components/rtl433_native/__init__.py') }}
+          restore-keys: |
+            ${{ runner.os }}-validation-${{ github.event.pull_request.head.repo.full_name || github.repository }}-esphome-pio-
 
       - name: Install dependencies
         run: uv sync --dev

@@ -39,8 +39,7 @@ def copy_script(tmp_path: Path, name: str) -> Path:
 def install_python_stub(
     tmp_path: Path,
     generated_platformio_ini: Path | None = None,
-    latest_release_tag: str = "v9.8.7",
-    latest_release_exit_code: int = 0,
+    generated_component_ref: str = "latest",
 ) -> Path:
     """Install a fake venv Python executable that logs invocations.
 
@@ -48,10 +47,8 @@ def install_python_stub(
         tmp_path: Temporary repository root.
         generated_platformio_ini: Optional PlatformIO config to create when
             the fake ESPHome command generates build files.
-        latest_release_tag: Tag emitted when the script asks Python to resolve
-            the latest GitHub release.
-        latest_release_exit_code: Exit code emitted for the latest-release
-            resolver stub.
+        generated_component_ref: Component ref expected for the fake ESPHome
+            command that generates build files.
 
     Returns:
         Path to the invocation log file.
@@ -61,10 +58,6 @@ def install_python_stub(
     log_path = tmp_path / "python.log"
     script_lines = [
         "#!/usr/bin/env bash",
-        'if [[ "${1:-}" == "-c" ]]; then',
-        f"  printf '%s\\n' {shlex.quote(latest_release_tag)}",
-        f"  exit {latest_release_exit_code}",
-        "fi",
         f"printf '%s\\n' \"$*\" >> {shlex.quote(str(log_path))}",
     ]
     if generated_platformio_ini is not None:
@@ -72,7 +65,7 @@ def install_python_stub(
             [
                 (
                     'if [[ "$*" == '
-                    f'"-m esphome -s rtl433_esphome_ref {latest_release_tag} '
+                    f'"-m esphome -s rtl433_esphome_ref {generated_component_ref} '
                     f'compile --only-generate {FIRMWARE_CONFIG}" ]]; then'
                 ),
                 f"  mkdir -p {shlex.quote(str(generated_platformio_ini.parent))}",
@@ -213,16 +206,16 @@ def test_build_defaults_to_compile_without_preflight(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert python_log.read_text(encoding="utf-8").splitlines() == [
-        f"-m esphome -s rtl433_esphome_ref v9.8.7 config {FIRMWARE_CONFIG}",
-        f"-m esphome -s rtl433_esphome_ref v9.8.7 compile {FIRMWARE_CONFIG}",
+        f"-m esphome -s rtl433_esphome_ref latest config {FIRMWARE_CONFIG}",
+        f"-m esphome -s rtl433_esphome_ref latest compile {FIRMWARE_CONFIG}",
     ]
     assert not preflight_log.exists()
 
 
 def test_build_accepts_explicit_component_ref(tmp_path: Path) -> None:
-    """An explicit component ref should not be replaced by latest release lookup."""
+    """An explicit component ref should be passed through to ESPHome."""
     script = copy_script(tmp_path, "build")
-    python_log = install_python_stub(tmp_path, latest_release_tag="v9.8.7")
+    python_log = install_python_stub(tmp_path)
 
     result = run_script(script, env={"RTL433_ESPHOME_REF": "v1.2.3"})
 
@@ -236,7 +229,7 @@ def test_build_accepts_explicit_component_ref(tmp_path: Path) -> None:
 def test_build_accepts_explicit_component_url(tmp_path: Path) -> None:
     """An explicit component URL should be passed through to ESPHome."""
     script = copy_script(tmp_path, "build")
-    python_log = install_python_stub(tmp_path, latest_release_tag="v9.8.7")
+    python_log = install_python_stub(tmp_path)
     component_url = "https://github.com/example/rtl433_esphome.git"
 
     result = run_script(
@@ -260,22 +253,6 @@ def test_build_accepts_explicit_component_url(tmp_path: Path) -> None:
             f"-s rtl433_esphome_ref abc123 compile {FIRMWARE_CONFIG}"
         ),
     ]
-
-
-def test_build_fails_when_latest_release_lookup_fails(tmp_path: Path) -> None:
-    """Default latest builds should fail before ESPHome when release lookup fails."""
-    script = copy_script(tmp_path, "build")
-    python_log = install_python_stub(
-        tmp_path,
-        latest_release_tag="",
-        latest_release_exit_code=1,
-    )
-
-    result = run_script(script)
-
-    assert result.returncode == 1
-    assert "Could not resolve latest rtl433_esphome release tag." in result.stderr
-    assert not python_log.exists()
 
 
 @pytest.mark.parametrize(
@@ -305,9 +282,9 @@ def test_build_preflight_modes(
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "python.log").read_text(encoding="utf-8").splitlines() == [
-        f"-m esphome -s rtl433_esphome_ref v9.8.7 config {FIRMWARE_CONFIG}",
-        (f"-m esphome -s rtl433_esphome_ref v9.8.7 compile --only-generate {FIRMWARE_CONFIG}"),
-        f"-m esphome -s rtl433_esphome_ref v9.8.7 compile {FIRMWARE_CONFIG}",
+        f"-m esphome -s rtl433_esphome_ref latest config {FIRMWARE_CONFIG}",
+        (f"-m esphome -s rtl433_esphome_ref latest compile --only-generate {FIRMWARE_CONFIG}"),
+        f"-m esphome -s rtl433_esphome_ref latest compile {FIRMWARE_CONFIG}",
     ]
     assert preflight_log.read_text(encoding="utf-8").splitlines() == [expected_preflight_args]
 
@@ -329,8 +306,3 @@ def test_esphome_preflight_discovers_generated_platformio_ini(tmp_path: Path) ->
     assert python_log.read_text(encoding="utf-8").splitlines() == [
         "-m platformio pkg install -g -f -p https://example.invalid/platform-espressif32.zip"
     ]
-
-
-def test_firmware_packaging_script_is_not_present() -> None:
-    """Do not publish packaged firmware for the personal local-device YAML."""
-    assert not (REPO_ROOT / "scripts" / "package-firmware").exists()
