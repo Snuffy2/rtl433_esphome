@@ -41,11 +41,10 @@ jobs:
           path: |
             ~/.platformio/.cache
             ~/.platformio/packages
-            ~/.platformio/platforms
             .esphome/external_components
-          key: ${{ runner.os }}-esphome-pio-${{ hashFiles('pyproject.toml', 'rtl433-esphome-heltec-lora-32-v2.yaml', 'components/rtl433_native/__init__.py') }}
+          key: ${{ runner.os }}-validation-${{ github.event.pull_request.head.repo.full_name || github.repository }}-esphome-pio-${{ hashFiles('pyproject.toml', 'rtl433-esphome-heltec-lora-32-v2.yaml', 'components/rtl433_native/__init__.py') }}
           restore-keys: |
-            ${{ runner.os }}-esphome-pio-
+            ${{ runner.os }}-validation-${{ github.event.pull_request.head.repo.full_name || github.repository }}-esphome-pio-
 
       - name: Install dependencies
         run: uv sync --dev
