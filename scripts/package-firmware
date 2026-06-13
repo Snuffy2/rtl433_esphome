@@ -34,12 +34,20 @@ for filename in bootloader.bin firmware.bin firmware.elf firmware.factory.bin fi
 done
 
 mkdir -p "$output_dir"
-cp "$firmware_dir/bootloader.bin" "$output_dir/$build_name.bootloader.bin"
-cp "$firmware_dir/firmware.bin" "$output_dir/$build_name.bin"
-cp "$firmware_dir/firmware.elf" "$output_dir/$build_name.elf"
-cp "$firmware_dir/firmware.factory.bin" "$output_dir/$build_name.factory.bin"
-cp "$firmware_dir/firmware.ota.bin" "$output_dir/$build_name.ota.bin"
-cp "$firmware_dir/partitions.bin" "$output_dir/$build_name.partitions.bin"
+
+copy_output() {
+  local source="$1"
+  local suffix="$2"
+
+  cp "$firmware_dir/$source" "$output_dir/$build_name$suffix"
+}
+
+copy_output bootloader.bin .bootloader.bin
+copy_output firmware.bin .bin
+copy_output firmware.elf .elf
+copy_output firmware.factory.bin .factory.bin
+copy_output firmware.ota.bin .ota.bin
+copy_output partitions.bin .partitions.bin
 
 checksum() {
   local algorithm="$1"

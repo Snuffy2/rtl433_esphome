@@ -8,12 +8,12 @@ PRIVILEGED_WORKFLOWS = [
     WORKFLOW_DIR / "labeler.yml",
     WORKFLOW_DIR / "merge_conflict_labeler.yml",
 ]
-PINNED_ACTION_REF = re.compile(r"uses:\s+[^@\s]+/[^\s@]+@[0-9a-f]{40}$")
-MAJOR_ACTION_REF = re.compile(r"uses:\s+[^@\s]+/[^\s@]+@v[0-9]+$")
+IMMUTABLE_ACTION_REF = re.compile(r"uses:\s+[^@\s]+/[^\s@]+@[0-9a-f]{40}$")
+MAJOR_VERSION_ACTION_REF = re.compile(r"uses:\s+[^@\s]+/[^\s@]+@v[0-9]+$")
 
 
-def test_pull_request_target_workflows_pin_third_party_actions() -> None:
-    """Privileged pull_request_target workflows should use major-version action refs."""
+def test_pull_request_target_workflows_use_approved_action_refs() -> None:
+    """Privileged pull_request_target workflows should use approved action refs."""
     for workflow_path in PRIVILEGED_WORKFLOWS:
         workflow_text = workflow_path.read_text()
         assert "pull_request_target:" in workflow_text
@@ -23,7 +23,7 @@ def test_pull_request_target_workflows_pin_third_party_actions() -> None:
 
         assert uses_lines
         assert all(
-            PINNED_ACTION_REF.fullmatch(line) or MAJOR_ACTION_REF.fullmatch(line)
+            IMMUTABLE_ACTION_REF.fullmatch(line) or MAJOR_VERSION_ACTION_REF.fullmatch(line)
             for line in uses_lines
         )
 
