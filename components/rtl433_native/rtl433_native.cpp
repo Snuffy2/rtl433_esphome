@@ -56,6 +56,9 @@ Gateway::Gateway() { instance_ = this; }
 void Gateway::setup() {
   pinMode(this->led_pin_, OUTPUT);
   digitalWrite(this->led_pin_, LOW);
+#ifdef USE_OTA_STATE_LISTENER
+  ota::get_global_ota_callback()->add_global_state_listener(this);
+#endif
   if (this->time_ != nullptr) {
     this->time_->add_on_time_sync_callback([this]() { this->sync_time_base(); });
     this->sync_time_base();
@@ -88,6 +91,18 @@ void Gateway::dump_config() {
   ESP_LOGCONFIG(TAG, "  Candidate limit: %u",
                 static_cast<unsigned>(this->state_.candidate_limit()));
 }
+
+#ifdef USE_OTA_STATE_LISTENER
+void Gateway::on_ota_global_state(ota::OTAState state, float progress, uint8_t error,
+                                  ota::OTAComponent *component) {
+  (void) progress;
+  (void) error;
+  (void) component;
+  if (state == ota::OTA_STARTED) {
+    this->stop();
+  }
+}
+#endif
 
 void Gateway::stop() { this->rf_.disableReceiver(); }
 

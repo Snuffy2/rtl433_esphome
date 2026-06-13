@@ -232,6 +232,7 @@ class FakeCodegen:
     gateway: FakeGateway
     added: list[Any] = field(default_factory=list)
     build_flags: list[str] = field(default_factory=list)
+    defines: list[str] = field(default_factory=list)
     libraries: list[tuple[str, str | None, str | None]] = field(default_factory=list)
     platformio_options: list[tuple[str, str | list[str]]] = field(default_factory=list)
     new_pvariable_calls: list[tuple[Any, ...]] = field(default_factory=list)
@@ -263,6 +264,11 @@ class FakeCodegen:
         """Record a build flag."""
 
         self.build_flags.append(flag)
+
+    def add_define(self, define: str) -> None:
+        """Record a generated preprocessor define."""
+
+        self.defines.append(define)
 
     def add_library(self, name: str, version: str | None, repository: str | None = None) -> None:
         """Record a PlatformIO library dependency."""
@@ -526,6 +532,7 @@ def assert_codegen_dependencies(fake_env: FakeCodegenEnvironment) -> None:
     assert fake_env.codegen.build_flags == EXPECTED_BUILD_FLAGS
     assert fake_env.codegen.platformio_options == EXPECTED_PLATFORMIO_OPTIONS
     assert [library[0] for library in fake_env.codegen.libraries] == EXPECTED_LIBRARY_NAMES
+    assert "USE_OTA_STATE_LISTENER" in fake_env.codegen.defines
 
 
 def gateway_diagnostic_overrides(prefix: str) -> dict[str, dict[str, str]]:

@@ -16,6 +16,9 @@
 #include "esphome/components/text/text.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/time/real_time_clock.h"
+#ifdef USE_OTA_STATE_LISTENER
+#include "esphome/components/ota/ota_backend.h"
+#endif
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "esphome/core/preferences.h"
@@ -61,13 +64,21 @@ struct EntitySet {
 
 class MappingText;
 
-class Gateway : public Component {
+class Gateway : public Component
+#ifdef USE_OTA_STATE_LISTENER
+              , public ota::OTAGlobalStateListener
+#endif
+{
  public:
   Gateway();
 
   void setup() override;
   void loop() override;
   void dump_config() override;
+#ifdef USE_OTA_STATE_LISTENER
+  void on_ota_global_state(ota::OTAState state, float progress, uint8_t error,
+                           ota::OTAComponent *component) override;
+#endif
 
   void stop();
   void status();
