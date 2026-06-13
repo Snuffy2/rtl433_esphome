@@ -8,7 +8,9 @@ import re
 
 SEMVER_TAG_PATTERN = re.compile(
     r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
-    r"(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
+    r"(?:-(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*)"
+    r"(?:\.(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*))*)?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
 PROJECT_SECTION_PATTERN = re.compile(
     r"(?P<prefix>^\[project\]\n(?:(?!^\[).)*?^version\s*=\s*)"
