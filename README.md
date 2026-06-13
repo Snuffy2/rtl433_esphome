@@ -1,54 +1,43 @@
 # rtl433_esphome
 
-ESPHome firmware and a custom component for building native Home Assistant
-entities from `rtl_433_ESP` packets.
+ESPHome firmware and a custom component for native Home Assistant entities from `rtl_433_ESP` packets.
 
-The current checked-in firmware profile targets a Heltec WiFi LoRa 32 V2-style
-433 MHz ESP32 board:
+Current firmware profile:
 
 - Config: `rtl433-esphome-heltec-lora-32-v2.yaml`
 - ESPHome device name: `rtl433-heltec-lora-32-v2`
-
-The checked-in local device profile fetches `rtl433_native` from
-`https://github.com/Snuffy2/rtl433_esphome.git` at a release tag, while
-deployment-specific sensor details stay in the local YAML. By default
-`./scripts/build` resolves `rtl433_esphome_ref: latest` to the latest GitHub
-release tag and passes that concrete tag to ESPHome. The repo-local
-`components/rtl433_native/` tree remains the source for development, tests, and
-published GitHub updates.
-
-This repository does not publish prebuilt firmware binaries from the checked-in
-local device profile because that YAML contains deployment-specific sensor names
-and mappings. Build locally when changing or using those sensor definitions.
+- Board: Heltec WiFi LoRa 32 V2-style 433 MHz ESP32
+- Component source for local builds: latest GitHub release tag by default
+- Local component source for development/tests: `components/rtl433_native/`
+- Firmware binaries: not published, because the checked-in YAML contains deployment-specific sensor names and mappings
 
 ## Example Known Sensor Mappings
 
-The default YAML includes four garage freezer/fridge sensors as an example
-deployment. Replace or remove these entries for your own transmitters.
+The checked-in YAML includes one local deployment. Replace or remove these entries for your transmitters.
 
 | Logical sensor | Mapping | Current HA entity |
 | --- | --- | --- |
-| Garage Combo Fridge | `LaCrosse-TX141THBv2/0/203;TFA-303221/1/203` | `sensor.garage_combo_fridge` |
-| Garage Combo Freezer | `TFA-303221/2/88;LaCrosse-TX141THBv2/1/88` | `sensor.garage_combo_freezer` |
-| Garage Freezer 1 | `Acurite-986/1R/11932` | `sensor.garage_freezer_1` |
-| Garage Freezer 2 | `Acurite-986/2F/31274` | `sensor.garage_freezer_2` |
+| Garage Fridge | `LaCrosse-TX141THBv2/0/203;TFA-303221/1/203` | `sensor.garage_fridge` |
+| Garage Freezer | `TFA-303221/2/88;LaCrosse-TX141THBv2/1/88` | `sensor.garage_freezer` |
 
-Use semicolon-delimited mappings when rtl_433 reports the same physical
-transmitter under more than one decoder key. Each entry uses the
-`model/channel/id` format shown in discovery candidates.
+### Mapping notes
 
-Known sensors can use the compact form:
+- Use `model/channel/id` keys from discovery candidates.
+- Use semicolons when one physical transmitter appears under multiple decoder keys.
+- Example: `LaCrosse-TX141THBv2/0/203;TFA-303221/1/203`
+
+### Example YAML
 
 ```yaml
 esphome:
   devices:
-    - id: garage_combo_fridge_device
-      name: Garage Combo Fridge
+    - id: garage_fridge_device
+      name: Garage Fridge
 
 rtl433_native:
   known_sensors:
-    - key: garage_combo_fridge
-      device_id: garage_combo_fridge_device
+    - key: garage_fridge
+      device_id: garage_fridge_device
       mapping: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203"
       entities:
         - temperature
@@ -60,45 +49,18 @@ rtl433_native:
         - mapping
 ```
 
-Compact entries generate entity names by appending the entity type to the linked
-device name, such as `Garage Combo Fridge Temperature`, `Garage Combo Fridge
-Humidity`, `Garage Combo Fridge RSSI`, and `Garage Combo Fridge Last Updated`.
-Set `device_id` on each compact known sensor to assign its generated entities
-to a per-sensor ESPHome sub-device, such as `Garage Combo Fridge` or `Garage
-Freezer 1`. If `name` is also set under a known sensor, that value overrides the
-linked device name for generated entity names. If `device_id` is omitted, the
-generated known-sensor entities stay on the main ESPHome device. The `mapping`
-entity is optional; include it when you want a Home Assistant text entity for
-changing the rtl_433 mapping at runtime. Mapping text entities stay on the main
-ESPHome device with gateway diagnostics, discovery
-candidates, controls, uptime, status, restart, IP address, Wi-Fi RSSI, and free
-heap. Compact RSSI and last-updated entities are disabled by default.
+### Behavior
 
-Mapping text entity values are saved on the device. After a mapping is changed
-from Home Assistant, the saved value continues to override the YAML default
-across reboots and OTA updates until the mapping text entity is changed again.
+- Entity names append the type to the device name, such as `Garage Fridge Temperature`.
+- `device_id` assigns generated entities to a per-sensor ESPHome sub-device.
+- Omit `device_id` to keep generated entities on the main ESPHome device.
+- `name` under a known sensor overrides the linked device name.
+- `mapping` adds a Home Assistant text entity for runtime mapping changes.
+- Mapping text values persist across reboots and OTA updates.
+- RSSI and last-updated entities are disabled by default.
+- Mapping text entities stay on the main device with gateway diagnostics and controls.
 
-Use the verbose form instead when an entity needs custom options:
-
-```yaml
-esphome:
-  devices:
-    - id: garage_combo_fridge_device
-      name: Garage Combo Fridge
-
-rtl433_native:
-  known_sensors:
-    - key: garage_combo_fridge
-      device_id: garage_combo_fridge_device
-      mapping: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203"
-      temperature:
-        name: "Garage Combo Fridge Temperature"
-      humidity:
-        name: "Garage Combo Fridge Humidity"
-```
-
-Gateway diagnostics are created by default and do not need to be listed in
-the board profile YAML:
+### Default gateway diagnostics
 
 - `last_packet`
 - `packet_count`
@@ -106,27 +68,24 @@ the board profile YAML:
 - `unknown_packet_count`
 - `discovery_enabled`
 
-Add any of those options under `rtl433_native` only when overriding the generated
-name or other entity settings. These gateway diagnostics are disabled by
-default.
+### Notes
 
-Candidate text sensors are created from `candidate_limit` as diagnostic entities
-and are enabled by default, but they are not part of the primary sensor view.
+- Gateway diagnostics are disabled by default.
+- Candidate text sensors come from `candidate_limit`.
+- Candidate text sensors are enabled by default but are not part of the primary sensor view.
+- Add diagnostic options under `rtl433_native` only to override generated settings.
 
-Gateway controls are also created by default and do not need template `switch`
-or `button` entries in the board profile YAML:
+### Default gateway controls
 
 - `discovery_mode`
 - `clear_candidates_button`
 - `status_button`
 
-Add any of those options under `rtl433_native` only when overriding the generated
-name or other entity settings.
+Add control options under `rtl433_native` only to override generated settings.
 
 ## Hardware Configuration
 
-`rtl433-esphome-heltec-lora-32-v2.yaml` uses the `rtl433_native`
-component-supplied hardware defaults for the Heltec LoRa 32 V2 profile:
+The Heltec LoRa 32 V2 profile uses these component defaults:
 
 ```yaml
 rtl433_native:
@@ -145,9 +104,10 @@ rtl433_native:
       mosi: 27
 ```
 
-Users with different boards or wiring can still add any of those options back
-under `rtl433_native`. They can also keep the values as YAML substitutions if
-they prefer a board profile at the top of the file:
+For different boards or wiring:
+
+- Override any of those values under `rtl433_native`.
+- Use substitutions if you want board-specific values at the top of the file.
 
 ```yaml
 substitutions:
@@ -181,53 +141,49 @@ rtl433_native:
 
 ## Build
 
+### Default local build
+
 ```bash
 uv sync --dev
 ./scripts/build
 ```
 
-`./scripts/build` validates the ESPHome config and compiles with
-`PLATFORMIO_BUILD_JOBS=1`. By default it builds
-`rtl433-esphome-heltec-lora-32-v2.yaml`, resolving the YAML's
-`rtl433_esphome_ref: latest` substitution to the latest GitHub release tag
-before ESPHome fetches the external component. Override `RTL433_ESPHOME_REF` to
-build from a specific release tag or other Git ref:
+### Build behavior
+
+- Validates the ESPHome config.
+- Compiles with `PLATFORMIO_BUILD_JOBS=1`.
+- Builds `rtl433-esphome-heltec-lora-32-v2.yaml` by default.
+- Resolves `rtl433_esphome_ref: latest` to the latest GitHub release tag before ESPHome fetches the external component.
+
+### Build from a specific component release or Git ref
 
 ```bash
 RTL433_ESPHOME_REF=v0.1.0 ./scripts/build
 ```
 
-Override `FIRMWARE_CONFIG` to build a future board profile:
+### Build another board profile
 
 ```bash
 FIRMWARE_CONFIG=path/to/another-board.yaml ./scripts/build
 ```
 
-Use `./scripts/build --preflight` when the generated PlatformIO platform cache
-may need repair before compiling.
+### Preflight options
 
-Run `./scripts/esphome-preflight` before OTA upload when the PlatformIO cache
-may be stale, after changing Python versions, or after ESPHome updates. It
-finds ESPHome's generated `platformio.ini` and force-reinstalls the URL-pinned
-ESP32 platform selected by ESPHome. Add `--update-global` to also refresh
-PlatformIO Core/global packages when you intentionally want the network-backed
-global update step.
+- `./scripts/build --preflight`: regenerate PlatformIO config and repair stale generated platform cache before compiling.
+- `./scripts/esphome-preflight`: run manually before OTA upload after Python, ESPHome, or PlatformIO changes.
+- `--update-global`: also refresh PlatformIO Core/global packages.
 
 ## Discovery Workflow
 
-The entity names below use the default Heltec profile friendly name. If you
-change `friendly_name`, Home Assistant will use that name instead.
+The names below use the default Heltec profile `friendly_name`.
 
 1. Turn on `rtl433_esphome heltec_lora_32_v2 Discovery Mode`.
 2. Press `rtl433_esphome heltec_lora_32_v2 Clear Candidates`.
 3. Insert batteries into one sensor or force it to transmit.
-4. Watch `rtl433_esphome heltec_lora_32_v2 Candidate 1` through
-   `rtl433_esphome heltec_lora_32_v2 Candidate 10`.
+4. Watch `rtl433_esphome heltec_lora_32_v2 Candidate 1` through `rtl433_esphome heltec_lora_32_v2 Candidate 10`.
 5. Copy the candidate key in `model/channel/id` format.
-6. Paste it into the matching mapping text entity. Use semicolons to list
-   multiple keys for the same physical sensor.
+6. Paste it into the matching mapping text entity. Use semicolons to list multiple keys for the same physical sensor.
 7. Confirm the logical temperature entity updates.
 8. Turn off `rtl433_esphome heltec_lora_32_v2 Discovery Mode`.
 
-The firmware never creates normal entities for unknown packets and never
-automatically rebinds a freezer/fridge mapping.
+The firmware never creates normal entities for unknown packets and never automatically rebinds a freezer/fridge mapping.
