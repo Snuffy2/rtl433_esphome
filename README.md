@@ -18,10 +18,15 @@ transmitter under more than one decoder key. Each entry uses the
 Known sensors can use the compact form:
 
 ```yaml
+esphome:
+  devices:
+    - id: garage_combo_fridge_device
+      name: Garage Combo Fridge
+
 rtl433_native:
   known_sensors:
     - key: garage_combo_fridge
-      name: "Garage Combo Fridge"
+      device_id: garage_combo_fridge_device
       mapping: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203"
       entities:
         - temperature
@@ -33,12 +38,19 @@ rtl433_native:
         - mapping
 ```
 
-Compact entries generate entity names by appending the entity type, such as
-`Garage Combo Fridge Temperature`, `Garage Combo Fridge Humidity`, `Garage
-Combo Fridge RSSI`, and `Garage Combo Fridge Last Updated`. The `mapping`
+Compact entries generate entity names by appending the entity type to the linked
+device name, such as `Garage Combo Fridge Temperature`, `Garage Combo Fridge
+Humidity`, `Garage Combo Fridge RSSI`, and `Garage Combo Fridge Last Updated`.
+Set `device_id` on each compact known sensor to assign its generated entities
+to a per-sensor ESPHome sub-device, such as `Garage Combo Fridge` or `Garage
+Freezer 1`. If `name` is also set under a known sensor, that value overrides the
+linked device name for generated entity names. If `device_id` is omitted, the
+generated known-sensor entities stay on the main ESPHome device. The `mapping`
 entity is optional; include it when you want a Home Assistant text entity for
-changing the rtl_433 mapping at runtime. Compact RSSI and last-updated entities
-are disabled by default.
+changing the rtl_433 mapping at runtime. Mapping text entities stay on the main
+`Garage RTL433` device with gateway diagnostics, discovery
+candidates, controls, uptime, status, restart, IP address, Wi-Fi RSSI, and free
+heap. Compact RSSI and last-updated entities are disabled by default.
 
 Mapping text entity values are saved on the device. After a mapping is changed
 from Home Assistant, the saved value continues to override the YAML default
@@ -47,9 +59,15 @@ across reboots and OTA updates until the mapping text entity is changed again.
 Use the verbose form instead when an entity needs custom options:
 
 ```yaml
+esphome:
+  devices:
+    - id: garage_combo_fridge_device
+      name: Garage Combo Fridge
+
 rtl433_native:
   known_sensors:
     - key: garage_combo_fridge
+      device_id: garage_combo_fridge_device
       mapping: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203"
       temperature:
         name: "Garage Combo Fridge Temperature"

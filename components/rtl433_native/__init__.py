@@ -9,7 +9,16 @@ from esphome import automation
 import esphome.codegen as cg
 from esphome.components import binary_sensor, button, sensor, switch, text, text_sensor, time
 import esphome.config_validation as cv
-from esphome.const import CONF_DISABLED_BY_DEFAULT, CONF_ENTITY_CATEGORY, CONF_ID, CONF_NAME
+import esphome.final_validate as fv
+from esphome.const import (
+    CONF_DEVICE_ID,
+    CONF_DEVICES,
+    CONF_DISABLED_BY_DEFAULT,
+    CONF_ENTITY_CATEGORY,
+    CONF_ESPHOME,
+    CONF_ID,
+    CONF_NAME,
+)
 from esphome.core import CORE, Define, ID
 
 AUTO_LOAD = ["binary_sensor", "button", "json", "sensor", "switch", "text", "text_sensor", "time"]
@@ -52,6 +61,7 @@ CONF_TIME_ID = "time_id"
 CONF_UNKNOWN_PACKET_COUNT = "unknown_packet_count"
 
 ENTITY_MAPPING = CONF_MAPPING
+_REFRESH_NAME_FROM_DEVICE = "_refresh_name_from_device"
 
 rtl433_native_ns = cg.esphome_ns.namespace("rtl433_native")
 Gateway = rtl433_native_ns.class_("Gateway", cg.Component)
@@ -306,6 +316,58 @@ def _mapping_text_id(entry: dict[str, Any]) -> str:
     return f"{_mapping_text_id_fragment(entry[CONF_KEY])}_mapping"
 
 
+def _id_value(value: Any) -> str:
+    """Return the string value for an ESPHome ID or raw ID string."""
+
+    return str(getattr(value, "id", value))
+
+
+def _device_name_for_id(device_id: Any, config: dict[str, Any] | None = None) -> str | None:
+    """Return the configured ESPHome device name for a device ID."""
+
+    full_config = CORE.config if config is None else config
+    if full_config is None:
+        return None
+    if hasattr(full_config, "get_path_for_id") and hasattr(full_config, "get_config_for_path"):
+        try:
+            device_config = full_config.get_config_for_path(
+                full_config.get_path_for_id(device_id)[:-1]
+            )
+        except KeyError:
+            return None
+        if isinstance(device_config, dict) and CONF_NAME in device_config:
+            return str(device_config[CONF_NAME])
+        return None
+    for device in full_config.get(CONF_ESPHOME, {}).get(CONF_DEVICES, []):
+        if _id_value(device.get(CONF_ID)) == _id_value(device_id):
+            if CONF_NAME not in device:
+                return None
+            return str(device[CONF_NAME])
+    return None
+
+
+def _known_sensor_name(entry: dict[str, Any], config: dict[str, Any] | None = None) -> str:
+    """Return the known sensor base name from entry config or linked device."""
+
+    if CONF_NAME in entry:
+        return str(entry[CONF_NAME])
+    if CONF_DEVICE_ID in entry:
+        device_name = _device_name_for_id(entry[CONF_DEVICE_ID], config)
+        if device_name is not None:
+            return device_name
+        return _id_value(entry[CONF_DEVICE_ID])
+    raise cv.Invalid("Compact known sensor entries require name or a device_id with a device name")
+
+
+def _set_compact_sensor_name(entry: dict[str, Any], name: str) -> None:
+    """Apply a compact known sensor base name to generated entity configs."""
+
+    entry[CONF_NAME] = name
+    for entity in entry.get(CONF_ENTITIES, []):
+        if entity != ENTITY_MAPPING and entity in entry:
+            entry[entity][CONF_NAME] = f"{name} {_entity_title(entity)}"
+
+
 def _entity_title(entity: str) -> str:
     """Return the generated title suffix for a known sensor entity type."""
 
@@ -314,10 +376,12 @@ def _entity_title(entity: str) -> str:
     return entity.replace("_", " ").title()
 
 
-def _compact_entity_config(name: str, entity: str) -> dict[str, Any]:
+def _compact_entity_config(name: str, entity: str, device_id: Any | None) -> dict[str, Any]:
     """Return the generated entity config for a compact known sensor entity."""
 
     entity_config: dict[str, Any] = {CONF_NAME: f"{name} {_entity_title(entity)}"}
+    if device_id is not None:
+        entity_config[CONF_DEVICE_ID] = device_id
     if entity not in (CONF_TEMPERATURE, CONF_HUMIDITY):
         entity_config[CONF_ENTITY_CATEGORY] = "diagnostic"
     if entity in (CONF_RSSI, CONF_LAST_UPDATED):
@@ -343,16 +407,62 @@ def _add_generated_component_count(extra_count: int) -> None:
 def _expand_compact_sensor_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Expand a compact known sensor entry into the verbose schema shape."""
 
-    name = entry[CONF_NAME]
+    name_was_omitted = CONF_NAME not in entry
+    name = _known_sensor_name(entry)
+    device_id = entry.get(CONF_DEVICE_ID)
     for entity in entry[CONF_ENTITIES]:
         if entity != ENTITY_MAPPING:
-            entry[entity] = _compact_entity_config(name, entity)
+            entry[entity] = _compact_entity_config(name, entity, device_id)
+    entry[CONF_NAME] = name
+    if name_was_omitted and device_id is not None:
+        entry[_REFRESH_NAME_FROM_DEVICE] = True
+    return entry
+
+
+def _refresh_compact_device_names(
+    config: dict[str, Any], full_config: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Refresh compact known sensor names from linked ESPHome device names."""
+
+    for entry in config.get(CONF_KNOWN_SENSORS, []):
+        if CONF_ENTITIES not in entry or CONF_DEVICE_ID not in entry:
+            continue
+        if not entry.pop(_REFRESH_NAME_FROM_DEVICE, False):
+            continue
+        placeholder_name = _id_value(entry[CONF_DEVICE_ID])
+        device_name = _device_name_for_id(entry[CONF_DEVICE_ID], full_config)
+        if device_name is None:
+            raise cv.Invalid(
+                f"Known sensor device_id '{placeholder_name}' must reference an "
+                "esphome.devices entry with a name"
+            )
+        _set_compact_sensor_name(entry, device_name)
+    return config
+
+
+def _final_validate_config(config: dict[str, Any]) -> None:
+    """Refresh device-linked names after ESPHome has the full config."""
+
+    _refresh_compact_device_names(config, fv.full_config.get())
+
+
+def _apply_known_sensor_device_id(entry: dict[str, Any]) -> dict[str, Any]:
+    """Apply a known sensor's explicit device ID to generated entity configs."""
+
+    device_id = entry.get(CONF_DEVICE_ID)
+    if device_id is None:
+        return entry
+    for entity in KNOWN_SENSOR_ENTITIES:
+        if entity == ENTITY_MAPPING or entity not in entry:
+            continue
+        entry[entity].setdefault(CONF_DEVICE_ID, device_id)
     return entry
 
 
 SENSOR_ENTRY_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_KEY): KEY_SCHEMA,
+        cv.Optional(CONF_DEVICE_ID): cv.sub_device_id,
         cv.Required(CONF_MAPPING): _validate_mapping,
         cv.Required(CONF_TEMPERATURE): sensor.sensor_schema(
             unit_of_measurement="°F",
@@ -385,7 +495,8 @@ COMPACT_SENSOR_ENTRY_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.Required(CONF_KEY): KEY_SCHEMA,
-            cv.Required(CONF_NAME): cv.string_strict,
+            cv.Optional(CONF_NAME): cv.string_strict,
+            cv.Optional(CONF_DEVICE_ID): cv.sub_device_id,
             cv.Required(CONF_MAPPING): _validate_mapping,
             cv.Required(CONF_ENTITIES): cv.All(
                 cv.ensure_list(cv.one_of(*KNOWN_SENSOR_ENTITIES, lower=True)),
@@ -397,12 +508,18 @@ COMPACT_SENSOR_ENTRY_SCHEMA = cv.All(
     SENSOR_ENTRY_SCHEMA.extend(
         {
             cv.Required(CONF_NAME): cv.string_strict,
+            cv.Optional(CONF_DEVICE_ID): cv.sub_device_id,
+            cv.Optional(_REFRESH_NAME_FROM_DEVICE): cv.boolean,
             cv.Required(CONF_ENTITIES): cv.ensure_list(cv.one_of(*KNOWN_SENSOR_ENTITIES)),
         }
     ),
+    _apply_known_sensor_device_id,
 )
 
-KNOWN_SENSOR_ENTRY_SCHEMA = cv.Any(COMPACT_SENSOR_ENTRY_SCHEMA, SENSOR_ENTRY_SCHEMA)
+KNOWN_SENSOR_ENTRY_SCHEMA = cv.Any(
+    COMPACT_SENSOR_ENTRY_SCHEMA,
+    cv.All(SENSOR_ENTRY_SCHEMA, _apply_known_sensor_device_id),
+)
 
 RADIO_SCHEMA = cv.Schema(
     {
@@ -507,12 +624,15 @@ CONFIG_SCHEMA = cv.All(
     ).extend(cv.COMPONENT_SCHEMA),
     _add_default_candidates,
 )
+FINAL_VALIDATE_SCHEMA = _final_validate_config
 
 GATEWAY_ID_SCHEMA = cv.Schema({cv.GenerateID(): cv.use_id(Gateway)})
 
 
 async def to_code(config: dict[str, Any]) -> None:
     """Generate C++ for the rtl433_native component."""
+
+    _refresh_compact_device_names(config)
 
     cg.add_build_flag(ARDUINO_NETWORK_INCLUDE_FLAG)
     cg.add_build_flag(LEDC_COMPAT_INCLUDE_FLAG)
