@@ -38,15 +38,23 @@ def test_merge_conflict_labeler_runs_for_initial_pr_states() -> None:
     assert "- synchronize" in workflow_text
 
 
-def test_build_workflow_uses_board_specific_artifacts_and_release_assets() -> None:
-    """Firmware builds should publish board-specific artifacts and release bins."""
-    workflow_text = (WORKFLOW_DIR / "build.yml").read_text()
+def test_no_workflow_publishes_personal_firmware_release_assets() -> None:
+    """Personal local-device YAML should not be published as release firmware."""
+    assert not (WORKFLOW_DIR / "build.yml").exists()
+    for workflow_path in WORKFLOW_DIR.glob("*.yml"):
+        workflow_text = workflow_path.read_text()
+        assert "softprops/action-gh-release" not in workflow_text
+        assert "package-firmware" not in workflow_text
 
-    assert "FIRMWARE_CONFIG: rtl433-esphome-heltec-lora-32-v2.yaml" in workflow_text
-    assert "FIRMWARE_BUILD_ENV: rtl433-heltec-lora-32-v2" in workflow_text
-    assert "FIRMWARE_BUILD_NAME: rtl433_esphome-heltec_lora_32_v2" in workflow_text
-    assert "name: rtl433_esphome-heltec_lora_32_v2-${{ steps.version.outputs.version }}" in (
-        workflow_text
-    )
-    assert "uses: softprops/action-gh-release@v2" in workflow_text
-    assert "output/${{ steps.version.outputs.version }}/*.bin" in workflow_text
+
+def test_validation_workflow_runs_lint_and_tests_without_publishing_firmware() -> None:
+    """CI should validate code without producing personal firmware artifacts."""
+    workflow_text = (WORKFLOW_DIR / "validation.yml").read_text()
+
+    assert "pull_request:" in workflow_text
+    assert "push:" in workflow_text
+    assert "uv sync --dev" in workflow_text
+    assert "./scripts/lint" in workflow_text
+    assert "./.venv/bin/pytest" in workflow_text
+    assert "esphome compile" not in workflow_text
+    assert "upload-artifact" not in workflow_text

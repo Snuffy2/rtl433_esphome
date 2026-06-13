@@ -1,16 +1,52 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Validate and compile the default rtl433_esphome firmware profile from the repo-local venv.
+# Validate and compile the default local device profile from the repo-local venv.
+# The profile fetches rtl433_native from a released GitHub ref while keeping deployment-specific
+# sensor mappings in the YAML.
 
 cd "$(dirname "$0")/.."
 
 run_preflight=0
 update_global=0
 firmware_config="${FIRMWARE_CONFIG:-rtl433-esphome-heltec-lora-32-v2.yaml}"
+rtl433_esphome_ref="${RTL433_ESPHOME_REF:-latest}"
 
 usage() {
   echo "Usage: ./scripts/build [--preflight] [--update-global]" >&2
+}
+
+latest_release_tag() {
+  ./.venv/bin/python -c '
+import json
+import os
+import urllib.request
+
+request = urllib.request.Request(
+    "https://api.github.com/repos/Snuffy2/rtl433_esphome/releases/latest",
+    headers={"Accept": "application/vnd.github+json"},
+)
+if token := os.environ.get("GITHUB_TOKEN"):
+    request.add_header("Authorization", f"Bearer {token}")
+with urllib.request.urlopen(request, timeout=30) as response:
+    tag_name = json.load(response)["tag_name"]
+print(tag_name)
+'
+}
+
+resolved_rtl433_esphome_ref() {
+  if [[ "${rtl433_esphome_ref,,}" != "latest" ]]; then
+    printf '%s\n' "$rtl433_esphome_ref"
+    return
+  fi
+
+  local latest
+  latest="$(latest_release_tag)"
+  if [[ -z "$latest" ]]; then
+    echo "Could not resolve latest rtl433_esphome release tag." >&2
+    exit 1
+  fi
+  printf '%s\n' "$latest"
 }
 
 generated_platformio_ini() {
@@ -62,10 +98,13 @@ if [[ ! -x ./.venv/bin/python ]]; then
   exit 1
 fi
 
-./.venv/bin/python -m esphome config "$firmware_config"
+resolved_ref="$(resolved_rtl433_esphome_ref)"
+esphome_command=(./.venv/bin/python -m esphome -s rtl433_esphome_ref "$resolved_ref")
+
+"${esphome_command[@]}" config "$firmware_config"
 
 if [[ "$run_preflight" -eq 1 ]]; then
-  ./.venv/bin/python -m esphome compile --only-generate "$firmware_config"
+  "${esphome_command[@]}" compile --only-generate "$firmware_config"
   platformio_ini="$(generated_platformio_ini)"
 
   if [[ "$update_global" -eq 1 ]]; then
@@ -75,4 +114,4 @@ if [[ "$run_preflight" -eq 1 ]]; then
   fi
 fi
 
-PLATFORMIO_BUILD_JOBS=1 ./.venv/bin/python -m esphome compile "$firmware_config"
+PLATFORMIO_BUILD_JOBS=1 "${esphome_command[@]}" compile "$firmware_config"

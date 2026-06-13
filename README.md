@@ -1,17 +1,25 @@
 # rtl433_esphome
 
-ESPHome firmware and a local custom component for building native Home
-Assistant entities from `rtl_433_ESP` packets.
+ESPHome firmware and a custom component for building native Home Assistant
+entities from `rtl_433_ESP` packets.
 
 The current checked-in firmware profile targets a Heltec WiFi LoRa 32 V2-style
 433 MHz ESP32 board:
 
 - Config: `rtl433-esphome-heltec-lora-32-v2.yaml`
 - ESPHome device name: `rtl433-heltec-lora-32-v2`
-- Release build name: `rtl433_esphome-heltec_lora_32_v2`
 
-Future profiles can add more board-specific YAML files while reusing the same
-`components/rtl433_native/` component and build scripts.
+The checked-in local device profile fetches `rtl433_native` from
+`https://github.com/Snuffy2/rtl433_esphome.git` at a release tag, while
+deployment-specific sensor details stay in the local YAML. By default
+`./scripts/build` resolves `rtl433_esphome_ref: latest` to the latest GitHub
+release tag and passes that concrete tag to ESPHome. The repo-local
+`components/rtl433_native/` tree remains the source for development, tests, and
+published GitHub updates.
+
+This repository does not publish prebuilt firmware binaries from the checked-in
+local device profile because that YAML contains deployment-specific sensor names
+and mappings. Build locally when changing or using those sensor definitions.
 
 ## Example Known Sensor Mappings
 
@@ -180,8 +188,16 @@ uv sync --dev
 
 `./scripts/build` validates the ESPHome config and compiles with
 `PLATFORMIO_BUILD_JOBS=1`. By default it builds
-`rtl433-esphome-heltec-lora-32-v2.yaml`. Override `FIRMWARE_CONFIG` to build a
-future board profile:
+`rtl433-esphome-heltec-lora-32-v2.yaml`, resolving the YAML's
+`rtl433_esphome_ref: latest` substitution to the latest GitHub release tag
+before ESPHome fetches the external component. Override `RTL433_ESPHOME_REF` to
+build from a specific release tag or other Git ref:
+
+```bash
+RTL433_ESPHOME_REF=v0.1.0 ./scripts/build
+```
+
+Override `FIRMWARE_CONFIG` to build a future board profile:
 
 ```bash
 FIRMWARE_CONFIG=path/to/another-board.yaml ./scripts/build
