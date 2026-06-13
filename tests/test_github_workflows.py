@@ -56,5 +56,11 @@ def test_validation_workflow_runs_lint_and_tests_without_publishing_firmware() -
     assert "uv sync --dev" in workflow_text
     assert "./scripts/lint" in workflow_text
     assert "./.venv/bin/pytest" in workflow_text
+    assert "persist-credentials: false" in workflow_text
+    assert "cp secrets.yaml.example secrets.yaml" in workflow_text
+    assert (
+        "./.venv/bin/python -m esphome -s rtl433_esphome_ref v0.1.0 config "
+        "rtl433-esphome-heltec-lora-32-v2.yaml"
+    ) in workflow_text
     assert "esphome compile" not in workflow_text
     assert "upload-artifact" not in workflow_text

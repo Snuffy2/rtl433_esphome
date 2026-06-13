@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -34,3 +36,9 @@ jobs:
 
       - name: Run tests
         run: ./.venv/bin/pytest
+
+      - name: Prepare ESPHome config secrets
+        run: cp secrets.yaml.example secrets.yaml
+
+      - name: Validate ESPHome config
+        run: ./.venv/bin/python -m esphome -s rtl433_esphome_ref v0.1.0 config rtl433-esphome-heltec-lora-32-v2.yaml

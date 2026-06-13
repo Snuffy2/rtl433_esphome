@@ -26,7 +26,7 @@ The checked-in YAML includes one local deployment. Replace or remove these entri
 - Use semicolons when one physical transmitter appears under multiple decoder keys.
 - Example: `LaCrosse-TX141THBv2/0/203;TFA-303221/1/203`
 
-### Example YAML
+### Single-sensor YAML excerpt
 
 ```yaml
 esphome:
