@@ -40,11 +40,6 @@ jobs:
       - name: Prepare ESPHome config secrets
         run: cp secrets.yaml.example secrets.yaml
 
-      - name: Compile latest released firmware
-        run: ./scripts/build
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
       - name: Compile PR component firmware
         run: ./scripts/build
         env:
