@@ -41,11 +41,13 @@ fi
 ./.venv/bin/python -m esphome config garage-rtl433.yaml
 
 if [[ "$run_preflight" -eq 1 ]]; then
-  preflight_args=()
+  ./.venv/bin/python -m esphome compile --only-generate garage-rtl433.yaml
+
   if [[ "$update_global" -eq 1 ]]; then
-    preflight_args+=(--update-global)
+    ./scripts/esphome-preflight --update-global
+  else
+    ./scripts/esphome-preflight
   fi
-  ./scripts/esphome-preflight "${preflight_args[@]}"
 fi
 
 PLATFORMIO_BUILD_JOBS=1 ./.venv/bin/python -m esphome compile garage-rtl433.yaml

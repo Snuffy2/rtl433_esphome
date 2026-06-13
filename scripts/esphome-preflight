@@ -52,7 +52,7 @@ if [[ -z "$platformio_ini" ]]; then
 
   case "${#matches[@]}" in
     0)
-      echo "No generated ESPHome platformio.ini found. Run ./.venv/bin/python -m esphome config garage-rtl433.yaml first." >&2
+      echo "No generated ESPHome platformio.ini found. Run ./.venv/bin/python -m esphome compile --only-generate garage-rtl433.yaml first." >&2
       exit 1
       ;;
     1)
@@ -71,7 +71,7 @@ if [[ ! -f "$platformio_ini" ]]; then
   exit 1
 fi
 
-platform_spec="$(sed -n 's/^platform = //p' "$platformio_ini" | tail -n 1)"
+platform_spec="$(sed -nE 's/^platform[[:space:]]*=[[:space:]]*//p' "$platformio_ini" | tail -n 1)"
 if [[ "$platform_spec" == http://* || "$platform_spec" == https://* ]]; then
   ./.venv/bin/python -m platformio pkg install -g -f -p "$platform_spec"
 else

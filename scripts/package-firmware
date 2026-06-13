@@ -36,19 +36,39 @@ cp \
   "$firmware_dir/partitions.bin" \
   "$output_dir/"
 
+checksum() {
+  local algorithm="$1"
+  local path="$2"
+
+  openssl dgst "-$algorithm" -r "$path" | awk '{print $1}'
+}
+
 escaped_version="$(printf '%s' "$version" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+factory_md5="$(checksum md5 "$output_dir/firmware.factory.bin")"
+factory_sha256="$(checksum sha256 "$output_dir/firmware.factory.bin")"
+ota_md5="$(checksum md5 "$output_dir/firmware.ota.bin")"
+ota_sha256="$(checksum sha256 "$output_dir/firmware.ota.bin")"
+
 cat >"$output_dir/manifest.json" <<EOF
 {
   "name": "Garage RTL433",
   "version": "$escaped_version",
-  "new_install_prompt_erase": true,
+  "home_assistant_domain": "esphome",
+  "new_install_prompt_erase": false,
   "builds": [
     {
       "chipFamily": "ESP32",
+      "ota": {
+        "path": "firmware.ota.bin",
+        "md5": "$ota_md5",
+        "sha256": "$ota_sha256"
+      },
       "parts": [
         {
           "path": "firmware.factory.bin",
-          "offset": 0
+          "offset": 0,
+          "md5": "$factory_md5",
+          "sha256": "$factory_sha256"
         }
       ]
     }

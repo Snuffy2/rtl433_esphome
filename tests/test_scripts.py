@@ -6,9 +6,10 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import hashlib
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT: Path = Path(__file__).resolve().parents[1]
 
 
 def copy_script(tmp_path: Path, name: str) -> Path:
@@ -105,7 +106,30 @@ def test_build_preflight_forwards_global_update(tmp_path: Path) -> None:
     result = run_script(script, "--preflight", "--update-global")
 
     assert result.returncode == 0, result.stderr
+    assert (tmp_path / "python.log").read_text(encoding="utf-8").splitlines() == [
+        "-m esphome config garage-rtl433.yaml",
+        "-m esphome compile --only-generate garage-rtl433.yaml",
+        "-m esphome compile garage-rtl433.yaml",
+    ]
     assert preflight_log.read_text(encoding="utf-8").splitlines() == ["--update-global"]
+
+
+def test_build_preflight_runs_without_extra_args(tmp_path: Path) -> None:
+    """The preflight build path should work without optional preflight args."""
+    script = copy_script(tmp_path, "build")
+    install_python_stub(tmp_path)
+    preflight_log = tmp_path / "preflight.log"
+    preflight = tmp_path / "scripts" / "esphome-preflight"
+    preflight.write_text(
+        f"#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> {preflight_log}\n",
+        encoding="utf-8",
+    )
+    preflight.chmod(0o755)
+
+    result = run_script(script, "--preflight")
+
+    assert result.returncode == 0, result.stderr
+    assert preflight_log.read_text(encoding="utf-8").splitlines() == [""]
 
 
 def test_esphome_preflight_discovers_generated_platformio_ini(tmp_path: Path) -> None:
@@ -115,7 +139,7 @@ def test_esphome_preflight_discovers_generated_platformio_ini(tmp_path: Path) ->
     platformio_ini = tmp_path / ".esphome" / "build" / "renamed-node" / "platformio.ini"
     platformio_ini.parent.mkdir(parents=True)
     platformio_ini.write_text(
-        "platform = https://example.invalid/platform-espressif32.zip\n",
+        "platform=https://example.invalid/platform-espressif32.zip\n",
         encoding="utf-8",
     )
 
@@ -149,14 +173,29 @@ def test_package_firmware_copies_binaries_and_manifest(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert expected_files.issubset({path.name for path in output_dir.iterdir()})
     manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
+    factory_content = (firmware_dir / "firmware.factory.bin").read_bytes()
+    ota_content = (firmware_dir / "firmware.ota.bin").read_bytes()
     assert manifest == {
         "name": "Garage RTL433",
         "version": "v1.2.3",
-        "new_install_prompt_erase": True,
+        "home_assistant_domain": "esphome",
+        "new_install_prompt_erase": False,
         "builds": [
             {
                 "chipFamily": "ESP32",
-                "parts": [{"path": "firmware.factory.bin", "offset": 0}],
+                "ota": {
+                    "path": "firmware.ota.bin",
+                    "md5": hashlib.md5(ota_content).hexdigest(),
+                    "sha256": hashlib.sha256(ota_content).hexdigest(),
+                },
+                "parts": [
+                    {
+                        "path": "firmware.factory.bin",
+                        "offset": 0,
+                        "md5": hashlib.md5(factory_content).hexdigest(),
+                        "sha256": hashlib.sha256(factory_content).hexdigest(),
+                    }
+                ],
             }
         ],
     }
