@@ -529,6 +529,18 @@ def _entity_name_and_category(config: dict[str, Any]) -> tuple[str, str]:
     return config["name"], config["entity_category"]
 
 
+def install_project_version_fixture(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, pyproject_text: str
+) -> None:
+    """Install a temporary component tree for project version tests."""
+
+    component_file = tmp_path / "components" / "rtl433_native" / "__init__.py"
+    component_file.parent.mkdir(parents=True)
+    component_file.write_text("", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(pyproject_text, encoding="utf-8")
+    monkeypatch.setattr(rtl433_native, "__file__", str(component_file))
+
+
 def assert_codegen_dependencies(
     fake_env: FakeCodegenEnvironment, *, expect_ota_listener: bool
 ) -> None:
@@ -654,14 +666,11 @@ def test_project_version_uses_matching_package_metadata(
 ) -> None:
     """Read the version from package metadata owned by this component."""
 
-    component_file = tmp_path / "components" / "rtl433_native" / "__init__.py"
-    component_file.parent.mkdir(parents=True)
-    component_file.write_text("", encoding="utf-8")
-    (tmp_path / "pyproject.toml").write_text(
+    install_project_version_fixture(
+        monkeypatch,
+        tmp_path,
         '[project]\nname = "rtl433-esphome"\nversion = "v9.8.7"\n',
-        encoding="utf-8",
     )
-    monkeypatch.setattr(rtl433_native, "__file__", str(component_file))
 
     assert _project_version() == "v9.8.7"
 
@@ -671,14 +680,11 @@ def test_project_version_ignores_foreign_package_metadata(
 ) -> None:
     """Avoid logging an unrelated parent project's version for vendored components."""
 
-    component_file = tmp_path / "components" / "rtl433_native" / "__init__.py"
-    component_file.parent.mkdir(parents=True)
-    component_file.write_text("", encoding="utf-8")
-    (tmp_path / "pyproject.toml").write_text(
+    install_project_version_fixture(
+        monkeypatch,
+        tmp_path,
         '[project]\nname = "other-project"\nversion = "v9.8.7"\n',
-        encoding="utf-8",
     )
-    monkeypatch.setattr(rtl433_native, "__file__", str(component_file))
 
     assert _project_version() == "unknown"
 
@@ -688,14 +694,11 @@ def test_project_version_falls_back_for_missing_version(
 ) -> None:
     """Keep ESPHome generation working when parent metadata is incomplete."""
 
-    component_file = tmp_path / "components" / "rtl433_native" / "__init__.py"
-    component_file.parent.mkdir(parents=True)
-    component_file.write_text("", encoding="utf-8")
-    (tmp_path / "pyproject.toml").write_text(
+    install_project_version_fixture(
+        monkeypatch,
+        tmp_path,
         '[project]\nname = "rtl433-esphome"\n',
-        encoding="utf-8",
     )
-    monkeypatch.setattr(rtl433_native, "__file__", str(component_file))
 
     assert _project_version() == "unknown"
 
@@ -705,11 +708,7 @@ def test_project_version_falls_back_for_malformed_metadata(
 ) -> None:
     """Keep ESPHome generation working when parent metadata is not valid TOML."""
 
-    component_file = tmp_path / "components" / "rtl433_native" / "__init__.py"
-    component_file.parent.mkdir(parents=True)
-    component_file.write_text("", encoding="utf-8")
-    (tmp_path / "pyproject.toml").write_text("[project\n", encoding="utf-8")
-    monkeypatch.setattr(rtl433_native, "__file__", str(component_file))
+    install_project_version_fixture(monkeypatch, tmp_path, "[project\n")
 
     assert _project_version() == "unknown"
 
