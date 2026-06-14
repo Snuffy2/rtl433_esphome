@@ -280,6 +280,55 @@ void test_mapping_change_reporting() {
           "expected remapping to report a change");
 }
 
+void test_mapping_match_checks_equivalent_runtime_mapping() {
+  rtl433::GatewayState state;
+  state.set_mapping("garage_freezer_2", "Acurite-986/2F/35570;TFA-303221/1/99");
+
+  const auto mapping_fingerprint = state.mapping_fingerprint("garage_freezer_2");
+  require(mapping_fingerprint.has_value(), "expected current mapping fingerprint to be available");
+
+  const auto reordered = rtl433::parse_sensor_mapping("TFA-303221/1/99;Acurite-986/2F/35570");
+  require(reordered.has_value(), "expected reordered mapping fixture to parse");
+  require(rtl433::mapping_fingerprint(*reordered) == *mapping_fingerprint,
+          "expected free mapping fingerprint helper to canonicalize equivalent mappings");
+  require(state.mapping_matches("garage_freezer_2", rtl433::mapping_fingerprint(*reordered)),
+          "expected reordered saved mapping fingerprint to match current runtime mapping");
+
+  const auto different = rtl433::parse_sensor_mapping("Acurite-986/2F/31274");
+  require(different.has_value(), "expected different mapping fixture to parse");
+  require(!state.mapping_matches("garage_freezer_2", rtl433::mapping_fingerprint(*different)),
+          "expected different saved mapping to not match current runtime mapping");
+  require(!state.mapping_matches("missing", *mapping_fingerprint),
+          "expected missing logical key to not match saved mapping");
+}
+
+void test_mapping_match_detects_default_mapping_change() {
+  rtl433::GatewayState state;
+  state.set_mapping("garage_freezer_2", "Acurite-986/2F/35570");
+  const auto saved_fingerprint = state.mapping_fingerprint("garage_freezer_2");
+  require(saved_fingerprint.has_value(), "expected saved mapping provenance");
+
+  state.set_mapping("garage_freezer_2", "Acurite-986/2F/31274");
+
+  require(!state.mapping_matches("garage_freezer_2", *saved_fingerprint),
+          "expected saved provenance to reject a changed default mapping");
+}
+
+void test_long_mapping_has_fixed_size_provenance() {
+  rtl433::GatewayState state;
+  state.set_mapping("long_combo",
+                    "VeryLongModelName001/1/100001;VeryLongModelName002/2/100002;"
+                    "VeryLongModelName003/3/100003;VeryLongModelName004/4/100004;"
+                    "VeryLongModelName005/5/100005;VeryLongModelName006/6/100006;"
+                    "VeryLongModelName007/7/100007;VeryLongModelName008/8/100008;"
+                    "VeryLongModelName009/9/100009");
+
+  const auto fingerprint = state.mapping_fingerprint("long_combo");
+  require(fingerprint.has_value(), "expected long mapping fingerprint to be available");
+  require(state.mapping_matches("long_combo", *fingerprint),
+          "expected long mapping fingerprint to match without text truncation");
+}
+
 void test_duplicate_mappings_update_both() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
@@ -631,6 +680,9 @@ int main() {
   test_spaced_reordered_mapping_preserves_restored_reading();
   test_invalid_mapping_input_preserves_state_and_mapping();
   test_mapping_change_reporting();
+  test_mapping_match_checks_equivalent_runtime_mapping();
+  test_mapping_match_detects_default_mapping_change();
+  test_long_mapping_has_fixed_size_provenance();
   test_duplicate_mappings_update_both();
   test_invalid_packet_is_rejected();
   test_unmatched_packet_is_ignored();

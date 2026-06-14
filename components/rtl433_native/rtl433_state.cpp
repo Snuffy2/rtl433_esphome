@@ -138,6 +138,29 @@ std::string format_sensor_key(const SensorKey &key) {
   return key.model + "/" + key.channel + "/" + key.id;
 }
 
+namespace {
+
+std::string format_sensor_mapping(const SensorMapping &mapping) {
+  std::string value = format_sensor_key(mapping.primary);
+  for (const auto &synonym : mapping.synonyms) {
+    value += ";" + format_sensor_key(synonym);
+  }
+  return value;
+}
+
+}  // namespace
+
+uint32_t mapping_fingerprint(const SensorMapping &mapping) {
+  SensorMapping canonical = mapping;
+  canonicalize_mapping(canonical);
+  uint32_t hash = 2166136261U;
+  for (const unsigned char value : format_sensor_mapping(canonical)) {
+    hash ^= value;
+    hash *= 16777619U;
+  }
+  return hash;
+}
+
 std::string format_candidate(const CandidateRow &candidate) {
   std::string value = format_sensor_key(candidate.key);
   value += " temp=" + std::to_string(candidate.temperature_f);
@@ -219,6 +242,19 @@ const LogicalSensorState *GatewayState::logical_sensor(const std::string &logica
     return nullptr;
   }
   return &item->second;
+}
+
+bool GatewayState::mapping_matches(const std::string &logical_key, uint32_t fingerprint) const {
+  const auto current = this->mapping_fingerprint(logical_key);
+  return current.has_value() && *current == fingerprint;
+}
+
+std::optional<uint32_t> GatewayState::mapping_fingerprint(const std::string &logical_key) const {
+  const auto existing = mappings_.find(logical_key);
+  if (existing == mappings_.end()) {
+    return {};
+  }
+  return esphome::rtl433_native::mapping_fingerprint(existing->second);
 }
 
 PacketResult GatewayState::process_packet(const DecodedPacket &packet) {

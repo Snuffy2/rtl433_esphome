@@ -46,6 +46,10 @@ uint32_t mapping_preference_key(const std::string &logical_key) {
   return preference_key("mapping:" + logical_key) ^ 0x1A77B433UL;
 }
 
+uint32_t saved_state_mapping_preference_key(const std::string &logical_key) {
+  return preference_key("state_mapping:" + logical_key) ^ 0x5147B433UL;
+}
+
 }  // namespace
 
 Gateway *Gateway::instance_ = nullptr;
@@ -134,9 +138,6 @@ void Gateway::set_override(const std::string &logical_key, const std::string &se
   this->entities_.try_emplace(logical_key);
   const bool mapping_changed = this->state_.set_mapping(logical_key, sensor_key);
   if (mapping_changed) {
-    if (!this->restored_states_) {
-      this->remapped_before_restore_.insert(logical_key);
-    }
     this->pending_clock_age_restore_.erase(logical_key);
   }
 }
@@ -343,10 +344,12 @@ void Gateway::restore_saved_states() {
     auto preference = global_preferences->make_preference<SavedLogicalState>(preference_key(logical_key), true);
     SavedLogicalState saved;
     this->preferences_[logical_key] = preference;
-    if (this->remapped_before_restore_.find(logical_key) != this->remapped_before_restore_.end()) {
+    if (!preference.load(&saved) || !saved.has_value) {
       continue;
     }
-    if (!preference.load(&saved) || !saved.has_value) {
+    SavedLogicalMapping saved_mapping;
+    if (!this->load_saved_mapping(logical_key, saved_mapping) ||
+        !this->state_.mapping_matches(logical_key, saved_mapping.fingerprint)) {
       continue;
     }
 
@@ -375,7 +378,6 @@ void Gateway::restore_saved_states() {
       }
     });
   }
-  this->remapped_before_restore_.clear();
 }
 
 void Gateway::sync_time_base() {
@@ -451,6 +453,35 @@ void Gateway::save_state(const std::string &logical_key, uint32_t last_updated) 
     saved.last_updated = last_updated_item->second;
   }
   preference_item->second.save(&saved);
+  this->save_mapping_state(logical_key);
+}
+
+bool Gateway::load_saved_mapping(const std::string &logical_key, SavedLogicalMapping &saved_mapping) {
+  auto mapping_preference =
+      global_preferences->make_preference<SavedLogicalMapping>(saved_state_mapping_preference_key(logical_key), true);
+  if (!mapping_preference.load(&saved_mapping) || !saved_mapping.has_value) {
+    return false;
+  }
+  this->last_saved_mapping_values_[logical_key] = saved_mapping.fingerprint;
+  return true;
+}
+
+void Gateway::save_mapping_state(const std::string &logical_key) {
+  const auto fingerprint = this->state_.mapping_fingerprint(logical_key);
+  if (!fingerprint.has_value()) {
+    return;
+  }
+  const auto cached = this->last_saved_mapping_values_.find(logical_key);
+  if (cached != this->last_saved_mapping_values_.end() && cached->second == *fingerprint) {
+    return;
+  }
+  SavedLogicalMapping saved_mapping;
+  auto mapping_preference =
+      global_preferences->make_preference<SavedLogicalMapping>(saved_state_mapping_preference_key(logical_key), true);
+  saved_mapping.has_value = true;
+  saved_mapping.fingerprint = *fingerprint;
+  mapping_preference.save(&saved_mapping);
+  this->last_saved_mapping_values_[logical_key] = *fingerprint;
 }
 
 void Gateway::publish_stale_state(const std::string &logical_key, EntitySet &entities, uint32_t now_ms) {
