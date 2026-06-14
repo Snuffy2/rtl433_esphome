@@ -1762,10 +1762,10 @@ async def test_compact_known_sensor_mapping_entity_uses_base_name(
     assert CONF_DEVICE_ID not in fake_env.text.created[0]
 
 
-async def test_compact_known_sensor_entities_keep_mapping_text_on_gateway(
+async def test_compact_known_sensor_entities_propagate_device_id_to_mapping_text(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Generate all known sensor entities on the linked sub-device."""
+    """Propagate device_id to mapping text when compact known sensor has device_id."""
 
     config = CONFIG_SCHEMA(
         {

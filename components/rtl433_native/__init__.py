@@ -244,7 +244,14 @@ def _validate_mapping_text_ids(value: list[dict[str, Any]]) -> list[dict[str, An
 
 
 def _validate_gateway_entity_names(value: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Ensure gateway-local known sensor entity names remain unique."""
+    """Ensure gateway-local known-sensor entity names remain unique.
+
+    Args:
+        value: Known-sensor entries to validate.
+
+    Returns:
+        The validated known-sensor entries.
+    """
 
     seen: dict[str, str] = {}
     for entry in value:
@@ -357,7 +364,14 @@ def _add_default_candidates(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def _mapping_text_name(entry: dict[str, Any]) -> str:
-    """Return the generated mapping text entity name for a known sensor."""
+    """Return the generated mapping text entity name for a known sensor.
+
+    Args:
+        entry: Known-sensor entry that owns the mapping text entity.
+
+    Returns:
+        The generated mapping text entity name.
+    """
 
     return "Mapping"
 
@@ -431,7 +445,12 @@ def _known_sensor_name(entry: dict[str, Any], config: dict[str, Any] | None = No
 
 
 def _set_compact_sensor_name(entry: dict[str, Any], name: str) -> None:
-    """Apply a compact known sensor base name to generated entity configs."""
+    """Refresh compact known-sensor naming after device-name resolution.
+
+    Args:
+        entry: Compact known-sensor entry to mutate.
+        name: Device display name used for the entry-level known-sensor name.
+    """
 
     entry[CONF_NAME] = name
     for entity in entry.get(CONF_ENTITIES, []):
@@ -461,7 +480,14 @@ def _compact_entity_config(name: str, entity: str, device_id: Any | None) -> dic
 
 
 def _normalize_known_sensor_entity_names(entry: dict[str, Any]) -> dict[str, Any]:
-    """Remove device prefixes from known sensor entity names."""
+    """Remove device prefixes from known-sensor entity names.
+
+    Args:
+        entry: Known-sensor entry to normalize.
+
+    Returns:
+        The normalized known-sensor entry.
+    """
 
     for entity in KNOWN_SENSOR_ENTITIES:
         if entity == ENTITY_MAPPING or entity not in entry:

@@ -38,12 +38,13 @@
 - By default, run the full pytest suite. If running targeted tests, explain why.
 - Use `./scripts/build` for ESPHome firmware builds. It runs config validation
   and compiles with `PLATFORMIO_BUILD_JOBS=1`.
-- Before running `./scripts/build`, verify that it will validate the code under
-  test. The default firmware profile may resolve `rtl433_native` from the
-  published external component ref instead of the uncommitted local working
-  tree; do not start the PlatformIO compile gate, especially when the known
-  `~/.platformio/platforms.lock` permission issue is likely, until the config
-  source points at the intended local component or branch.
+- Before running `./scripts/build`, verify that config validation targets the
+  intended `rtl433_native` source. The default firmware profile
+  (`rtl433-esphome-heltec-lora-32-v2.yaml`) may resolve the component from a
+  published external ref instead of the local working tree. Do not start the
+  PlatformIO compile gate until the config points at the intended local
+  component or branch, especially when the known
+  `~/.platformio/platforms.lock` permission issue is likely.
 - Use `./scripts/build --preflight` when the generated PlatformIO platform cache
   may need repair before compiling.
 - Before OTA upload, run `./scripts/esphome-preflight` if Python, ESPHome, or
