@@ -233,68 +233,56 @@ def test_cleanup_script_keeps_active_update_branch(cleanup_script: ModuleType) -
     assert result.deleted_branches == [f"{WORKFLOW_BRANCH}-old"]
 
 
-def test_cleanup_script_preserves_human_prs_with_matching_label_and_prefix(
+@pytest.mark.parametrize(
+    ("open_pulls", "closed_pulls"),
+    [
+        pytest.param(
+            [
+                _workflow_pull(
+                    number=13,
+                    ref=f"{WORKFLOW_BRANCH}-manual-fix",
+                    author="maintainer",
+                ),
+            ],
+            [
+                _workflow_pull(
+                    number=14,
+                    ref=f"{WORKFLOW_BRANCH}-manual-merged",
+                    author="maintainer",
+                    merged_at="2026-05-29T00:00:00Z",
+                ),
+            ],
+            id="human-prs",
+        ),
+        pytest.param(
+            [
+                _workflow_pull(
+                    number=15,
+                    ref=f"{WORKFLOW_BRANCH}-v2",
+                    body="Automated dependency update from another workflow.",
+                ),
+            ],
+            [
+                _workflow_pull(
+                    number=16,
+                    ref=f"{WORKFLOW_BRANCH}-docs",
+                    body="Automated dependency update from another workflow.",
+                    merged_at="2026-05-29T00:00:00Z",
+                ),
+            ],
+            id="missing-body-marker",
+        ),
+    ],
+)
+def test_cleanup_script_preserves_non_workflow_owned_prs(
     cleanup_script: ModuleType,
+    open_pulls: list[dict[str, object]],
+    closed_pulls: list[dict[str, object]],
 ) -> None:
-    """Cleanup script should not mutate human PRs that share labels and prefixes."""
+    """Cleanup script should not mutate PRs that are not owned by this workflow."""
     client = FakeCleanupClient(
-        open_pulls=[
-            _workflow_pull(
-                number=13,
-                ref=f"{WORKFLOW_BRANCH}-manual-fix",
-                author="maintainer",
-            ),
-        ],
-        closed_pulls=[
-            _workflow_pull(
-                number=14,
-                ref=f"{WORKFLOW_BRANCH}-manual-merged",
-                author="maintainer",
-                merged_at="2026-05-29T00:00:00Z",
-            ),
-        ],
-    )
-
-    result = cleanup_script.cleanup_update_branches(
-        client=client,
-        repository=REPOSITORY,
-        branch=WORKFLOW_BRANCH,
-        branch_prefix=WORKFLOW_BRANCH,
-        label_name=WORKFLOW_LABEL,
-        author_login=WORKFLOW_AUTHOR,
-        body_marker=WORKFLOW_BODY_MARKER,
-        keep_pr_number=None,
-        close_stale_prs=True,
-        delete_stale_branch=False,
-        delete_merged_branches=True,
-    )
-
-    assert client.closed_prs == []
-    assert client.deleted_refs == []
-    assert result.closed_prs == []
-    assert result.deleted_branches == []
-
-
-def test_cleanup_script_preserves_bot_prs_without_workflow_body_marker(
-    cleanup_script: ModuleType,
-) -> None:
-    """Cleanup script should not mutate bot PRs without the workflow body marker."""
-    client = FakeCleanupClient(
-        open_pulls=[
-            _workflow_pull(
-                number=15,
-                ref=f"{WORKFLOW_BRANCH}-v2",
-                body="Automated dependency update from another workflow.",
-            ),
-        ],
-        closed_pulls=[
-            _workflow_pull(
-                number=16,
-                ref=f"{WORKFLOW_BRANCH}-docs",
-                body="Automated dependency update from another workflow.",
-                merged_at="2026-05-29T00:00:00Z",
-            ),
-        ],
+        open_pulls=open_pulls,
+        closed_pulls=closed_pulls,
     )
 
     result = cleanup_script.cleanup_update_branches(
