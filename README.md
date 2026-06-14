@@ -35,7 +35,12 @@ esphome:
     - id: garage_fridge_device
       name: Garage Fridge
 
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
 rtl433_native:
+  time_id: homeassistant_time
   known_sensors:
     - key: garage_fridge
       device_id: garage_fridge_device
@@ -60,6 +65,7 @@ rtl433_native:
 - Mapping text values persist across reboots and OTA updates.
 - RSSI and last-updated entities are disabled by default.
 - Mapping text entities stay on the main device with gateway diagnostics and controls.
+- `time_id` is required so restored stale-state aging and last-updated timestamps use a real wall-clock source.
 
 ### Default gateway diagnostics
 

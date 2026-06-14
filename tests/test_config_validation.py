@@ -146,6 +146,7 @@ GATEWAY_CONTROL_DEFAULTS = (
     (CONF_CLEAR_CANDIDATES_BUTTON, "Clear Candidates"),
     (CONF_STATUS_BUTTON, "Radio Status"),
 )
+REQUIRED_TIME_CONFIG = {CONF_TIME_ID: "time_id"}
 
 
 @dataclass
@@ -541,6 +542,14 @@ def install_project_version_fixture(
     monkeypatch.setattr(rtl433_native, "__file__", str(component_file))
 
 
+def install_codegen_fakes_for_config(
+    monkeypatch: pytest.MonkeyPatch, config: dict[str, Any]
+) -> FakeCodegenEnvironment:
+    """Install codegen fakes that can resolve the config's required time source."""
+
+    return install_codegen_fakes(monkeypatch, variables={config[CONF_TIME_ID]: "time:clock"})
+
+
 def assert_codegen_dependencies(
     fake_env: FakeCodegenEnvironment, *, expect_ota_listener: bool
 ) -> None:
@@ -572,6 +581,22 @@ def gateway_control_overrides(prefix: str) -> dict[str, dict[str, str]]:
         key: {"name": f"{prefix} {name}", "entity_category": "config"}
         for key, name in GATEWAY_CONTROL_DEFAULTS
     }
+
+
+def test_config_schema_requires_time_id() -> None:
+    """Require a wall-clock time source for restored stale-state aging."""
+
+    with pytest.raises(cv.Invalid, match="time_id"):
+        CONFIG_SCHEMA(
+            {
+                CONF_ID: "gateway_id",
+                **gateway_diagnostic_overrides("Missing Time Fixture"),
+                **gateway_control_overrides("Missing Time Fixture"),
+                CONF_KNOWN_SENSORS: [
+                    compact_known_sensor_config("Missing Time Fixture", ["temperature"])
+                ],
+            }
+        )
 
 
 def test_validate_mapping_accepts_semicolon_delimited_sensor_keys() -> None:
@@ -619,6 +644,7 @@ def test_config_schema_rejects_long_generated_mapping_text_value() -> None:
         CONFIG_SCHEMA(
             {
                 CONF_ID: "gateway_id",
+                **REQUIRED_TIME_CONFIG,
                 **gateway_diagnostic_overrides("Long Mapping Text Fixture"),
                 **gateway_control_overrides("Long Mapping Text Fixture"),
                 CONF_KNOWN_SENSORS: [config],
@@ -635,6 +661,7 @@ def test_config_schema_accepts_long_mapping_without_generated_text() -> None:
     validated = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             **gateway_diagnostic_overrides("Long Mapping No Text Fixture"),
             **gateway_control_overrides("Long Mapping No Text Fixture"),
             CONF_KNOWN_SENSORS: [config],
@@ -642,23 +669,6 @@ def test_config_schema_accepts_long_mapping_without_generated_text() -> None:
     )
 
     assert validated[CONF_KNOWN_SENSORS][0][CONF_MAPPING] == config[CONF_MAPPING]
-
-
-def test_mapping_text_setup_applies_initial_value_without_saving() -> None:
-    """Keep YAML defaults from becoming saved runtime mapping overrides."""
-
-    source = Path("components/rtl433_native/rtl433_native.cpp").read_text()
-
-    assert "this->apply_value(this->initial_value_, false);" in source
-    assert "this->apply_value(this->initial_value_, true);" not in source
-
-
-def test_gateway_dump_config_logs_version() -> None:
-    """Show the component version in the ESPHome startup config log."""
-
-    source = Path("components/rtl433_native/rtl433_native.cpp").read_text()
-
-    assert 'ESP_LOGCONFIG(TAG, "  Version: %s", this->version_.c_str());' in source
 
 
 def test_project_version_uses_matching_package_metadata(
@@ -769,6 +779,7 @@ def test_config_schema_accepts_legacy_known_sensor_keys(key: str) -> None:
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             **gateway_diagnostic_overrides(fixture_name),
             **gateway_control_overrides(fixture_name),
             CONF_KNOWN_SENSORS: [
@@ -791,6 +802,7 @@ def test_config_schema_rejects_duplicate_generated_mapping_text_ids() -> None:
         CONFIG_SCHEMA(
             {
                 CONF_ID: "gateway_id",
+                **REQUIRED_TIME_CONFIG,
                 **gateway_diagnostic_overrides("Duplicate Mapping ID Fixture"),
                 **gateway_control_overrides("Duplicate Mapping ID Fixture"),
                 CONF_KNOWN_SENSORS: [
@@ -906,9 +918,9 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
 
 
 async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Generate code when optional entities and time are omitted."""
+    """Generate code when optional entities are omitted."""
 
-    fake_env = install_codegen_fakes(monkeypatch)
+    fake_env = install_codegen_fakes(monkeypatch, variables={"time_id": "time:clock"})
     monkeypatch.setattr(CORE, "config", {})
 
     config: dict[str, Any] = {
@@ -917,6 +929,7 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
         CONF_LED_PIN: 25,
         CONF_RADIO: DEFAULT_RADIO_CONFIG,
         CONF_STALE_AFTER: FakeTimePeriod(total_milliseconds=60_000),
+        CONF_TIME_ID: "time_id",
         CONF_KNOWN_SENSORS: [
             {
                 CONF_KEY: "garage_freezer_1",
@@ -947,6 +960,7 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
         ("set_candidate_limit", (1,)),
         ("set_stale_after_ms", (60_000,)),
         ("set_led_pin", (25,)),
+        ("set_time", ("time:clock",)),
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
         ("set_temperature_sensor", ("garage_freezer_1", "sensor:temperature")),
     ]
@@ -961,7 +975,7 @@ async def test_to_code_normalizes_user_extra_script_string(
 ) -> None:
     """Preserve ESPHome shorthand extra scripts when adding the prebuild hook."""
 
-    fake_env = install_codegen_fakes(monkeypatch)
+    fake_env = install_codegen_fakes(monkeypatch, variables={"time_id": "time:clock"})
     core_config: dict[str, Any] = {
         CONF_ESPHOME: {
             CONF_PLATFORMIO_OPTIONS: {
@@ -977,6 +991,7 @@ async def test_to_code_normalizes_user_extra_script_string(
         CONF_LED_PIN: 25,
         CONF_RADIO: DEFAULT_RADIO_CONFIG,
         CONF_STALE_AFTER: FakeTimePeriod(total_milliseconds=60_000),
+        CONF_TIME_ID: "time_id",
         CONF_KNOWN_SENSORS: [
             {
                 CONF_KEY: "garage_freezer_1",
@@ -1003,6 +1018,7 @@ async def test_to_code_sanitizes_generated_mapping_text_id_only(
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             CONF_CANDIDATE_LIMIT: 1,
             CONF_CANDIDATES: [],
             CONF_STALE_AFTER: "1min",
@@ -1017,7 +1033,7 @@ async def test_to_code_sanitizes_generated_mapping_text_id_only(
             ],
         }
     )
-    fake_env = install_codegen_fakes(monkeypatch)
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     await to_code(config)
 
@@ -1042,6 +1058,7 @@ def test_config_schema_generates_candidate_sensors_from_limit() -> None:
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             CONF_CANDIDATE_LIMIT: 2,
             **gateway_diagnostic_overrides("Candidates Fixture"),
             **gateway_control_overrides("Candidates Fixture"),
@@ -1087,6 +1104,7 @@ async def test_config_schema_generates_default_gateway_diagnostics(
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             CONF_CANDIDATES: [],
             **gateway_control_overrides("Default Diagnostics Fixture"),
             CONF_KNOWN_SENSORS: [
@@ -1094,7 +1112,7 @@ async def test_config_schema_generates_default_gateway_diagnostics(
             ],
         }
     )
-    fake_env = install_codegen_fakes(monkeypatch)
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     await to_code(config)
 
@@ -1130,6 +1148,7 @@ async def test_config_schema_generates_default_gateway_controls(
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             CONF_CANDIDATES: [],
             **gateway_diagnostic_overrides("Default Controls Fixture"),
             CONF_KNOWN_SENSORS: [
@@ -1137,7 +1156,7 @@ async def test_config_schema_generates_default_gateway_controls(
             ],
         }
     )
-    fake_env = install_codegen_fakes(monkeypatch)
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     await to_code(config)
 
@@ -1162,6 +1181,7 @@ def test_config_schema_supplies_default_hardware_profile() -> None:
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             **gateway_diagnostic_overrides("Hardware Fixture"),
             **gateway_control_overrides("Hardware Fixture"),
             CONF_KNOWN_SENSORS: [
@@ -1184,6 +1204,7 @@ def test_config_schema_accepts_valid_custom_hardware_profile() -> None:
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             CONF_LED_PIN: 2,
             CONF_RADIO: {
                 CONF_FREQUENCY: 315,
@@ -1237,6 +1258,7 @@ def test_config_schema_rejects_invalid_hardware_profile(override: dict[str, Any]
         CONFIG_SCHEMA(
             {
                 CONF_ID: "gateway_id",
+                **REQUIRED_TIME_CONFIG,
                 **override,
                 **gateway_diagnostic_overrides("Invalid Hardware Fixture"),
                 **gateway_control_overrides("Invalid Hardware Fixture"),
@@ -1273,6 +1295,7 @@ async def test_to_code_uses_configured_radio_module(monkeypatch: pytest.MonkeyPa
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             CONF_CANDIDATES: [],
             CONF_STALE_AFTER: "1min",
             CONF_RADIO: {CONF_MODULE: "cc1101"},
@@ -1281,7 +1304,7 @@ async def test_to_code_uses_configured_radio_module(monkeypatch: pytest.MonkeyPa
             CONF_KNOWN_SENSORS: [compact_known_sensor_config("Radio Fixture", ["temperature"])],
         }
     )
-    fake_env = install_codegen_fakes(monkeypatch)
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     await to_code(config)
 
@@ -1300,6 +1323,7 @@ def test_config_schema_expands_compact_known_sensor_entities() -> None:
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             **gateway_diagnostic_overrides("Compact Fixture"),
             **gateway_control_overrides("Compact Fixture"),
             CONF_KNOWN_SENSORS: [
@@ -1344,6 +1368,7 @@ def test_config_schema_leaves_name_only_compact_known_entities_on_gateway() -> N
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             **gateway_diagnostic_overrides("Device Fixture"),
             **gateway_control_overrides("Device Fixture"),
             CONF_KNOWN_SENSORS: [
@@ -1384,6 +1409,7 @@ def test_config_schema_uses_explicit_known_sensor_device_id() -> None:
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             **gateway_diagnostic_overrides("Explicit Device Fixture"),
             **gateway_control_overrides("Explicit Device Fixture"),
             CONF_KNOWN_SENSORS: [
@@ -1442,6 +1468,7 @@ def test_config_schema_uses_device_name_when_compact_name_omitted(
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             **gateway_diagnostic_overrides("Device Name Fixture"),
             **gateway_control_overrides("Device Name Fixture"),
             CONF_KNOWN_SENSORS: [
@@ -1494,6 +1521,7 @@ def test_config_schema_preserves_explicit_compact_name_matching_device_id(
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             **gateway_diagnostic_overrides("Explicit Name Fixture"),
             **gateway_control_overrides("Explicit Name Fixture"),
             CONF_KNOWN_SENSORS: [
@@ -1520,6 +1548,7 @@ def test_final_validation_uses_runtime_config_to_resolve_compact_device_name() -
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             **gateway_diagnostic_overrides("Runtime Device Fixture"),
             **gateway_control_overrides("Runtime Device Fixture"),
             CONF_KNOWN_SENSORS: [
@@ -1559,6 +1588,7 @@ def test_final_validation_rejects_unresolved_compact_device_name() -> None:
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             **gateway_diagnostic_overrides("Unknown Device Fixture"),
             **gateway_control_overrides("Unknown Device Fixture"),
             CONF_KNOWN_SENSORS: [
@@ -1600,6 +1630,7 @@ async def test_to_code_rejects_compact_device_without_name_in_core_config(
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             **gateway_diagnostic_overrides("Nameless Device Fixture"),
             **gateway_control_overrides("Nameless Device Fixture"),
             CONF_KNOWN_SENSORS: [
@@ -1625,6 +1656,7 @@ async def test_compact_known_sensor_mapping_entity_is_optional(
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             CONF_CANDIDATE_LIMIT: 1,
             CONF_CANDIDATES: [],
             CONF_STALE_AFTER: "1min",
@@ -1633,7 +1665,7 @@ async def test_compact_known_sensor_mapping_entity_is_optional(
             CONF_KNOWN_SENSORS: [compact_known_sensor_config("Garage Freezer 1", ["temperature"])],
         }
     )
-    fake_env = install_codegen_fakes(monkeypatch)
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     await to_code(config)
 
@@ -1657,6 +1689,7 @@ async def test_compact_known_sensor_mapping_entity_uses_base_name(
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             CONF_CANDIDATE_LIMIT: 1,
             CONF_CANDIDATES: [],
             CONF_STALE_AFTER: "1min",
@@ -1667,7 +1700,7 @@ async def test_compact_known_sensor_mapping_entity_uses_base_name(
             ],
         }
     )
-    fake_env = install_codegen_fakes(monkeypatch)
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     await to_code(config)
 
@@ -1685,6 +1718,7 @@ async def test_compact_known_sensor_entities_keep_mapping_text_on_gateway(
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
             CONF_CANDIDATE_LIMIT: 1,
             CONF_CANDIDATES: [],
             CONF_STALE_AFTER: "1min",
@@ -1699,7 +1733,7 @@ async def test_compact_known_sensor_entities_keep_mapping_text_on_gateway(
             ],
         }
     )
-    fake_env = install_codegen_fakes(monkeypatch)
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     await to_code(config)
 

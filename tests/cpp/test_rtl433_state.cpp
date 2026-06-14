@@ -564,22 +564,55 @@ void test_last_updated_resolution_preserves_previous_when_clock_is_invalid() {
   require(adjusted == 1700000000, "invalid current timestamp should preserve previous last_updated value");
 }
 
-void test_current_timestamp_resolution_prefers_valid_clock_over_cached_projection() {
-  const uint32_t resolved = rtl433::resolve_current_timestamp(1700000000, 0, 1700000059, 59000);
-
-  require(resolved == 1700000000, "valid clock timestamp should override cached projected timestamp");
-}
-
-void test_current_timestamp_resolution_uses_cached_projection_when_clock_is_invalid() {
-  const uint32_t resolved = rtl433::resolve_current_timestamp(0, 1700000000, 1000, 61000);
+void test_projected_timestamp_uses_cached_sync_epoch() {
+  const uint32_t resolved = rtl433::resolve_projected_timestamp(1700000000, 1000, 61000);
 
   require(resolved == 1700000060, "invalid clock timestamp should fall back to cached projected timestamp");
 }
 
-void test_current_timestamp_resolution_returns_zero_without_clock_or_cache() {
-  const uint32_t resolved = rtl433::resolve_current_timestamp(0, 0, 1000, 61000);
+void test_projected_timestamp_returns_zero_without_cache() {
+  const uint32_t resolved = rtl433::resolve_projected_timestamp(0, 1000, 61000);
 
   require(resolved == 0, "missing clock timestamp and cache should remain unavailable");
+}
+
+void test_restored_last_seen_marks_old_saved_reading_stale() {
+  const uint32_t stale_after_ms = 3600000;
+  const uint32_t now_ms = 43200000;
+  const uint32_t current_timestamp = 1781395200;
+  const uint32_t saved_last_updated = current_timestamp - 86400;
+
+  const uint32_t restored_last_seen =
+      rtl433::resolve_restored_last_seen_ms(saved_last_updated, current_timestamp, now_ms, stale_after_ms);
+
+  require(static_cast<uint32_t>(now_ms - restored_last_seen) > stale_after_ms,
+          "old persisted readings should restore as stale");
+}
+
+void test_restored_last_seen_preserves_recent_saved_age() {
+  const uint32_t stale_after_ms = 3600000;
+  const uint32_t now_ms = 43200000;
+  const uint32_t current_timestamp = 1781395200;
+  const uint32_t saved_last_updated = current_timestamp - 600;
+
+  const uint32_t restored_last_seen =
+      rtl433::resolve_restored_last_seen_ms(saved_last_updated, current_timestamp, now_ms, stale_after_ms);
+
+  require(now_ms - restored_last_seen == 600000, "recent persisted readings should restore with real age");
+}
+
+void test_restored_last_seen_falls_back_to_fresh_without_valid_clock_age() {
+  const uint32_t stale_after_ms = 3600000;
+  const uint32_t now_ms = 43200000;
+  const uint32_t current_timestamp = 1781395200;
+
+  require(rtl433::resolve_restored_last_seen_ms(0, current_timestamp, now_ms, stale_after_ms) == now_ms,
+          "missing saved timestamp should restore with previous fresh behavior");
+  require(rtl433::resolve_restored_last_seen_ms(current_timestamp - 600, 0, now_ms, stale_after_ms) == now_ms,
+          "missing current timestamp should restore with previous fresh behavior");
+  require(
+      rtl433::resolve_restored_last_seen_ms(current_timestamp + 1, current_timestamp, now_ms, stale_after_ms) == now_ms,
+      "future saved timestamp should restore with previous fresh behavior");
 }
 
 }  // namespace
@@ -612,8 +645,10 @@ int main() {
   test_candidate_age_pruning_is_uint32_wrap_safe();
   test_last_updated_resolution_does_not_create_future_timestamp();
   test_last_updated_resolution_preserves_previous_when_clock_is_invalid();
-  test_current_timestamp_resolution_prefers_valid_clock_over_cached_projection();
-  test_current_timestamp_resolution_uses_cached_projection_when_clock_is_invalid();
-  test_current_timestamp_resolution_returns_zero_without_clock_or_cache();
+  test_projected_timestamp_uses_cached_sync_epoch();
+  test_projected_timestamp_returns_zero_without_cache();
+  test_restored_last_seen_marks_old_saved_reading_stale();
+  test_restored_last_seen_preserves_recent_saved_age();
+  test_restored_last_seen_falls_back_to_fresh_without_valid_clock_age();
   return 0;
 }

@@ -112,6 +112,7 @@ class Gateway : public Component
   std::vector<std::string> logical_keys_{};
   std::unordered_map<std::string, ESPPreferenceObject> preferences_{};
   std::unordered_set<std::string> remapped_before_restore_{};
+  std::unordered_set<std::string> pending_clock_age_restore_{};
   std::unordered_map<std::string, uint32_t> last_updated_values_{};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};
   std::array<std::string, 20> last_candidate_values_{};
@@ -135,8 +136,10 @@ class Gateway : public Component
   void process_message(char *message);
   void restore_saved_states();
   void sync_time_base();
+  void reproject_pending_restored_states(uint32_t current_timestamp);
   uint32_t current_timestamp();
   void save_state(const std::string &logical_key, uint32_t last_updated);
+  void publish_stale_state(const std::string &logical_key, EntitySet &entities, uint32_t now_ms);
   void publish_state(const std::string &logical_key);
   void publish_candidates();
   void publish_stale_states();

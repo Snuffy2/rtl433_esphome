@@ -65,7 +65,9 @@ std::string format_sensor_key(const SensorKey &key);
 std::string format_candidate(const CandidateRow &candidate);
 bool matches_key(const DecodedPacket &packet, const SensorKey &key);
 uint32_t resolve_last_updated_timestamp(uint32_t current_timestamp, uint32_t previous_timestamp);
-uint32_t resolve_current_timestamp(uint32_t current_timestamp, uint32_t sync_epoch, uint32_t sync_ms, uint32_t now_ms);
+uint32_t resolve_projected_timestamp(uint32_t sync_epoch, uint32_t sync_ms, uint32_t now_ms);
+uint32_t resolve_restored_last_seen_ms(
+    uint32_t saved_last_updated, uint32_t current_timestamp, uint32_t now_ms, uint32_t stale_after_ms);
 
 class GatewayState {
  public:
@@ -78,6 +80,7 @@ class GatewayState {
   void set_candidate_limit(std::size_t limit) { candidate_limit_ = limit; }
   std::size_t candidate_limit() const { return candidate_limit_; }
   void set_stale_after_ms(uint32_t stale_after_ms) { stale_after_ms_ = stale_after_ms; }
+  uint32_t stale_after_ms() const { return stale_after_ms_; }
   void clear_candidates() { candidates_.clear(); }
   const std::vector<CandidateRow> &candidates() const { return candidates_; }
   bool is_stale(const std::string &logical_key, uint32_t now_ms) const;

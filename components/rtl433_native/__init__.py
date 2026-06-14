@@ -596,7 +596,7 @@ CONFIG_SCHEMA = cv.All(
             ),
             cv.Optional(CONF_RADIO, default=DEFAULT_RADIO_CONFIG): RADIO_SCHEMA,
             cv.Optional(CONF_STALE_AFTER, default="1h"): _validate_stale_after,
-            cv.Optional(CONF_TIME_ID): cv.use_id(time.RealTimeClock),
+            cv.Required(CONF_TIME_ID): cv.use_id(time.RealTimeClock),
             cv.Optional(CONF_CANDIDATES): cv.All(
                 cv.ensure_list(text_sensor.text_sensor_schema(icon="mdi:radio-tower")),
                 cv.Length(max=20),
@@ -708,9 +708,8 @@ async def to_code(config: dict[str, Any]) -> None:
     cg.add(var.set_candidate_limit(config[CONF_CANDIDATE_LIMIT]))
     cg.add(var.set_stale_after_ms(config[CONF_STALE_AFTER].total_milliseconds))
     cg.add(var.set_led_pin(config[CONF_LED_PIN]))
-    if CONF_TIME_ID in config:
-        time_var = await cg.get_variable(config[CONF_TIME_ID])
-        cg.add(var.set_time(time_var))
+    time_var = await cg.get_variable(config[CONF_TIME_ID])
+    cg.add(var.set_time(time_var))
 
     generated_component_count = 0
     for entry in config[CONF_KNOWN_SENSORS]:

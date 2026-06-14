@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <ctime>
 #include <limits>
 
 #include "esphome/components/json/json_util.h"
@@ -59,10 +58,8 @@ void Gateway::setup() {
 #ifdef USE_OTA_STATE_LISTENER
   ota::get_global_ota_callback()->add_global_state_listener(this);
 #endif
-  if (this->time_ != nullptr) {
-    this->time_->add_on_time_sync_callback([this]() { this->sync_time_base(); });
-    this->sync_time_base();
-  }
+  this->time_->add_on_time_sync_callback([this]() { this->sync_time_base(); });
+  this->sync_time_base();
   if (this->packet_count_sensor_ != nullptr) {
     this->packet_count_sensor_->publish_state(0);
   }
@@ -135,8 +132,12 @@ void Gateway::add_mapping(const std::string &logical_key, const std::string &map
 
 void Gateway::set_override(const std::string &logical_key, const std::string &sensor_key) {
   this->entities_.try_emplace(logical_key);
-  if (this->state_.set_mapping(logical_key, sensor_key) && !this->restored_states_) {
-    this->remapped_before_restore_.insert(logical_key);
+  const bool mapping_changed = this->state_.set_mapping(logical_key, sensor_key);
+  if (mapping_changed) {
+    if (!this->restored_states_) {
+      this->remapped_before_restore_.insert(logical_key);
+    }
+    this->pending_clock_age_restore_.erase(logical_key);
   }
 }
 
@@ -318,6 +319,7 @@ void Gateway::process_message(char *message) {
         const auto &logical_key = entry.first;
         const auto *logical = this->state_.logical_sensor(logical_key);
         if (logical != nullptr && logical->last_seen_ms == packet.seen_ms) {
+          this->pending_clock_age_restore_.erase(logical_key);
           this->save_state(logical_key, last_updated);
           this->publish_state(logical_key);
         }
@@ -354,9 +356,14 @@ void Gateway::restore_saved_states() {
     restored.humidity = saved.humidity;
     restored.battery = saved.battery;
     restored.rssi = saved.rssi;
-    restored.last_seen_ms = millis();
+    const uint32_t restore_timestamp = this->current_timestamp();
+    restored.last_seen_ms = resolve_restored_last_seen_ms(
+        saved.last_updated, restore_timestamp, millis(), this->state_.stale_after_ms());
     this->state_.restore_logical_state(logical_key, restored);
     this->last_updated_values_[logical_key] = saved.last_updated;
+    if (saved.last_updated > 0 && restore_timestamp == 0) {
+      this->pending_clock_age_restore_.insert(logical_key);
+    }
     this->publish_state(logical_key);
     restored_any = true;
   }
@@ -372,32 +379,43 @@ void Gateway::restore_saved_states() {
 }
 
 void Gateway::sync_time_base() {
-  if (this->time_ == nullptr) {
-    return;
-  }
   ESPTime now = this->time_->utcnow();
   if (!now.is_valid()) {
     return;
   }
-  this->time_sync_epoch_ = static_cast<uint32_t>(now.timestamp);
+  const uint32_t next_epoch = static_cast<uint32_t>(now.timestamp);
+  this->time_sync_epoch_ = next_epoch;
   this->time_sync_ms_ = millis();
+  this->reproject_pending_restored_states(next_epoch);
+}
+
+void Gateway::reproject_pending_restored_states(uint32_t current_timestamp) {
+  const uint32_t now_ms = millis();
+  auto item = this->pending_clock_age_restore_.begin();
+  while (item != this->pending_clock_age_restore_.end()) {
+    const std::string logical_key = *item;
+    item = this->pending_clock_age_restore_.erase(item);
+
+    const auto last_updated_item = this->last_updated_values_.find(logical_key);
+    const auto *logical = this->state_.logical_sensor(logical_key);
+    if (last_updated_item == this->last_updated_values_.end() || logical == nullptr || !logical->has_value) {
+      continue;
+    }
+
+    LogicalSensorState restored = *logical;
+    restored.last_seen_ms = resolve_restored_last_seen_ms(
+        last_updated_item->second, current_timestamp, now_ms, this->state_.stale_after_ms());
+    this->state_.restore_logical_state(logical_key, restored);
+    this->publish_state(logical_key);
+  }
 }
 
 uint32_t Gateway::current_timestamp() {
-  if (this->time_ != nullptr) {
-    ESPTime now = this->time_->utcnow();
-    if (now.is_valid()) {
-      return static_cast<uint32_t>(now.timestamp);
-    }
-  }
-
-  const time_t timestamp = ::time(nullptr);
-  ESPTime now = ESPTime::from_epoch_local(timestamp);
-  uint32_t clock_timestamp = 0;
+  ESPTime now = this->time_->utcnow();
   if (now.is_valid()) {
-    clock_timestamp = static_cast<uint32_t>(timestamp);
+    return static_cast<uint32_t>(now.timestamp);
   }
-  return resolve_current_timestamp(clock_timestamp, this->time_sync_epoch_, this->time_sync_ms_, millis());
+  return resolve_projected_timestamp(this->time_sync_epoch_, this->time_sync_ms_, millis());
 }
 
 void Gateway::save_state(const std::string &logical_key, uint32_t last_updated) {
@@ -435,6 +453,18 @@ void Gateway::save_state(const std::string &logical_key, uint32_t last_updated) 
   preference_item->second.save(&saved);
 }
 
+void Gateway::publish_stale_state(const std::string &logical_key, EntitySet &entities, uint32_t now_ms) {
+  if (entities.stale == nullptr) {
+    return;
+  }
+  const bool stale = this->state_.is_stale(logical_key, now_ms);
+  if (!entities.stale_initialized || entities.last_stale != stale) {
+    entities.last_stale = stale;
+    entities.stale_initialized = true;
+    entities.stale->publish_state(stale);
+  }
+}
+
 void Gateway::publish_state(const std::string &logical_key) {
   const auto entities_item = this->entities_.find(logical_key);
   const auto *logical = this->state_.logical_sensor(logical_key);
@@ -442,7 +472,7 @@ void Gateway::publish_state(const std::string &logical_key) {
     return;
   }
 
-  const EntitySet &entities = entities_item->second;
+  EntitySet &entities = entities_item->second;
   if (entities.temperature != nullptr && !std::isnan(logical->temperature_f)) {
     entities.temperature->publish_state(logical->temperature_f);
   }
@@ -455,9 +485,7 @@ void Gateway::publish_state(const std::string &logical_key) {
   if (entities.rssi != nullptr) {
     entities.rssi->publish_state(logical->rssi);
   }
-  if (entities.stale != nullptr) {
-    entities.stale->publish_state(false);
-  }
+  this->publish_stale_state(logical_key, entities, millis());
   const auto last_updated_item = this->last_updated_values_.find(logical_key);
   if (entities.last_updated != nullptr && last_updated_item != this->last_updated_values_.end() &&
       last_updated_item->second > 0) {
@@ -485,14 +513,7 @@ void Gateway::publish_candidates() {
 void Gateway::publish_stale_states() {
   const uint32_t now = millis();
   for (auto &[logical_key, entities] : this->entities_) {
-    if (entities.stale != nullptr) {
-      const bool stale = this->state_.is_stale(logical_key, now);
-      if (!entities.stale_initialized || entities.last_stale != stale) {
-        entities.last_stale = stale;
-        entities.stale_initialized = true;
-        entities.stale->publish_state(stale);
-      }
-    }
+    this->publish_stale_state(logical_key, entities, now);
   }
 }
 
