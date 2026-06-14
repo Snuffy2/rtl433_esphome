@@ -209,10 +209,6 @@ uint32_t resolve_restored_last_seen_ms(
   return now_ms - stale_after_ms - 1U;
 }
 
-bool should_save_mapping_provenance(std::optional<uint32_t> current_mapping_hash, uint32_t previous_mapping_hash) {
-  return current_mapping_hash.has_value() && *current_mapping_hash != previous_mapping_hash;
-}
-
 bool should_persist_logical_state(
     bool value_changed, uint32_t now_ms, uint32_t previous_save_ms, uint32_t interval_ms) {
   if (value_changed || previous_save_ms == 0) {

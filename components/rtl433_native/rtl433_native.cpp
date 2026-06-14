@@ -484,7 +484,7 @@ void Gateway::save_state(const std::string &logical_key) {
   const auto previous_mapping_item = this->last_saved_state_mapping_hashes_.find(logical_key);
   const uint32_t previous_mapping_hash =
       previous_mapping_item == this->last_saved_state_mapping_hashes_.end() ? 0 : previous_mapping_item->second;
-  if (should_save_mapping_provenance(mapping_hash, previous_mapping_hash)) {
+  if (mapping_hash.has_value() && *mapping_hash != previous_mapping_hash) {
     SavedLogicalMapping saved_mapping;
     saved_mapping.has_value = true;
     saved_mapping.mapping_hash = *mapping_hash;
