@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <ctime>
 #include <limits>
 
 #include "esphome/components/json/json_util.h"
@@ -59,10 +58,8 @@ void Gateway::setup() {
 #ifdef USE_OTA_STATE_LISTENER
   ota::get_global_ota_callback()->add_global_state_listener(this);
 #endif
-  if (this->time_ != nullptr) {
-    this->time_->add_on_time_sync_callback([this]() { this->sync_time_base(); });
-    this->sync_time_base();
-  }
+  this->time_->add_on_time_sync_callback([this]() { this->sync_time_base(); });
+  this->sync_time_base();
   if (this->packet_count_sensor_ != nullptr) {
     this->packet_count_sensor_->publish_state(0);
   }
@@ -382,9 +379,6 @@ void Gateway::restore_saved_states() {
 }
 
 void Gateway::sync_time_base() {
-  if (this->time_ == nullptr) {
-    return;
-  }
   ESPTime now = this->time_->utcnow();
   if (!now.is_valid()) {
     return;
@@ -420,20 +414,11 @@ void Gateway::reproject_pending_restored_states(uint32_t current_timestamp) {
 }
 
 uint32_t Gateway::current_timestamp() {
-  if (this->time_ != nullptr) {
-    ESPTime now = this->time_->utcnow();
-    if (now.is_valid()) {
-      return static_cast<uint32_t>(now.timestamp);
-    }
-  }
-
-  const time_t timestamp = ::time(nullptr);
-  ESPTime now = ESPTime::from_epoch_local(timestamp);
-  uint32_t clock_timestamp = 0;
+  ESPTime now = this->time_->utcnow();
   if (now.is_valid()) {
-    clock_timestamp = static_cast<uint32_t>(timestamp);
+    return static_cast<uint32_t>(now.timestamp);
   }
-  return resolve_current_timestamp(clock_timestamp, this->time_sync_epoch_, this->time_sync_ms_, millis());
+  return resolve_current_timestamp(0, this->time_sync_epoch_, this->time_sync_ms_, millis());
 }
 
 void Gateway::save_state(const std::string &logical_key, uint32_t last_updated) {
