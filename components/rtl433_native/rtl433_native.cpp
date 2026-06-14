@@ -373,7 +373,7 @@ void Gateway::restore_saved_states() {
     if (saved_mapping_available) {
       this->last_saved_state_mapping_hashes_[logical_key] = saved_mapping.mapping_hash;
     }
-    if (!should_restore_saved_logical_state(saved_mapping_available, saved_mapping_matches)) {
+    if (!saved_mapping_available || !saved_mapping_matches) {
       continue;
     }
 

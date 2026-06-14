@@ -416,15 +416,6 @@ void test_mapping_hash_is_cached_for_runtime_mapping() {
   require(*remapped_hash != *first_hash, "changed mapping should update the cached hash");
 }
 
-void test_restore_requires_saved_mapping_metadata() {
-  require(!rtl433::should_restore_saved_logical_state(false, false),
-          "restore without mapping provenance should be skipped");
-  require(rtl433::should_restore_saved_logical_state(true, true),
-          "restore should allow saved values from the same mapping");
-  require(!rtl433::should_restore_saved_logical_state(true, false),
-          "restore should skip saved values when saved mapping differs from current config mapping");
-}
-
 void test_mapping_provenance_save_decision() {
   require(!rtl433::should_save_mapping_provenance(std::nullopt, 0),
           "missing runtime mapping hash should not save provenance");
@@ -830,7 +821,6 @@ int main() {
   test_mapping_change_reporting();
   test_mapping_hash_uses_full_long_mapping();
   test_mapping_hash_is_cached_for_runtime_mapping();
-  test_restore_requires_saved_mapping_metadata();
   test_mapping_provenance_save_decision();
   test_persist_state_decision_throttles_unchanged_values();
   test_remap_accepts_next_packet_even_with_same_values();
