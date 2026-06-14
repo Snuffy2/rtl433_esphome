@@ -661,6 +661,30 @@ def test_gateway_dump_config_logs_version() -> None:
     assert 'ESP_LOGCONFIG(TAG, "  Version: %s", this->version_.c_str());' in source
 
 
+def test_gateway_state_publish_uses_stale_cache_for_restored_values() -> None:
+    """Keep delayed restored-state republishes from forcing stale sensors fresh."""
+
+    source = Path("components/rtl433_native/rtl433_native.cpp").read_text()
+
+    assert "void Gateway::publish_stale_state(" in source
+    assert "this->publish_stale_state(logical_key, entities, millis());" in source
+    assert "this->publish_stale_state(logical_key, entities, now);" in source
+    assert "entities.stale->publish_state(false);" not in source
+
+
+def test_gateway_reprojects_pending_restored_state_after_time_sync() -> None:
+    """Re-age restored values that were loaded before a valid clock was available."""
+
+    source = Path("components/rtl433_native/rtl433_native.cpp").read_text()
+    header = Path("components/rtl433_native/rtl433_native.h").read_text()
+
+    assert "std::unordered_set<std::string> pending_clock_age_restore_{};" in header
+    assert "this->pending_clock_age_restore_.insert(logical_key);" in source
+    assert "this->reproject_pending_restored_states(next_epoch);" in source
+    assert "void Gateway::reproject_pending_restored_states(uint32_t current_timestamp)" in source
+    assert "this->pending_clock_age_restore_.erase(logical_key);" in source
+
+
 def test_project_version_uses_matching_package_metadata(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
