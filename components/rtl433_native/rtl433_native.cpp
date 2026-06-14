@@ -17,7 +17,6 @@ namespace esphome::rtl433_native {
 namespace {
 
 const char *const TAG = "rtl433_native";
-constexpr uint32_t UNCHANGED_STATE_SAVE_INTERVAL_MS = 60000;
 
 float json_float_or_nan(JsonObject root, const char *key) {
   if (root[key].is<float>()) {
@@ -331,8 +330,8 @@ void Gateway::process_message(char *message) {
         const auto previous_save = this->last_state_save_ms_.find(logical_key);
         const uint32_t previous_save_ms =
             previous_save == this->last_state_save_ms_.end() ? 0 : previous_save->second;
-        if (should_persist_logical_state(
-                value_changed, packet.seen_ms, previous_save_ms, UNCHANGED_STATE_SAVE_INTERVAL_MS)) {
+        if (should_persist_logical_state(value_changed, packet.seen_ms, previous_save_ms,
+                                         unchanged_state_save_interval_ms(this->state_.stale_after_ms()))) {
           this->save_state(logical_key);
           this->last_state_save_ms_[logical_key] = packet.seen_ms;
         }

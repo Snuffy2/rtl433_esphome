@@ -70,6 +70,7 @@ uint32_t resolve_last_updated_timestamp(uint32_t current_timestamp, uint32_t pre
 uint32_t resolve_projected_timestamp(uint32_t sync_epoch, uint32_t sync_ms, uint32_t now_ms);
 uint32_t resolve_restored_last_seen_ms(
     uint32_t saved_last_updated, uint32_t current_timestamp, uint32_t now_ms, uint32_t stale_after_ms);
+uint32_t unchanged_state_save_interval_ms(uint32_t stale_after_ms);
 bool should_persist_logical_state(
     bool value_changed, uint32_t now_ms, uint32_t previous_save_ms, uint32_t interval_ms);
 

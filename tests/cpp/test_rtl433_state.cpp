@@ -385,6 +385,13 @@ void test_persist_state_decision_throttles_unchanged_values() {
           "wrapped unchanged values should still wait for the throttle interval");
 }
 
+void test_unchanged_save_interval_does_not_exceed_stale_after() {
+  require(rtl433::unchanged_state_save_interval_ms(120000) == 60000,
+          "long stale intervals should use the default unchanged-save throttle");
+  require(rtl433::unchanged_state_save_interval_ms(10000) == 10000,
+          "short stale intervals should cap the unchanged-save throttle");
+}
+
 void test_remap_accepts_next_packet_even_with_same_values() {
   rtl433::GatewayState state;
   state.set_mapping("garage_freezer_2", "Acurite-986/2F/35570");
@@ -705,6 +712,7 @@ int main() {
   test_mapping_hash_uses_full_long_mapping();
   test_mapping_hash_is_cached_for_runtime_mapping();
   test_persist_state_decision_throttles_unchanged_values();
+  test_unchanged_save_interval_does_not_exceed_stale_after();
   test_remap_accepts_next_packet_even_with_same_values();
   test_duplicate_mappings_update_both();
   test_invalid_packet_is_rejected();

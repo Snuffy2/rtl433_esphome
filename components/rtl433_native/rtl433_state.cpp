@@ -16,6 +16,7 @@ namespace esphome::rtl433_native {
 namespace {
 
 static const char *const TAG = "rtl433_state";
+constexpr uint32_t DEFAULT_UNCHANGED_STATE_SAVE_INTERVAL_MS = 60000;
 
 bool same_key(const SensorKey &left, const SensorKey &right) {
   return left.model == right.model && left.channel == right.channel && left.id == right.id;
@@ -207,6 +208,10 @@ uint32_t resolve_restored_last_seen_ms(
     return now_ms - static_cast<uint32_t>(elapsed_ms);
   }
   return now_ms - stale_after_ms - 1U;
+}
+
+uint32_t unchanged_state_save_interval_ms(uint32_t stale_after_ms) {
+  return std::min(DEFAULT_UNCHANGED_STATE_SAVE_INTERVAL_MS, stale_after_ms);
 }
 
 bool should_persist_logical_state(
