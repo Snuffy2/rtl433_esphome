@@ -62,7 +62,6 @@ enum class PacketResult {
 std::optional<SensorKey> parse_sensor_key(const std::string &value);
 std::optional<SensorMapping> parse_sensor_mapping(const std::string &value);
 std::string format_sensor_key(const SensorKey &key);
-std::string format_sensor_mapping(const SensorMapping &mapping);
 uint32_t mapping_fingerprint(const SensorMapping &mapping);
 std::string format_candidate(const CandidateRow &candidate);
 bool matches_key(const DecodedPacket &packet, const SensorKey &key);

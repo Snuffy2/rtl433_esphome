@@ -138,6 +138,8 @@ std::string format_sensor_key(const SensorKey &key) {
   return key.model + "/" + key.channel + "/" + key.id;
 }
 
+namespace {
+
 std::string format_sensor_mapping(const SensorMapping &mapping) {
   std::string value = format_sensor_key(mapping.primary);
   for (const auto &synonym : mapping.synonyms) {
@@ -145,6 +147,8 @@ std::string format_sensor_mapping(const SensorMapping &mapping) {
   }
   return value;
 }
+
+}  // namespace
 
 uint32_t mapping_fingerprint(const SensorMapping &mapping) {
   uint32_t hash = 2166136261UL;
@@ -239,11 +243,8 @@ const LogicalSensorState *GatewayState::logical_sensor(const std::string &logica
 }
 
 bool GatewayState::mapping_matches(const std::string &logical_key, uint32_t fingerprint) const {
-  const auto existing = mappings_.find(logical_key);
-  if (existing == mappings_.end()) {
-    return false;
-  }
-  return esphome::rtl433_native::mapping_fingerprint(existing->second) == fingerprint;
+  const auto current = this->mapping_fingerprint(logical_key);
+  return current.has_value() && *current == fingerprint;
 }
 
 std::optional<uint32_t> GatewayState::mapping_fingerprint(const std::string &logical_key) const {
