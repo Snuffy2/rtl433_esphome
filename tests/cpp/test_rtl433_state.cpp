@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -47,6 +48,46 @@ void test_known_packet_updates_logical_sensor() {
   require(logical != nullptr, "expected logical sensor state");
   require(std::fabs(logical->temperature_f - 34.16f) < 0.001f, "wrong temperature");
   require(logical->last_seen_ms == 1000, "wrong last seen timestamp");
+}
+
+void test_repeated_packet_refreshes_last_seen_without_reporting_value_change() {
+  rtl433::GatewayState state;
+  state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
+
+  rtl433::DecodedPacket packet;
+  packet.model = "LaCrosse-TX141THBv2";
+  packet.channel = "0";
+  packet.id = "203";
+  packet.temperature_f = 34.16f;
+  packet.humidity = 10.0f;
+  packet.battery = 100.0f;
+  packet.rssi = -70;
+  packet.seen_ms = 1000;
+
+  require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
+          "expected first known packet match");
+  require(
+      std::find(state.changed_logical_keys().begin(), state.changed_logical_keys().end(), "garage_combo_fridge") !=
+          state.changed_logical_keys().end(),
+      "expected first packet to report changed logical values");
+
+  packet.seen_ms = 2000;
+  require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
+          "expected repeated known packet match");
+  require(state.changed_logical_keys().empty(), "same-value packet should not report changed logical values");
+
+  const auto *logical = state.logical_sensor("garage_combo_fridge");
+  require(logical != nullptr, "expected logical sensor state");
+  require(logical->last_seen_ms == 2000, "same-value packet should still refresh last seen");
+
+  packet.temperature_f = 34.52f;
+  packet.seen_ms = 3000;
+  require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
+          "expected changed known packet match");
+  require(
+      std::find(state.changed_logical_keys().begin(), state.changed_logical_keys().end(), "garage_combo_fridge") !=
+          state.changed_logical_keys().end(),
+      "changed value should report changed logical values");
 }
 
 void test_synonym_key_updates_logical_sensor() {
@@ -528,6 +569,19 @@ void test_stale_detection_wraps_with_uint32_delta() {
   require(state.is_stale("garage_combo_freezer", 0x00000500), "post-wrap packets after threshold should be stale");
 }
 
+void test_persist_state_decision_throttles_unchanged_values() {
+  require(rtl433::should_persist_logical_state(true, 2000, 1999, 60000),
+          "changed values should always persist");
+  require(rtl433::should_persist_logical_state(false, 2000, 0, 60000),
+          "first unchanged value should persist");
+  require(!rtl433::should_persist_logical_state(false, 59000, 1000, 60000),
+          "unchanged values should wait for the throttle interval");
+  require(rtl433::should_persist_logical_state(false, 61000, 1000, 60000),
+          "unchanged values should persist at the throttle interval");
+  require(!rtl433::should_persist_logical_state(false, 0x00000010, 0xFFFFFFF0, 60000),
+          "wrapped unchanged values should still wait for the throttle interval");
+}
+
 void test_candidate_order_is_deterministic_for_equal_seen_time() {
   rtl433::GatewayState state;
   state.set_discovery_enabled(true);
@@ -669,6 +723,7 @@ void test_restored_last_seen_falls_back_to_fresh_without_valid_clock_age() {
 int main() {
   test_key_parsing();
   test_known_packet_updates_logical_sensor();
+  test_repeated_packet_refreshes_last_seen_without_reporting_value_change();
   test_synonym_key_updates_logical_sensor();
   test_mapping_list_updates_from_primary_and_synonym();
   test_spaced_mapping_list_updates_from_synonym();
@@ -692,6 +747,7 @@ int main() {
   test_mapping_override_replaces_default_key();
   test_stale_detection_uses_last_seen();
   test_stale_detection_wraps_with_uint32_delta();
+  test_persist_state_decision_throttles_unchanged_values();
   test_candidate_order_is_deterministic_for_equal_seen_time();
   test_candidates_pruned_by_age();
   test_candidate_age_pruning_is_uint32_wrap_safe();

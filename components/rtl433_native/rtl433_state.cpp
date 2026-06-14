@@ -72,6 +72,16 @@ bool is_older_than(uint32_t now_ms, uint32_t seen_ms, uint32_t age_ms) {
   return static_cast<uint32_t>(now_ms - seen_ms) > age_ms;
 }
 
+bool same_float_value(float left, float right) {
+  return left == right || (std::isnan(left) && std::isnan(right));
+}
+
+bool same_logical_values(const LogicalSensorState &state, const DecodedPacket &packet) {
+  return same_float_value(state.temperature_f, packet.temperature_f) &&
+         same_float_value(state.humidity, packet.humidity) &&
+         same_float_value(state.battery, packet.battery) && state.rssi == packet.rssi;
+}
+
 }  // namespace
 
 std::optional<SensorKey> parse_sensor_key(const std::string &value) {
@@ -205,6 +215,14 @@ uint32_t resolve_restored_last_seen_ms(
   return now_ms - stale_after_ms - 1U;
 }
 
+bool should_persist_logical_state(
+    bool value_changed, uint32_t now_ms, uint32_t previous_save_ms, uint32_t interval_ms) {
+  if (value_changed || previous_save_ms == 0) {
+    return true;
+  }
+  return static_cast<uint32_t>(now_ms - previous_save_ms) >= interval_ms;
+}
+
 bool matches_mapping(const DecodedPacket &packet, const SensorMapping &mapping) {
   if (matches_key(packet, mapping.primary)) {
     return true;
@@ -258,6 +276,7 @@ std::optional<uint32_t> GatewayState::mapping_fingerprint(const std::string &log
 }
 
 PacketResult GatewayState::process_packet(const DecodedPacket &packet) {
+  changed_logical_keys_.clear();
   if (packet.model.empty() || packet.id.empty()) {
     return PacketResult::REJECTED_INVALID;
   }
@@ -268,12 +287,16 @@ PacketResult GatewayState::process_packet(const DecodedPacket &packet) {
       continue;
     }
     auto &state = logical_states_[logical_key];
+    const bool value_changed = !state.has_value || !same_logical_values(state, packet);
     state.has_value = true;
     state.temperature_f = packet.temperature_f;
     state.humidity = packet.humidity;
     state.battery = packet.battery;
     state.rssi = packet.rssi;
     state.last_seen_ms = packet.seen_ms;
+    if (value_changed) {
+      changed_logical_keys_.push_back(logical_key);
+    }
     matched = true;
   }
 
