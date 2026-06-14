@@ -64,6 +64,7 @@ from components.rtl433_native import (
     CONFIG_SCHEMA,
     DEFAULT_RADIO_CONFIG,
     RTL433_ESP_PREBUILD_SCRIPT,
+    _project_version,
     _validate_known_sensor_keys,
     _validate_mapping,
     _validate_radio_module,
@@ -119,6 +120,7 @@ GENERATED_GATEWAY_METHODS = frozenset(
         "set_temperature_sensor",
         "set_time",
         "set_unknown_packet_count_sensor",
+        "set_version",
     }
 )
 
@@ -527,6 +529,18 @@ def _entity_name_and_category(config: dict[str, Any]) -> tuple[str, str]:
     return config["name"], config["entity_category"]
 
 
+def install_project_version_fixture(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, pyproject_text: str
+) -> None:
+    """Install a temporary component tree for project version tests."""
+
+    component_file = tmp_path / "components" / "rtl433_native" / "__init__.py"
+    component_file.parent.mkdir(parents=True)
+    component_file.write_text("", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(pyproject_text, encoding="utf-8")
+    monkeypatch.setattr(rtl433_native, "__file__", str(component_file))
+
+
 def assert_codegen_dependencies(
     fake_env: FakeCodegenEnvironment, *, expect_ota_listener: bool
 ) -> None:
@@ -637,6 +651,66 @@ def test_mapping_text_setup_applies_initial_value_without_saving() -> None:
 
     assert "this->apply_value(this->initial_value_, false);" in source
     assert "this->apply_value(this->initial_value_, true);" not in source
+
+
+def test_gateway_dump_config_logs_version() -> None:
+    """Show the component version in the ESPHome startup config log."""
+
+    source = Path("components/rtl433_native/rtl433_native.cpp").read_text()
+
+    assert 'ESP_LOGCONFIG(TAG, "  Version: %s", this->version_.c_str());' in source
+
+
+def test_project_version_uses_matching_package_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Read the version from package metadata owned by this component."""
+
+    install_project_version_fixture(
+        monkeypatch,
+        tmp_path,
+        '[project]\nname = "rtl433-esphome"\nversion = "v9.8.7"\n',
+    )
+
+    assert _project_version() == "v9.8.7"
+
+
+def test_project_version_ignores_foreign_package_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Avoid logging an unrelated parent project's version for vendored components."""
+
+    install_project_version_fixture(
+        monkeypatch,
+        tmp_path,
+        '[project]\nname = "other-project"\nversion = "v9.8.7"\n',
+    )
+
+    assert _project_version() == "unknown"
+
+
+def test_project_version_falls_back_for_missing_version(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Keep ESPHome generation working when parent metadata is incomplete."""
+
+    install_project_version_fixture(
+        monkeypatch,
+        tmp_path,
+        '[project]\nname = "rtl433-esphome"\n',
+    )
+
+    assert _project_version() == "unknown"
+
+
+def test_project_version_falls_back_for_malformed_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Keep ESPHome generation working when parent metadata is not valid TOML."""
+
+    install_project_version_fixture(monkeypatch, tmp_path, "[project\n")
+
+    assert _project_version() == "unknown"
 
 
 def test_arduino_network_include_flag_quotes_platformio_path() -> None:
@@ -798,7 +872,9 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         ("set_logical_key", ("garage_freezer_1",)),
         ("set_initial_value", ("Acurite-986/1R/11932",)),
     ]
+    expected_version = _project_version()
     assert fake_env.gateway.calls == [
+        ("set_version", (expected_version,)),
         ("set_candidate_limit", (2,)),
         ("set_stale_after_ms", (3_600_000,)),
         ("set_led_pin", (25,)),
@@ -865,7 +941,9 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
         ("set_logical_key", ("garage_freezer_1",)),
         ("set_initial_value", ("Acurite-986/1R/11932",)),
     ]
+    expected_version = _project_version()
     assert fake_env.gateway.calls == [
+        ("set_version", (expected_version,)),
         ("set_candidate_limit", (1,)),
         ("set_stale_after_ms", (60_000,)),
         ("set_led_pin", (25,)),

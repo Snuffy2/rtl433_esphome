@@ -85,6 +85,7 @@ class Gateway : public Component
   void clear_candidates();
   void set_discovery_enabled(bool enabled);
   void set_led_pin(uint8_t led_pin) { this->led_pin_ = led_pin; }
+  void set_version(const std::string &version) { this->version_ = version; }
   void add_mapping(const std::string &logical_key, const std::string &mapping);
   void set_override(const std::string &logical_key, const std::string &sensor_key);
   void set_candidate_limit(std::size_t limit);
@@ -114,6 +115,7 @@ class Gateway : public Component
   std::unordered_map<std::string, uint32_t> last_updated_values_{};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};
   std::array<std::string, 20> last_candidate_values_{};
+  std::string version_{"unknown"};
   text_sensor::TextSensor *last_packet_sensor_{nullptr};
   sensor::Sensor *packet_count_sensor_{nullptr};
   sensor::Sensor *known_packet_count_sensor_{nullptr};

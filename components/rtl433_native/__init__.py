@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
+import tomllib
 from typing import Any
 
 from esphome import automation
@@ -35,6 +37,8 @@ AUTO_LOAD = [
     "time",
 ]
 CODEOWNERS = ["@Snuffy2"]
+
+_LOGGER = logging.getLogger(__name__)
 
 CONF_CANDIDATE_LIMIT = "candidate_limit"
 CONF_CANDIDATES = "candidates"
@@ -105,6 +109,35 @@ RTL433_NATIVE_LIBRARIES = (
     ("SPI", None, None),
     ("EEPROM", None, None),
 )
+
+
+def _project_version() -> str:
+    """Return the package version configured for startup logging."""
+
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    try:
+        with pyproject_path.open("rb") as pyproject_file:
+            pyproject = tomllib.load(pyproject_file)
+        project = pyproject["project"]
+        if project["name"] != "rtl433-esphome":
+            _LOGGER.debug(
+                "Ignoring version metadata for foreign project %r in %s",
+                project["name"],
+                pyproject_path,
+            )
+            return "unknown"
+        return str(project["version"])
+    except FileNotFoundError:
+        _LOGGER.debug("No pyproject.toml found at %s; using version 'unknown'", pyproject_path)
+        return "unknown"
+    except KeyError:
+        _LOGGER.debug("Missing [project].version in %s; using version 'unknown'", pyproject_path)
+        return "unknown"
+    except tomllib.TOMLDecodeError:
+        _LOGGER.debug("Invalid TOML in %s; using version 'unknown'", pyproject_path)
+        return "unknown"
+
+
 CONF_EXTRA_SCRIPTS = "extra_scripts"
 DEFAULT_RADIO_MODULE = "SX1278"
 SUPPORTED_RADIO_MODULES = frozenset({"CC1101", "SX1276", "SX1278"})
@@ -671,6 +704,7 @@ async def to_code(config: dict[str, Any]) -> None:
 
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
+    cg.add(var.set_version(_project_version()))
     cg.add(var.set_candidate_limit(config[CONF_CANDIDATE_LIMIT]))
     cg.add(var.set_stale_after_ms(config[CONF_STALE_AFTER].total_milliseconds))
     cg.add(var.set_led_pin(config[CONF_LED_PIN]))
