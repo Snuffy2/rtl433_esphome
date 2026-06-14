@@ -138,9 +138,6 @@ void Gateway::set_override(const std::string &logical_key, const std::string &se
   this->entities_.try_emplace(logical_key);
   const bool mapping_changed = this->state_.set_mapping(logical_key, sensor_key);
   if (mapping_changed) {
-    if (!this->restored_states_) {
-      this->remapped_before_restore_.insert(logical_key);
-    }
     this->pending_clock_age_restore_.erase(logical_key);
   }
 }
@@ -350,13 +347,11 @@ void Gateway::restore_saved_states() {
     if (!preference.load(&saved) || !saved.has_value) {
       continue;
     }
-    if (this->remapped_before_restore_.find(logical_key) != this->remapped_before_restore_.end()) {
-      SavedLogicalMapping saved_mapping;
-      // Older saved readings have no mapping provenance yet; restore once, then persist provenance below.
-      if (this->load_saved_mapping(logical_key, saved_mapping) &&
-          !this->state_.mapping_matches(logical_key, saved_mapping.value)) {
-        continue;
-      }
+    SavedLogicalMapping saved_mapping;
+    // Older saved readings have no mapping provenance yet; restore once, then persist provenance below.
+    if (this->load_saved_mapping(logical_key, saved_mapping) &&
+        !this->state_.mapping_matches(logical_key, saved_mapping.value)) {
+      continue;
     }
 
     LogicalSensorState restored;
@@ -385,7 +380,6 @@ void Gateway::restore_saved_states() {
       }
     });
   }
-  this->remapped_before_restore_.clear();
 }
 
 void Gateway::sync_time_base() {

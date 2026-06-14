@@ -116,7 +116,6 @@ class Gateway : public Component
   std::unordered_map<std::string, EntitySet> entities_{};
   std::vector<std::string> logical_keys_{};
   std::unordered_map<std::string, ESPPreferenceObject> preferences_{};
-  std::unordered_set<std::string> remapped_before_restore_{};
   std::unordered_set<std::string> pending_clock_age_restore_{};
   std::unordered_map<std::string, uint32_t> last_updated_values_{};
   std::unordered_map<std::string, std::string> last_saved_mapping_values_{};
