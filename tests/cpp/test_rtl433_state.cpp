@@ -310,6 +310,20 @@ void test_mapping_match_detects_default_mapping_change() {
           "expected saved provenance to reject a changed default mapping");
 }
 
+void test_long_mapping_value_exceeds_fixed_persistence_buffer() {
+  rtl433::GatewayState state;
+  state.set_mapping("long_combo",
+                    "VeryLongModelName001/1/100001;VeryLongModelName002/2/100002;"
+                    "VeryLongModelName003/3/100003;VeryLongModelName004/4/100004;"
+                    "VeryLongModelName005/5/100005;VeryLongModelName006/6/100006;"
+                    "VeryLongModelName007/7/100007;VeryLongModelName008/8/100008;"
+                    "VeryLongModelName009/9/100009");
+
+  const auto mapping_value = state.mapping_value("long_combo");
+  require(mapping_value.has_value(), "expected long mapping value to be available");
+  require(mapping_value->size() > 240, "expected fixture to exceed fixed persistence buffer");
+}
+
 void test_duplicate_mappings_update_both() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
@@ -663,6 +677,7 @@ int main() {
   test_mapping_change_reporting();
   test_mapping_match_checks_equivalent_runtime_mapping();
   test_mapping_match_detects_default_mapping_change();
+  test_long_mapping_value_exceeds_fixed_persistence_buffer();
   test_duplicate_mappings_update_both();
   test_invalid_packet_is_rejected();
   test_unmatched_packet_is_ignored();

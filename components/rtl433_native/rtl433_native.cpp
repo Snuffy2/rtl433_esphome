@@ -473,19 +473,20 @@ void Gateway::save_mapping_state(const std::string &logical_key) {
   if (!mapping_value.has_value() || this->last_saved_mapping_values_[logical_key] == *mapping_value) {
     return;
   }
+  SavedLogicalMapping saved_mapping;
+  auto mapping_preference =
+      global_preferences->make_preference<SavedLogicalMapping>(saved_state_mapping_preference_key(logical_key), true);
   if (mapping_value->size() > MAPPING_TEXT_MAX_LENGTH) {
-    ESP_LOGE(TAG, "Skipping saved mapping provenance for '%s': mapping is %u characters, max is %u",
+    ESP_LOGE(TAG, "Clearing saved mapping provenance for '%s': mapping is %u characters, max is %u",
              logical_key.c_str(), static_cast<unsigned>(mapping_value->size()),
              static_cast<unsigned>(MAPPING_TEXT_MAX_LENGTH));
+    mapping_preference.save(&saved_mapping);
     this->last_saved_mapping_values_[logical_key] = *mapping_value;
     return;
   }
-  SavedLogicalMapping saved_mapping;
   saved_mapping.has_value = true;
   std::strncpy(saved_mapping.value, mapping_value->c_str(), sizeof(saved_mapping.value) - 1);
   saved_mapping.value[sizeof(saved_mapping.value) - 1] = '\0';
-  auto mapping_preference =
-      global_preferences->make_preference<SavedLogicalMapping>(saved_state_mapping_preference_key(logical_key), true);
   mapping_preference.save(&saved_mapping);
   this->last_saved_mapping_values_[logical_key] = *mapping_value;
 }
