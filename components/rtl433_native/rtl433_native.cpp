@@ -390,9 +390,6 @@ void Gateway::sync_time_base() {
 }
 
 void Gateway::reproject_pending_restored_states(uint32_t current_timestamp) {
-  if (current_timestamp == 0) {
-    return;
-  }
   const uint32_t now_ms = millis();
   auto item = this->pending_clock_age_restore_.begin();
   while (item != this->pending_clock_age_restore_.end()) {
@@ -418,7 +415,7 @@ uint32_t Gateway::current_timestamp() {
   if (now.is_valid()) {
     return static_cast<uint32_t>(now.timestamp);
   }
-  return resolve_current_timestamp(0, this->time_sync_epoch_, this->time_sync_ms_, millis());
+  return resolve_projected_timestamp(this->time_sync_epoch_, this->time_sync_ms_, millis());
 }
 
 void Gateway::save_state(const std::string &logical_key, uint32_t last_updated) {

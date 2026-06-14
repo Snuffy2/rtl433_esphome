@@ -162,11 +162,7 @@ uint32_t resolve_last_updated_timestamp(uint32_t current_timestamp, uint32_t pre
   return previous_timestamp;
 }
 
-uint32_t resolve_current_timestamp(uint32_t current_timestamp, uint32_t sync_epoch, uint32_t sync_ms,
-                                   uint32_t now_ms) {
-  if (current_timestamp > 0) {
-    return current_timestamp;
-  }
+uint32_t resolve_projected_timestamp(uint32_t sync_epoch, uint32_t sync_ms, uint32_t now_ms) {
   if (sync_epoch == 0) {
     return 0;
   }

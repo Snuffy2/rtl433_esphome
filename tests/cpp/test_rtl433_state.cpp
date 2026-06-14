@@ -564,20 +564,14 @@ void test_last_updated_resolution_preserves_previous_when_clock_is_invalid() {
   require(adjusted == 1700000000, "invalid current timestamp should preserve previous last_updated value");
 }
 
-void test_current_timestamp_resolution_prefers_valid_clock_over_cached_projection() {
-  const uint32_t resolved = rtl433::resolve_current_timestamp(1700000000, 0, 1700000059, 59000);
-
-  require(resolved == 1700000000, "valid clock timestamp should override cached projected timestamp");
-}
-
-void test_current_timestamp_resolution_uses_cached_projection_when_clock_is_invalid() {
-  const uint32_t resolved = rtl433::resolve_current_timestamp(0, 1700000000, 1000, 61000);
+void test_projected_timestamp_uses_cached_sync_epoch() {
+  const uint32_t resolved = rtl433::resolve_projected_timestamp(1700000000, 1000, 61000);
 
   require(resolved == 1700000060, "invalid clock timestamp should fall back to cached projected timestamp");
 }
 
-void test_current_timestamp_resolution_returns_zero_without_clock_or_cache() {
-  const uint32_t resolved = rtl433::resolve_current_timestamp(0, 0, 1000, 61000);
+void test_projected_timestamp_returns_zero_without_cache() {
+  const uint32_t resolved = rtl433::resolve_projected_timestamp(0, 1000, 61000);
 
   require(resolved == 0, "missing clock timestamp and cache should remain unavailable");
 }
@@ -651,9 +645,8 @@ int main() {
   test_candidate_age_pruning_is_uint32_wrap_safe();
   test_last_updated_resolution_does_not_create_future_timestamp();
   test_last_updated_resolution_preserves_previous_when_clock_is_invalid();
-  test_current_timestamp_resolution_prefers_valid_clock_over_cached_projection();
-  test_current_timestamp_resolution_uses_cached_projection_when_clock_is_invalid();
-  test_current_timestamp_resolution_returns_zero_without_clock_or_cache();
+  test_projected_timestamp_uses_cached_sync_epoch();
+  test_projected_timestamp_returns_zero_without_cache();
   test_restored_last_seen_marks_old_saved_reading_stale();
   test_restored_last_seen_preserves_recent_saved_age();
   test_restored_last_seen_falls_back_to_fresh_without_valid_clock_age();
