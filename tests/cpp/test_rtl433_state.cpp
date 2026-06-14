@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "../../components/rtl433_native/rtl433_state.h"
 
@@ -17,14 +18,16 @@ void require(bool condition, const std::string &message) {
   }
 }
 
+bool keys_include(const std::vector<std::string> &keys, const std::string &logical_key) {
+  return std::find(keys.begin(), keys.end(), logical_key) != keys.end();
+}
+
 bool changed_keys_include(const rtl433::GatewayState &state, const std::string &logical_key) {
-  const auto &changed_keys = state.changed_logical_keys();
-  return std::find(changed_keys.begin(), changed_keys.end(), logical_key) != changed_keys.end();
+  return keys_include(state.changed_logical_keys(), logical_key);
 }
 
 bool matched_keys_include(const rtl433::GatewayState &state, const std::string &logical_key) {
-  const auto &matched_keys = state.matched_logical_keys();
-  return std::find(matched_keys.begin(), matched_keys.end(), logical_key) != matched_keys.end();
+  return keys_include(state.matched_logical_keys(), logical_key);
 }
 
 void test_key_parsing() {

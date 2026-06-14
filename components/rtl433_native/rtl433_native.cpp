@@ -323,23 +323,20 @@ void Gateway::process_message(char *message) {
       const auto &matched_logical_keys = this->state_.matched_logical_keys();
       const auto &changed_logical_keys = this->state_.changed_logical_keys();
       for (const auto &logical_key : matched_logical_keys) {
-        const auto *logical = this->state_.logical_sensor(logical_key);
-        if (logical != nullptr) {
-          this->pending_clock_age_restore_.erase(logical_key);
-          this->update_last_updated(logical_key, last_updated);
-          const bool value_changed =
-              std::find(changed_logical_keys.begin(), changed_logical_keys.end(), logical_key) !=
-              changed_logical_keys.end();
-          const auto previous_save = this->last_state_save_ms_.find(logical_key);
-          const uint32_t previous_save_ms =
-              previous_save == this->last_state_save_ms_.end() ? 0 : previous_save->second;
-          if (should_persist_logical_state(
-                  value_changed, packet.seen_ms, previous_save_ms, UNCHANGED_STATE_SAVE_INTERVAL_MS)) {
-            this->save_state(logical_key);
-            this->last_state_save_ms_[logical_key] = packet.seen_ms;
-          }
-          this->publish_state(logical_key);
+        this->pending_clock_age_restore_.erase(logical_key);
+        this->update_last_updated(logical_key, last_updated);
+        const bool value_changed =
+            std::find(changed_logical_keys.begin(), changed_logical_keys.end(), logical_key) !=
+            changed_logical_keys.end();
+        const auto previous_save = this->last_state_save_ms_.find(logical_key);
+        const uint32_t previous_save_ms =
+            previous_save == this->last_state_save_ms_.end() ? 0 : previous_save->second;
+        if (should_persist_logical_state(
+                value_changed, packet.seen_ms, previous_save_ms, UNCHANGED_STATE_SAVE_INTERVAL_MS)) {
+          this->save_state(logical_key);
+          this->last_state_save_ms_[logical_key] = packet.seen_ms;
         }
+        this->publish_state(logical_key);
       }
     } else if (result == ::esphome::rtl433_native::PacketResult::RECORDED_CANDIDATE ||
                result == ::esphome::rtl433_native::PacketResult::IGNORED_UNKNOWN) {
