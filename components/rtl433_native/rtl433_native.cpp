@@ -135,10 +135,13 @@ void Gateway::add_mapping(const std::string &logical_key, const std::string &map
 
 void Gateway::set_override(const std::string &logical_key, const std::string &sensor_key) {
   this->entities_.try_emplace(logical_key);
-  if (this->state_.set_mapping(logical_key, sensor_key) && !this->restored_states_) {
-    this->remapped_before_restore_.insert(logical_key);
+  const bool mapping_changed = this->state_.set_mapping(logical_key, sensor_key);
+  if (mapping_changed) {
+    if (!this->restored_states_) {
+      this->remapped_before_restore_.insert(logical_key);
+    }
+    this->pending_clock_age_restore_.erase(logical_key);
   }
-  this->pending_clock_age_restore_.erase(logical_key);
 }
 
 void Gateway::set_candidate_limit(std::size_t limit) { this->state_.set_candidate_limit(limit); }

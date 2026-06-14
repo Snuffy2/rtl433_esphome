@@ -714,6 +714,26 @@ def test_gateway_reprojects_pending_restored_state_after_time_sync() -> None:
     )
 
 
+def test_gateway_keeps_pending_reprojection_for_unchanged_override() -> None:
+    """Keep pending age projection when mapping text submits the same mapping."""
+
+    source = Path("components/rtl433_native/rtl433_native.cpp").read_text()
+    set_override = cpp_function_body(source, "void Gateway::set_override(")
+    process_message = cpp_function_body(source, "void Gateway::process_message(")
+
+    assert (
+        "const bool mapping_changed = this->state_.set_mapping(logical_key, sensor_key);"
+        in set_override
+    )
+    assert "if (mapping_changed) {" in set_override
+    assert (
+        set_override.index("if (mapping_changed) {")
+        < set_override.index("this->pending_clock_age_restore_.erase(logical_key);")
+        < set_override.index("}\n}")
+    )
+    assert "this->pending_clock_age_restore_.erase(logical_key);" in process_message
+
+
 def test_project_version_uses_matching_package_metadata(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
