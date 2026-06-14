@@ -145,7 +145,7 @@ class Gateway : public Component
   void reproject_pending_restored_states(uint32_t current_timestamp);
   uint32_t current_timestamp();
   void update_last_updated(const std::string &logical_key, uint32_t last_updated);
-  void save_state(const std::string &logical_key, uint32_t last_updated);
+  void save_state(const std::string &logical_key);
   bool load_saved_mapping(const std::string &logical_key, SavedLogicalMapping &saved_mapping);
   void save_mapping_state(const std::string &logical_key);
   void publish_stale_state(const std::string &logical_key, EntitySet &entities, uint32_t now_ms);

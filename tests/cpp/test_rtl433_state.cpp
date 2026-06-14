@@ -17,6 +17,11 @@ void require(bool condition, const std::string &message) {
   }
 }
 
+bool changed_keys_include(const rtl433::GatewayState &state, const std::string &logical_key) {
+  const auto &changed_keys = state.changed_logical_keys();
+  return std::find(changed_keys.begin(), changed_keys.end(), logical_key) != changed_keys.end();
+}
+
 void test_key_parsing() {
   auto key = rtl433::parse_sensor_key("LaCrosse-TX141THBv2/0/203");
   require(key.has_value(), "expected valid LaCrosse key");
@@ -66,10 +71,7 @@ void test_repeated_packet_refreshes_last_seen_without_reporting_value_change() {
 
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected first known packet match");
-  require(
-      std::find(state.changed_logical_keys().begin(), state.changed_logical_keys().end(), "garage_combo_fridge") !=
-          state.changed_logical_keys().end(),
-      "expected first packet to report changed logical values");
+  require(changed_keys_include(state, "garage_combo_fridge"), "expected first packet to report changed logical values");
 
   packet.seen_ms = 2000;
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
@@ -84,10 +86,7 @@ void test_repeated_packet_refreshes_last_seen_without_reporting_value_change() {
   packet.seen_ms = 3000;
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected changed known packet match");
-  require(
-      std::find(state.changed_logical_keys().begin(), state.changed_logical_keys().end(), "garage_combo_fridge") !=
-          state.changed_logical_keys().end(),
-      "changed value should report changed logical values");
+  require(changed_keys_include(state, "garage_combo_fridge"), "changed value should report changed logical values");
 }
 
 void test_synonym_key_updates_logical_sensor() {

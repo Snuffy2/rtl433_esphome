@@ -332,7 +332,7 @@ void Gateway::process_message(char *message) {
               previous_save == this->last_state_save_ms_.end() ? 0 : previous_save->second;
           if (should_persist_logical_state(
                   value_changed, packet.seen_ms, previous_save_ms, UNCHANGED_STATE_SAVE_INTERVAL_MS)) {
-            this->save_state(logical_key, last_updated);
+            this->save_state(logical_key);
             this->last_state_save_ms_[logical_key] = packet.seen_ms;
           }
           this->publish_state(logical_key);
@@ -443,7 +443,7 @@ void Gateway::update_last_updated(const std::string &logical_key, uint32_t last_
   }
 }
 
-void Gateway::save_state(const std::string &logical_key, uint32_t last_updated) {
+void Gateway::save_state(const std::string &logical_key) {
   const auto *logical = this->state_.logical_sensor(logical_key);
   if (logical == nullptr || !logical->has_value) {
     return;
@@ -464,7 +464,6 @@ void Gateway::save_state(const std::string &logical_key, uint32_t last_updated) 
   saved.humidity = logical->humidity;
   saved.battery = logical->battery;
   saved.rssi = logical->rssi;
-  this->update_last_updated(logical_key, last_updated);
   const auto last_updated_item = this->last_updated_values_.find(logical_key);
   if (last_updated_item != this->last_updated_values_.end()) {
     saved.last_updated = last_updated_item->second;
