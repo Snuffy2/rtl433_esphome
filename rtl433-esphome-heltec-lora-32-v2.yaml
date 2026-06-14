@@ -28,8 +28,6 @@ time:
 
 ota:
   - platform: esphome
-    on_begin:
-      - rtl433_native.stop: rtl433_gateway
 
 wifi:
   ssid: !secret wifi_ssid
