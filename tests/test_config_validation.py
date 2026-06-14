@@ -599,31 +599,32 @@ def test_config_schema_requires_time_id() -> None:
         )
 
 
-def test_validate_mapping_accepts_semicolon_delimited_sensor_keys() -> None:
-    """Accept mapping strings with one primary key and synonyms."""
+@pytest.mark.parametrize(
+    ("mapping", "expected"),
+    [
+        pytest.param(
+            "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88",
+            "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88",
+            id="semicolon-delimited",
+        ),
+        pytest.param(
+            " TFA-303221/2/88 ; LaCrosse-TX141THBv2/1/88 ",
+            "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88",
+            id="spaced-segments",
+        ),
+        pytest.param(
+            "TFA-303221 / 2 / 88 ; LaCrosse-TX141THBv2 / 1 / 88",
+            "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88",
+            id="spaced-fields",
+        ),
+    ],
+)
+def test_validate_mapping_accepts_and_normalizes_sensor_key_lists(
+    mapping: str, expected: str
+) -> None:
+    """Accept mapping lists and normalize safe whitespace."""
 
-    assert (
-        _validate_mapping("TFA-303221/2/88;LaCrosse-TX141THBv2/1/88")
-        == "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88"
-    )
-
-
-def test_validate_mapping_normalizes_spaced_sensor_keys() -> None:
-    """Trim whitespace around semicolon-delimited mapping entries."""
-
-    assert (
-        _validate_mapping(" TFA-303221/2/88 ; LaCrosse-TX141THBv2/1/88 ")
-        == "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88"
-    )
-
-
-def test_validate_mapping_normalizes_slash_spaced_fields() -> None:
-    """Trim whitespace around model, channel, and id fields."""
-
-    assert (
-        _validate_mapping("TFA-303221 / 2 / 88 ; LaCrosse-TX141THBv2 / 1 / 88")
-        == "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88"
-    )
+    assert _validate_mapping(mapping) == expected
 
 
 def test_validate_mapping_accepts_values_exceeding_mapping_text_limit() -> None:
