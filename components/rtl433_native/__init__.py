@@ -366,6 +366,10 @@ def _add_default_candidates(config: dict[str, Any]) -> dict[str, Any]:
 def _mapping_text_name(entry: dict[str, Any]) -> str:
     """Return the generated mapping text entity name for a known sensor.
 
+    Mapping text entities stay on the main ESPHome device instead of the
+    known-sensor sub-device, so their own names keep the known-sensor prefix to
+    remain distinguishable on the gateway device.
+
     Args:
         entry: Known-sensor entry that owns the mapping text entity.
 
