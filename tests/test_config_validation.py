@@ -529,6 +529,7 @@ def _entity_name_and_category(config: dict[str, Any]) -> tuple[str, str]:
 def assert_codegen_dependencies(fake_env: FakeCodegenEnvironment) -> None:
     """Assert generated PlatformIO build flags and options."""
 
+    assert "ota" in rtl433_native.AUTO_LOAD
     assert fake_env.codegen.build_flags == EXPECTED_BUILD_FLAGS
     assert fake_env.codegen.platformio_options == EXPECTED_PLATFORMIO_OPTIONS
     assert [library[0] for library in fake_env.codegen.libraries] == EXPECTED_LIBRARY_NAMES

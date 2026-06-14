@@ -23,7 +23,17 @@ from esphome.const import (
 )
 from esphome.core import CORE, Define, ID
 
-AUTO_LOAD = ["binary_sensor", "button", "json", "sensor", "switch", "text", "text_sensor", "time"]
+AUTO_LOAD = [
+    "binary_sensor",
+    "button",
+    "json",
+    "ota",
+    "sensor",
+    "switch",
+    "text",
+    "text_sensor",
+    "time",
+]
 CODEOWNERS = ["@Snuffy2"]
 
 CONF_CANDIDATE_LIMIT = "candidate_limit"
