@@ -212,47 +212,49 @@ def test_build_defaults_to_compile_without_preflight(tmp_path: Path) -> None:
     assert not preflight_log.exists()
 
 
-def test_build_accepts_explicit_component_ref(tmp_path: Path) -> None:
-    """An explicit component ref should be passed through to ESPHome."""
+@pytest.mark.parametrize(
+    ("env", "expected_invocations"),
+    [
+        pytest.param(
+            {"RTL433_ESPHOME_REF": "v1.2.3"},
+            [
+                f"-m esphome -s rtl433_esphome_ref v1.2.3 config {FIRMWARE_CONFIG}",
+                f"-m esphome -s rtl433_esphome_ref v1.2.3 compile {FIRMWARE_CONFIG}",
+            ],
+            id="component-ref",
+        ),
+        pytest.param(
+            {
+                "RTL433_ESPHOME_URL": "https://github.com/example/rtl433_esphome.git",
+                "RTL433_ESPHOME_REF": "abc123",
+            },
+            [
+                (
+                    "-m esphome "
+                    "-s rtl433_esphome_url https://github.com/example/rtl433_esphome.git "
+                    f"-s rtl433_esphome_ref abc123 config {FIRMWARE_CONFIG}"
+                ),
+                (
+                    "-m esphome "
+                    "-s rtl433_esphome_url https://github.com/example/rtl433_esphome.git "
+                    f"-s rtl433_esphome_ref abc123 compile {FIRMWARE_CONFIG}"
+                ),
+            ],
+            id="component-url",
+        ),
+    ],
+)
+def test_build_accepts_explicit_component_source(
+    tmp_path: Path, env: dict[str, str], expected_invocations: list[str]
+) -> None:
+    """Explicit component source settings should be passed through to ESPHome."""
     script = copy_script(tmp_path, "build")
     python_log = install_python_stub(tmp_path)
 
-    result = run_script(script, env={"RTL433_ESPHOME_REF": "v1.2.3"})
+    result = run_script(script, env=env)
 
     assert result.returncode == 0, result.stderr
-    assert python_log.read_text(encoding="utf-8").splitlines() == [
-        f"-m esphome -s rtl433_esphome_ref v1.2.3 config {FIRMWARE_CONFIG}",
-        f"-m esphome -s rtl433_esphome_ref v1.2.3 compile {FIRMWARE_CONFIG}",
-    ]
-
-
-def test_build_accepts_explicit_component_url(tmp_path: Path) -> None:
-    """An explicit component URL should be passed through to ESPHome."""
-    script = copy_script(tmp_path, "build")
-    python_log = install_python_stub(tmp_path)
-    component_url = "https://github.com/example/rtl433_esphome.git"
-
-    result = run_script(
-        script,
-        env={
-            "RTL433_ESPHOME_URL": component_url,
-            "RTL433_ESPHOME_REF": "abc123",
-        },
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert python_log.read_text(encoding="utf-8").splitlines() == [
-        (
-            "-m esphome "
-            f"-s rtl433_esphome_url {component_url} "
-            f"-s rtl433_esphome_ref abc123 config {FIRMWARE_CONFIG}"
-        ),
-        (
-            "-m esphome "
-            f"-s rtl433_esphome_url {component_url} "
-            f"-s rtl433_esphome_ref abc123 compile {FIRMWARE_CONFIG}"
-        ),
-    ]
+    assert python_log.read_text(encoding="utf-8").splitlines() == expected_invocations
 
 
 @pytest.mark.parametrize(
