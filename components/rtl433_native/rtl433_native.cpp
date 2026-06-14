@@ -384,19 +384,16 @@ void Gateway::sync_time_base() {
 }
 
 uint32_t Gateway::current_timestamp() {
-  uint32_t clock_timestamp = 0;
   if (this->time_ != nullptr) {
     ESPTime now = this->time_->utcnow();
     if (now.is_valid()) {
-      clock_timestamp = static_cast<uint32_t>(now.timestamp);
+      return static_cast<uint32_t>(now.timestamp);
     }
-  }
-  if (clock_timestamp > 0) {
-    return resolve_current_timestamp(clock_timestamp, this->time_sync_epoch_, this->time_sync_ms_, millis());
   }
 
   const time_t timestamp = ::time(nullptr);
   ESPTime now = ESPTime::from_epoch_local(timestamp);
+  uint32_t clock_timestamp = 0;
   if (now.is_valid()) {
     clock_timestamp = static_cast<uint32_t>(timestamp);
   }

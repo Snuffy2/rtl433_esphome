@@ -576,6 +576,12 @@ void test_current_timestamp_resolution_uses_cached_projection_when_clock_is_inva
   require(resolved == 1700000060, "invalid clock timestamp should fall back to cached projected timestamp");
 }
 
+void test_current_timestamp_resolution_returns_zero_without_clock_or_cache() {
+  const uint32_t resolved = rtl433::resolve_current_timestamp(0, 0, 1000, 61000);
+
+  require(resolved == 0, "missing clock timestamp and cache should remain unavailable");
+}
+
 }  // namespace
 
 int main() {
@@ -608,5 +614,6 @@ int main() {
   test_last_updated_resolution_preserves_previous_when_clock_is_invalid();
   test_current_timestamp_resolution_prefers_valid_clock_over_cached_projection();
   test_current_timestamp_resolution_uses_cached_projection_when_clock_is_invalid();
+  test_current_timestamp_resolution_returns_zero_without_clock_or_cache();
   return 0;
 }
