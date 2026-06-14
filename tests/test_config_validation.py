@@ -66,6 +66,7 @@ from components.rtl433_native import (
     DEFAULT_RADIO_CONFIG,
     RTL433_ESP_PREBUILD_SCRIPT,
     _project_version,
+    _validate_gateway_entity_names,
     _validate_known_sensor_keys,
     _validate_mapping,
     _validate_radio_module,
@@ -1399,6 +1400,38 @@ def test_config_schema_leaves_name_only_compact_known_entities_on_gateway() -> N
         assert CONF_DEVICE_ID not in entry[entity]
 
 
+def test_config_schema_rejects_duplicate_gateway_mapping_names() -> None:
+    """Reject generic mapping text names that collide on the gateway device."""
+
+    with pytest.raises(cv.Invalid, match="duplicate gateway entity name 'Mapping'"):
+        CONFIG_SCHEMA(
+            {
+                CONF_ID: "gateway_id",
+                **REQUIRED_TIME_CONFIG,
+                **gateway_diagnostic_overrides("Duplicate Gateway Fixture"),
+                **gateway_control_overrides("Duplicate Gateway Fixture"),
+                CONF_KNOWN_SENSORS: [
+                    {
+                        CONF_KEY: "garage_freezer",
+                        CONF_MAPPING: "Acurite-986/1R/11932",
+                        CONF_TEMPERATURE: {
+                            CONF_NAME: "Garage Freezer Temperature",
+                            CONF_DEVICE_ID: "garage_freezer_device",
+                        },
+                    },
+                    {
+                        CONF_KEY: "kitchen_fridge",
+                        CONF_MAPPING: "Acurite-986/1R/11933",
+                        CONF_TEMPERATURE: {
+                            CONF_NAME: "Kitchen Fridge Temperature",
+                            CONF_DEVICE_ID: "kitchen_fridge_device",
+                        },
+                    },
+                ],
+            }
+        )
+
+
 def test_config_schema_uses_explicit_known_sensor_device_id() -> None:
     """Use an explicit known sensor device ID instead of deriving one from the key."""
 
@@ -1439,6 +1472,31 @@ def test_config_schema_uses_explicit_known_sensor_device_id() -> None:
         CONF_LAST_UPDATED,
     ):
         assert entry[entity][CONF_DEVICE_ID].id == "combo_fridge_device"
+
+
+def test_validate_gateway_entity_names_allows_linked_known_sensor_devices() -> None:
+    """Allow generic known-sensor names when entities are on separate sub-devices."""
+
+    config = [
+        {
+            CONF_KEY: "garage_freezer",
+            CONF_DEVICE_ID: "garage_freezer_device",
+            CONF_TEMPERATURE: {
+                CONF_NAME: "Temperature",
+                CONF_DEVICE_ID: "garage_freezer_device",
+            },
+        },
+        {
+            CONF_KEY: "kitchen_fridge",
+            CONF_DEVICE_ID: "kitchen_fridge_device",
+            CONF_TEMPERATURE: {
+                CONF_NAME: "Temperature",
+                CONF_DEVICE_ID: "kitchen_fridge_device",
+            },
+        },
+    ]
+
+    assert _validate_gateway_entity_names(config) == config
 
 
 def test_config_schema_uses_device_name_when_compact_name_omitted(

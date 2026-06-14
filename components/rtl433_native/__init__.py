@@ -243,6 +243,31 @@ def _validate_mapping_text_ids(value: list[dict[str, Any]]) -> list[dict[str, An
     return value
 
 
+def _validate_gateway_entity_names(value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ensure gateway-local known sensor entity names remain unique."""
+
+    seen: dict[str, str] = {}
+    for entry in value:
+        for entity in KNOWN_SENSOR_ENTITIES:
+            if entity == ENTITY_MAPPING:
+                if not _entry_has_mapping_text(entry) or CONF_DEVICE_ID in entry:
+                    continue
+                entity_name = _mapping_text_name(entry)
+            else:
+                if entity not in entry or CONF_DEVICE_ID in entry[entity]:
+                    continue
+                entity_name = str(entry[entity][CONF_NAME])
+            if entity_name in seen:
+                raise cv.Invalid(
+                    "Known sensor keys "
+                    f"'{seen[entity_name]}' and '{entry[CONF_KEY]}' generate duplicate "
+                    f"gateway entity name '{entity_name}'. Set device_id to attach them "
+                    "to separate devices."
+                )
+            seen[entity_name] = entry[CONF_KEY]
+    return value
+
+
 def _validate_known_sensor_entities(value: list[str]) -> list[str]:
     """Ensure compact known sensor entity names are unique and include temperature."""
 
@@ -597,6 +622,7 @@ CONFIG_SCHEMA = cv.All(
                 cv.Length(min=1),
                 _validate_known_sensor_keys,
                 _validate_mapping_text_ids,
+                _validate_gateway_entity_names,
                 _validate_mapping_text_lengths,
             ),
             cv.Optional(CONF_CANDIDATE_LIMIT, default=10): cv.int_range(min=1, max=20),
