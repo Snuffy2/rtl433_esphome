@@ -460,7 +460,7 @@ def _set_known_sensor_name(entry: dict[str, Any], name: str) -> None:
 
     entry[CONF_NAME] = name
     for entity in entry[CONF_ENTITIES]:
-        if entity != ENTITY_MAPPING and entity in entry:
+        if entity != ENTITY_MAPPING:
             entry[entity][CONF_NAME] = _entity_title(entity)
 
 
@@ -537,7 +537,7 @@ def _refresh_known_sensor_device_names(
 ) -> dict[str, Any]:
     """Refresh known sensor names from linked ESPHome device names."""
 
-    for entry in config.get(CONF_KNOWN_SENSORS, []):
+    for entry in config[CONF_KNOWN_SENSORS]:
         if CONF_DEVICE_ID not in entry:
             continue
         if not entry.pop(_REFRESH_NAME_FROM_DEVICE, False):
