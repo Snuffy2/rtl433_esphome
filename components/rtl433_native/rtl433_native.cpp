@@ -468,7 +468,11 @@ bool Gateway::load_saved_mapping(const std::string &logical_key, SavedLogicalMap
 
 void Gateway::save_mapping_state(const std::string &logical_key) {
   const auto fingerprint = this->state_.mapping_fingerprint(logical_key);
-  if (!fingerprint.has_value() || this->last_saved_mapping_values_[logical_key] == *fingerprint) {
+  if (!fingerprint.has_value()) {
+    return;
+  }
+  const auto cached = this->last_saved_mapping_values_.find(logical_key);
+  if (cached != this->last_saved_mapping_values_.end() && cached->second == *fingerprint) {
     return;
   }
   SavedLogicalMapping saved_mapping;

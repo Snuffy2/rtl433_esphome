@@ -151,10 +151,12 @@ std::string format_sensor_mapping(const SensorMapping &mapping) {
 }  // namespace
 
 uint32_t mapping_fingerprint(const SensorMapping &mapping) {
-  uint32_t hash = 2166136261UL;
-  for (const char value : format_sensor_mapping(mapping)) {
-    hash ^= static_cast<uint8_t>(value);
-    hash *= 16777619UL;
+  SensorMapping canonical = mapping;
+  canonicalize_mapping(canonical);
+  uint32_t hash = 2166136261U;
+  for (const unsigned char value : format_sensor_mapping(canonical)) {
+    hash ^= value;
+    hash *= 16777619U;
   }
   return hash;
 }

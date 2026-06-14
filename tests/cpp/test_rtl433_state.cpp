@@ -289,6 +289,8 @@ void test_mapping_match_checks_equivalent_runtime_mapping() {
 
   const auto reordered = rtl433::parse_sensor_mapping("TFA-303221/1/99;Acurite-986/2F/35570");
   require(reordered.has_value(), "expected reordered mapping fixture to parse");
+  require(rtl433::mapping_fingerprint(*reordered) == *mapping_fingerprint,
+          "expected free mapping fingerprint helper to canonicalize equivalent mappings");
   require(state.mapping_matches("garage_freezer_2", rtl433::mapping_fingerprint(*reordered)),
           "expected reordered saved mapping fingerprint to match current runtime mapping");
 
