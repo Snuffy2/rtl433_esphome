@@ -82,6 +82,16 @@ void test_repeated_packet_refreshes_last_seen_without_reporting_value_change() {
   require(logical != nullptr, "expected logical sensor state");
   require(logical->last_seen_ms == 2000, "same-value packet should still refresh last seen");
 
+  packet.rssi = -67;
+  packet.seen_ms = 2500;
+  require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
+          "expected RSSI-only known packet match");
+  require(state.changed_logical_keys().empty(), "RSSI-only packet should not report changed persisted values");
+
+  logical = state.logical_sensor("garage_combo_fridge");
+  require(logical != nullptr, "expected logical sensor state after RSSI-only packet");
+  require(logical->rssi == -67, "RSSI-only packet should still update live RSSI");
+
   packet.temperature_f = 34.52f;
   packet.seen_ms = 3000;
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
@@ -378,6 +388,8 @@ void test_remapped_restore_requires_saved_mapping_metadata() {
           "remapped restore should skip saved values without mapping metadata");
   require(!rtl433::should_restore_saved_logical_state(true, true, false),
           "remapped restore should skip saved values from a different mapping");
+  require(!rtl433::should_restore_saved_logical_state(false, true, false),
+          "restore should skip saved values when saved mapping differs from current config mapping");
 }
 
 void test_duplicate_mappings_update_both() {

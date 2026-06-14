@@ -79,7 +79,7 @@ bool same_float_value(float left, float right) {
 bool same_logical_values(const LogicalSensorState &state, const DecodedPacket &packet) {
   return same_float_value(state.temperature_f, packet.temperature_f) &&
          same_float_value(state.humidity, packet.humidity) &&
-         same_float_value(state.battery, packet.battery) && state.rssi == packet.rssi;
+         same_float_value(state.battery, packet.battery);
 }
 
 }  // namespace
@@ -225,10 +225,13 @@ bool should_persist_logical_state(
 
 bool should_restore_saved_logical_state(
     bool remapped_before_restore, bool saved_mapping_available, bool saved_mapping_matches) {
+  if (saved_mapping_available) {
+    return saved_mapping_matches;
+  }
   if (!remapped_before_restore) {
     return true;
   }
-  return saved_mapping_available && saved_mapping_matches;
+  return false;
 }
 
 bool should_save_mapping_snapshot(const std::string &current_mapping_value, const std::string &saved_mapping_value) {
