@@ -22,14 +22,6 @@ bool keys_include(const std::vector<std::string> &keys, const std::string &logic
   return std::find(keys.begin(), keys.end(), logical_key) != keys.end();
 }
 
-bool changed_keys_include(const rtl433::GatewayState &state, const std::string &logical_key) {
-  return keys_include(state.changed_logical_keys(), logical_key);
-}
-
-bool matched_keys_include(const rtl433::GatewayState &state, const std::string &logical_key) {
-  return keys_include(state.matched_logical_keys(), logical_key);
-}
-
 void test_key_parsing() {
   auto key = rtl433::parse_sensor_key("LaCrosse-TX141THBv2/0/203");
   require(key.has_value(), "expected valid LaCrosse key");
@@ -79,12 +71,13 @@ void test_repeated_packet_refreshes_last_seen_without_reporting_value_change() {
 
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected first known packet match");
-  require(changed_keys_include(state, "garage_combo_fridge"), "first packet should be persistence-worthy");
+  require(keys_include(state.changed_logical_keys(), "garage_combo_fridge"),
+          "first packet should be persistence-worthy");
 
   packet.seen_ms = 2000;
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected repeated known packet match");
-  require(!changed_keys_include(state, "garage_combo_fridge"),
+  require(!keys_include(state.changed_logical_keys(), "garage_combo_fridge"),
           "same-value packet should not be persistence-worthy");
 
   const auto *logical = state.logical_sensor("garage_combo_fridge");
@@ -95,7 +88,7 @@ void test_repeated_packet_refreshes_last_seen_without_reporting_value_change() {
   packet.seen_ms = 2500;
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected RSSI-only known packet match");
-  require(!changed_keys_include(state, "garage_combo_fridge"),
+  require(!keys_include(state.changed_logical_keys(), "garage_combo_fridge"),
           "RSSI-only packet should not be persistence-worthy");
 
   logical = state.logical_sensor("garage_combo_fridge");
@@ -106,7 +99,7 @@ void test_repeated_packet_refreshes_last_seen_without_reporting_value_change() {
   packet.seen_ms = 3000;
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected changed known packet match");
-  require(changed_keys_include(state, "garage_combo_fridge"),
+  require(keys_include(state.changed_logical_keys(), "garage_combo_fridge"),
           "changed sensor value should be persistence-worthy");
   logical = state.logical_sensor("garage_combo_fridge");
   require(logical != nullptr, "expected logical sensor state after changed packet");
@@ -131,8 +124,8 @@ void test_same_millisecond_packets_report_only_current_matches() {
 
   require(state.process_packet(fridge_packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected first same-ms packet match");
-  require(matched_keys_include(state, "garage_combo_fridge"), "expected first packet to match fridge");
-  require(!matched_keys_include(state, "garage_combo_freezer"), "first packet should not match freezer");
+  require(keys_include(state.matched_logical_keys(), "garage_combo_fridge"), "expected first packet to match fridge");
+  require(!keys_include(state.matched_logical_keys(), "garage_combo_freezer"), "first packet should not match freezer");
 
   rtl433::DecodedPacket freezer_packet;
   freezer_packet.model = "TFA-303221";
@@ -146,8 +139,8 @@ void test_same_millisecond_packets_report_only_current_matches() {
 
   require(state.process_packet(freezer_packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected second same-ms packet match");
-  require(matched_keys_include(state, "garage_combo_freezer"), "expected second packet to match freezer");
-  require(!matched_keys_include(state, "garage_combo_fridge"),
+  require(keys_include(state.matched_logical_keys(), "garage_combo_freezer"), "expected second packet to match freezer");
+  require(!keys_include(state.matched_logical_keys(), "garage_combo_fridge"),
           "same-ms second packet should not report the previous logical key");
 }
 
