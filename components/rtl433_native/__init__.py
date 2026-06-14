@@ -115,9 +115,12 @@ def _project_version() -> str:
     try:
         with pyproject_path.open("rb") as pyproject_file:
             pyproject = tomllib.load(pyproject_file)
-    except FileNotFoundError:
+        project = pyproject["project"]
+        if project["name"] != "rtl433-esphome":
+            return "unknown"
+        return str(project["version"])
+    except (FileNotFoundError, KeyError, tomllib.TOMLDecodeError):
         return "unknown"
-    return str(pyproject["project"]["version"])
 
 
 CONF_EXTRA_SCRIPTS = "extra_scripts"

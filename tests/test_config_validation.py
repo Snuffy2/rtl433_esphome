@@ -64,6 +64,7 @@ from components.rtl433_native import (
     CONFIG_SCHEMA,
     DEFAULT_RADIO_CONFIG,
     RTL433_ESP_PREBUILD_SCRIPT,
+    _project_version,
     _validate_known_sensor_keys,
     _validate_mapping,
     _validate_radio_module,
@@ -646,6 +647,71 @@ def test_gateway_dump_config_logs_version() -> None:
     source = Path("components/rtl433_native/rtl433_native.cpp").read_text()
 
     assert 'ESP_LOGCONFIG(TAG, "  Version: %s", this->version_.c_str());' in source
+
+
+def test_project_version_uses_matching_package_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Read the version from package metadata owned by this component."""
+
+    component_file = tmp_path / "components" / "rtl433_native" / "__init__.py"
+    component_file.parent.mkdir(parents=True)
+    component_file.write_text("", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "rtl433-esphome"\nversion = "v9.8.7"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(rtl433_native, "__file__", str(component_file))
+
+    assert _project_version() == "v9.8.7"
+
+
+def test_project_version_ignores_foreign_package_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Avoid logging an unrelated parent project's version for vendored components."""
+
+    component_file = tmp_path / "components" / "rtl433_native" / "__init__.py"
+    component_file.parent.mkdir(parents=True)
+    component_file.write_text("", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "other-project"\nversion = "v9.8.7"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(rtl433_native, "__file__", str(component_file))
+
+    assert _project_version() == "unknown"
+
+
+def test_project_version_falls_back_for_missing_version(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Keep ESPHome generation working when parent metadata is incomplete."""
+
+    component_file = tmp_path / "components" / "rtl433_native" / "__init__.py"
+    component_file.parent.mkdir(parents=True)
+    component_file.write_text("", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "rtl433-esphome"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(rtl433_native, "__file__", str(component_file))
+
+    assert _project_version() == "unknown"
+
+
+def test_project_version_falls_back_for_malformed_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Keep ESPHome generation working when parent metadata is not valid TOML."""
+
+    component_file = tmp_path / "components" / "rtl433_native" / "__init__.py"
+    component_file.parent.mkdir(parents=True)
+    component_file.write_text("", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text("[project\n", encoding="utf-8")
+    monkeypatch.setattr(rtl433_native, "__file__", str(component_file))
+
+    assert _project_version() == "unknown"
 
 
 def test_arduino_network_include_flag_quotes_platformio_path() -> None:
