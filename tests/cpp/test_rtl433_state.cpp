@@ -32,6 +32,14 @@ rtl433::DecodedPacket packet_for_key(
   return packet;
 }
 
+rtl433::LogicalSensorState restored_state(float temperature_f, uint32_t last_seen_ms) {
+  rtl433::LogicalSensorState state;
+  state.has_value = true;
+  state.temperature_f = temperature_f;
+  state.last_seen_ms = last_seen_ms;
+  return state;
+}
+
 void test_key_parsing() {
   auto key = rtl433::parse_sensor_key("LaCrosse-TX141THBv2/0/203");
   require(key.has_value(), "expected valid LaCrosse key");
@@ -241,12 +249,9 @@ void test_reapplying_same_mapping_preserves_restored_reading() {
   rtl433::GatewayState state;
   state.set_mapping("garage_freezer_2", "Acurite-986/2F/31274");
 
-  rtl433::LogicalSensorState restored;
-  restored.has_value = true;
-  restored.temperature_f = 11.0f;
+  rtl433::LogicalSensorState restored = restored_state(11.0f, 2000);
   restored.battery = 100.0f;
   restored.rssi = -87;
-  restored.last_seen_ms = 2000;
   state.restore_logical_state("garage_freezer_2", restored);
 
   state.set_mapping("garage_freezer_2", "Acurite-986/2F/31274");
@@ -262,10 +267,7 @@ void test_reordered_synonyms_preserve_restored_reading() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_freezer", "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88;Acurite-986/2F/31274");
 
-  rtl433::LogicalSensorState restored;
-  restored.has_value = true;
-  restored.temperature_f = 9.5f;
-  restored.last_seen_ms = 4000;
+  rtl433::LogicalSensorState restored = restored_state(9.5f, 4000);
   state.restore_logical_state("garage_combo_freezer", restored);
 
   state.set_mapping("garage_combo_freezer", "TFA-303221/2/88;Acurite-986/2F/31274;LaCrosse-TX141THBv2/1/88");
@@ -280,10 +282,7 @@ void test_reordered_primary_preserves_restored_reading() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_freezer", "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88");
 
-  rtl433::LogicalSensorState restored;
-  restored.has_value = true;
-  restored.temperature_f = 8.25f;
-  restored.last_seen_ms = 5000;
+  rtl433::LogicalSensorState restored = restored_state(8.25f, 5000);
   state.restore_logical_state("garage_combo_freezer", restored);
 
   state.set_mapping("garage_combo_freezer", "LaCrosse-TX141THBv2/1/88;TFA-303221/2/88");
@@ -298,10 +297,7 @@ void test_spaced_reordered_mapping_preserves_restored_reading() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_freezer", "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88");
 
-  rtl433::LogicalSensorState restored;
-  restored.has_value = true;
-  restored.temperature_f = 8.25f;
-  restored.last_seen_ms = 5000;
+  rtl433::LogicalSensorState restored = restored_state(8.25f, 5000);
   state.restore_logical_state("garage_combo_freezer", restored);
 
   state.set_mapping("garage_combo_freezer", " LaCrosse-TX141THBv2/1/88 ; TFA-303221/2/88 ");
