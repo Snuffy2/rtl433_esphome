@@ -62,6 +62,7 @@ enum class PacketResult {
 std::optional<SensorKey> parse_sensor_key(const std::string &value);
 std::optional<SensorMapping> parse_sensor_mapping(const std::string &value);
 std::string format_sensor_key(const SensorKey &key);
+std::string format_sensor_mapping(const SensorMapping &mapping);
 std::string format_candidate(const CandidateRow &candidate);
 bool matches_key(const DecodedPacket &packet, const SensorKey &key);
 uint32_t resolve_last_updated_timestamp(uint32_t current_timestamp, uint32_t previous_timestamp);
@@ -74,6 +75,8 @@ class GatewayState {
   bool set_mapping(const std::string &logical_key, const std::string &mapping);
   void restore_logical_state(const std::string &logical_key, const LogicalSensorState &state);
   const LogicalSensorState *logical_sensor(const std::string &logical_key) const;
+  bool mapping_matches(const std::string &logical_key, const std::string &mapping_value) const;
+  std::optional<std::string> mapping_value(const std::string &logical_key) const;
   PacketResult process_packet(const DecodedPacket &packet);
   void set_discovery_enabled(bool enabled) { discovery_enabled_ = enabled; }
   bool discovery_enabled() const { return discovery_enabled_; }

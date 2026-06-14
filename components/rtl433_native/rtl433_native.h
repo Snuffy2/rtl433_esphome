@@ -51,6 +51,11 @@ struct SavedMappingText {
   char value[MAPPING_TEXT_MAX_LENGTH + 1]{};
 };
 
+struct SavedLogicalMapping {
+  bool has_value{false};
+  char value[MAPPING_TEXT_MAX_LENGTH + 1]{};
+};
+
 struct EntitySet {
   sensor::Sensor *temperature{nullptr};
   sensor::Sensor *humidity{nullptr};

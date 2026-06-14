@@ -138,6 +138,14 @@ std::string format_sensor_key(const SensorKey &key) {
   return key.model + "/" + key.channel + "/" + key.id;
 }
 
+std::string format_sensor_mapping(const SensorMapping &mapping) {
+  std::string value = format_sensor_key(mapping.primary);
+  for (const auto &synonym : mapping.synonyms) {
+    value += ";" + format_sensor_key(synonym);
+  }
+  return value;
+}
+
 std::string format_candidate(const CandidateRow &candidate) {
   std::string value = format_sensor_key(candidate.key);
   value += " temp=" + std::to_string(candidate.temperature_f);
@@ -219,6 +227,23 @@ const LogicalSensorState *GatewayState::logical_sensor(const std::string &logica
     return nullptr;
   }
   return &item->second;
+}
+
+bool GatewayState::mapping_matches(const std::string &logical_key, const std::string &mapping_value) const {
+  const auto existing = mappings_.find(logical_key);
+  if (existing == mappings_.end()) {
+    return false;
+  }
+  const auto parsed = parse_sensor_mapping(mapping_value);
+  return parsed.has_value() && same_mapping(existing->second, *parsed);
+}
+
+std::optional<std::string> GatewayState::mapping_value(const std::string &logical_key) const {
+  const auto existing = mappings_.find(logical_key);
+  if (existing == mappings_.end()) {
+    return {};
+  }
+  return format_sensor_mapping(existing->second);
 }
 
 PacketResult GatewayState::process_packet(const DecodedPacket &packet) {
