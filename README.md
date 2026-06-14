@@ -61,7 +61,7 @@ rtl433_native:
   Home Assistant combines them with the linked device name for display and entity IDs.
 - `device_id` assigns generated entities to a per-sensor ESPHome sub-device.
 - Omit `device_id` to keep generated entities on the main ESPHome device.
-- When `device_id` is omitted, compact `name` serves as the entity-name prefix in Home Assistant.
+- When `device_id` is omitted, `name` serves as the entity-name prefix in Home Assistant.
 - `mapping` adds a gateway-local Home Assistant text entity named from the known sensor, such as `Garage Fridge Mapping`.
 - Mapping text values persist across reboots and OTA updates.
 - RSSI and last-updated entities are disabled by default.
