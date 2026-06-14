@@ -19,6 +19,7 @@ from esphome.const import (
     CONF_ESPHOME,
     CONF_ID,
     CONF_NAME,
+    CONF_OTA,
     CONF_PLATFORMIO_OPTIONS,
 )
 from esphome.core import CORE, Define, ID
@@ -27,7 +28,6 @@ AUTO_LOAD = [
     "binary_sensor",
     "button",
     "json",
-    "ota",
     "sensor",
     "switch",
     "text",
@@ -653,7 +653,8 @@ async def to_code(config: dict[str, Any]) -> None:
 
     cg.add_build_flag(ARDUINO_NETWORK_INCLUDE_FLAG)
     cg.add_build_flag(LEDC_COMPAT_INCLUDE_FLAG)
-    cg.add_define("USE_OTA_STATE_LISTENER")
+    if CONF_OTA in (CORE.config or {}):
+        cg.add_define("USE_OTA_STATE_LISTENER")
     cg.add_platformio_option("lib_ldf_mode", "chain+")
     cg.add_platformio_option(CONF_EXTRA_SCRIPTS, [RTL433_ESP_PREBUILD_SCRIPT])
     radio_config = config[CONF_RADIO]

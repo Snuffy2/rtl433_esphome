@@ -15,6 +15,7 @@ from esphome.const import (
     CONF_ESPHOME,
     CONF_ID,
     CONF_NAME,
+    CONF_OTA,
     CONF_PLATFORMIO_OPTIONS,
 )
 from esphome.core import CORE
@@ -526,14 +527,19 @@ def _entity_name_and_category(config: dict[str, Any]) -> tuple[str, str]:
     return config["name"], config["entity_category"]
 
 
-def assert_codegen_dependencies(fake_env: FakeCodegenEnvironment) -> None:
+def assert_codegen_dependencies(
+    fake_env: FakeCodegenEnvironment, *, expect_ota_listener: bool
+) -> None:
     """Assert generated PlatformIO build flags and options."""
 
-    assert "ota" in rtl433_native.AUTO_LOAD
+    assert "ota" not in rtl433_native.AUTO_LOAD
     assert fake_env.codegen.build_flags == EXPECTED_BUILD_FLAGS
     assert fake_env.codegen.platformio_options == EXPECTED_PLATFORMIO_OPTIONS
     assert [library[0] for library in fake_env.codegen.libraries] == EXPECTED_LIBRARY_NAMES
-    assert "USE_OTA_STATE_LISTENER" in fake_env.codegen.defines
+    if expect_ota_listener:
+        assert "USE_OTA_STATE_LISTENER" in fake_env.codegen.defines
+    else:
+        assert "USE_OTA_STATE_LISTENER" not in fake_env.codegen.defines
 
 
 def gateway_diagnostic_overrides(prefix: str) -> dict[str, dict[str, str]]:
@@ -733,6 +739,7 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
     """Generate code for known sensors, diagnostics, counters, candidates, and time."""
 
     fake_env = install_codegen_fakes(monkeypatch, variables={"time_id": "time:clock"})
+    monkeypatch.setattr(CORE, "config", {CONF_OTA: [{}]})
 
     config: dict[str, Any] = {
         CONF_ID: "gateway_id",
@@ -763,7 +770,7 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
 
     await to_code(config)
 
-    assert_codegen_dependencies(fake_env)
+    assert_codegen_dependencies(fake_env, expect_ota_listener=True)
     assert fake_env.codegen.new_pvariable_calls == [("gateway_id",)]
     assert fake_env.codegen.registered_components[0] == (fake_env.gateway, config)
     assert fake_env.sensor.created == [
@@ -826,6 +833,7 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
     """Generate code when optional entities and time are omitted."""
 
     fake_env = install_codegen_fakes(monkeypatch)
+    monkeypatch.setattr(CORE, "config", {})
 
     config: dict[str, Any] = {
         CONF_ID: "gateway_id",
@@ -845,7 +853,7 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
 
     await to_code(config)
 
-    assert_codegen_dependencies(fake_env)
+    assert_codegen_dependencies(fake_env, expect_ota_listener=False)
     assert fake_env.codegen.new_pvariable_calls == [("gateway_id",)]
     assert fake_env.codegen.registered_components[0] == (fake_env.gateway, config)
     assert fake_env.sensor.created == [{"name": "temperature"}]
