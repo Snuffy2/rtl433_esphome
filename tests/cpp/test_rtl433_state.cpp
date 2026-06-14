@@ -22,6 +22,16 @@ bool keys_include(const std::vector<std::string> &keys, const std::string &logic
   return std::find(keys.begin(), keys.end(), logical_key) != keys.end();
 }
 
+rtl433::DecodedPacket packet_for_key(
+    const std::string &model, const std::string &channel, const std::string &id, uint32_t seen_ms) {
+  rtl433::DecodedPacket packet;
+  packet.model = model;
+  packet.channel = channel;
+  packet.id = id;
+  packet.seen_ms = seen_ms;
+  return packet;
+}
+
 void test_key_parsing() {
   auto key = rtl433::parse_sensor_key("LaCrosse-TX141THBv2/0/203");
   require(key.has_value(), "expected valid LaCrosse key");
@@ -36,15 +46,11 @@ void test_known_packet_updates_logical_sensor() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
 
-  rtl433::DecodedPacket packet;
-  packet.model = "LaCrosse-TX141THBv2";
-  packet.channel = "0";
-  packet.id = "203";
+  rtl433::DecodedPacket packet = packet_for_key("LaCrosse-TX141THBv2", "0", "203", 1000);
   packet.temperature_f = 34.16f;
   packet.humidity = 10.0f;
   packet.battery = 100.0f;
   packet.rssi = -70;
-  packet.seen_ms = 1000;
 
   auto result = state.process_packet(packet);
   require(result == rtl433::PacketResult::MATCHED_KNOWN, "expected known packet match");
@@ -59,15 +65,11 @@ void test_repeated_packet_refreshes_last_seen_without_reporting_value_change() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
 
-  rtl433::DecodedPacket packet;
-  packet.model = "LaCrosse-TX141THBv2";
-  packet.channel = "0";
-  packet.id = "203";
+  rtl433::DecodedPacket packet = packet_for_key("LaCrosse-TX141THBv2", "0", "203", 1000);
   packet.temperature_f = 34.16f;
   packet.humidity = 10.0f;
   packet.battery = 100.0f;
   packet.rssi = -70;
-  packet.seen_ms = 1000;
 
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected first known packet match");
@@ -112,30 +114,22 @@ void test_same_millisecond_packets_report_only_current_matches() {
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
   state.set_mapping("garage_combo_freezer", "TFA-303221/2/88");
 
-  rtl433::DecodedPacket fridge_packet;
-  fridge_packet.model = "LaCrosse-TX141THBv2";
-  fridge_packet.channel = "0";
-  fridge_packet.id = "203";
+  rtl433::DecodedPacket fridge_packet = packet_for_key("LaCrosse-TX141THBv2", "0", "203", 5000);
   fridge_packet.temperature_f = 34.16f;
   fridge_packet.humidity = 10.0f;
   fridge_packet.battery = 100.0f;
   fridge_packet.rssi = -70;
-  fridge_packet.seen_ms = 5000;
 
   require(state.process_packet(fridge_packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected first same-ms packet match");
   require(keys_include(state.matched_logical_keys(), "garage_combo_fridge"), "expected first packet to match fridge");
   require(!keys_include(state.matched_logical_keys(), "garage_combo_freezer"), "first packet should not match freezer");
 
-  rtl433::DecodedPacket freezer_packet;
-  freezer_packet.model = "TFA-303221";
-  freezer_packet.channel = "2";
-  freezer_packet.id = "88";
+  rtl433::DecodedPacket freezer_packet = packet_for_key("TFA-303221", "2", "88", 5000);
   freezer_packet.temperature_f = 0.5f;
   freezer_packet.humidity = 44.0f;
   freezer_packet.battery = 100.0f;
   freezer_packet.rssi = -67;
-  freezer_packet.seen_ms = 5000;
 
   require(state.process_packet(freezer_packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected second same-ms packet match");
@@ -148,15 +142,11 @@ void test_synonym_key_updates_logical_sensor() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_freezer", "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88");
 
-  rtl433::DecodedPacket packet;
-  packet.model = "LaCrosse-TX141THBv2";
-  packet.channel = "1";
-  packet.id = "88";
+  rtl433::DecodedPacket packet = packet_for_key("LaCrosse-TX141THBv2", "1", "88", 2500);
   packet.temperature_f = 0.5f;
   packet.humidity = 44.0f;
   packet.battery = 100.0f;
   packet.rssi = -67;
-  packet.seen_ms = 2500;
 
   auto result = state.process_packet(packet);
   require(result == rtl433::PacketResult::MATCHED_KNOWN, "expected synonym packet match");
@@ -172,21 +162,13 @@ void test_mapping_list_updates_from_primary_and_synonym() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_freezer", "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88");
 
-  rtl433::DecodedPacket primary_packet;
-  primary_packet.model = "TFA-303221";
-  primary_packet.channel = "2";
-  primary_packet.id = "88";
+  rtl433::DecodedPacket primary_packet = packet_for_key("TFA-303221", "2", "88", 1000);
   primary_packet.temperature_f = 12.25f;
-  primary_packet.seen_ms = 1000;
   require(state.process_packet(primary_packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected primary mapping list key to match");
 
-  rtl433::DecodedPacket synonym_packet;
-  synonym_packet.model = "LaCrosse-TX141THBv2";
-  synonym_packet.channel = "1";
-  synonym_packet.id = "88";
+  rtl433::DecodedPacket synonym_packet = packet_for_key("LaCrosse-TX141THBv2", "1", "88", 2000);
   synonym_packet.temperature_f = 13.5f;
-  synonym_packet.seen_ms = 2000;
   require(state.process_packet(synonym_packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected synonym mapping list key to match");
 
@@ -201,12 +183,8 @@ void test_spaced_mapping_list_updates_from_synonym() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_freezer", " TFA-303221/2/88 ; LaCrosse-TX141THBv2/1/88 ");
 
-  rtl433::DecodedPacket packet;
-  packet.model = "LaCrosse-TX141THBv2";
-  packet.channel = "1";
-  packet.id = "88";
+  rtl433::DecodedPacket packet = packet_for_key("LaCrosse-TX141THBv2", "1", "88", 3000);
   packet.temperature_f = 14.75f;
-  packet.seen_ms = 3000;
 
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected whitespace-padded synonym mapping to match");
@@ -220,12 +198,8 @@ void test_slash_spaced_mapping_list_updates_from_synonym() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_freezer", "TFA-303221 / 2 / 88 ; LaCrosse-TX141THBv2 / 1 / 88");
 
-  rtl433::DecodedPacket packet;
-  packet.model = "LaCrosse-TX141THBv2";
-  packet.channel = "1";
-  packet.id = "88";
+  rtl433::DecodedPacket packet = packet_for_key("LaCrosse-TX141THBv2", "1", "88", 3500);
   packet.temperature_f = 15.75f;
-  packet.seen_ms = 3500;
 
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected slash-padded synonym mapping to match");
@@ -239,12 +213,8 @@ void test_remapping_clears_old_reading() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
 
-  rtl433::DecodedPacket original_packet;
-  original_packet.model = "LaCrosse-TX141THBv2";
-  original_packet.channel = "0";
-  original_packet.id = "203";
+  rtl433::DecodedPacket original_packet = packet_for_key("LaCrosse-TX141THBv2", "0", "203", 1000);
   original_packet.temperature_f = 34.16f;
-  original_packet.seen_ms = 1000;
 
   require(state.process_packet(original_packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected initial packet match");
@@ -346,10 +316,7 @@ void test_invalid_mapping_input_preserves_state_and_mapping() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
 
-  rtl433::DecodedPacket packet;
-  packet.model = "LaCrosse-TX141THBv2";
-  packet.channel = "0";
-  packet.id = "203";
+  rtl433::DecodedPacket packet = packet_for_key("LaCrosse-TX141THBv2", "0", "203", 0);
   packet.temperature_f = 34.16f;
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected known match");
@@ -426,14 +393,10 @@ void test_remap_accepts_next_packet_even_with_same_values() {
   rtl433::GatewayState state;
   state.set_mapping("garage_freezer_2", "Acurite-986/2F/35570");
 
-  rtl433::DecodedPacket packet;
-  packet.model = "Acurite-986";
-  packet.channel = "2F";
-  packet.id = "35570";
+  rtl433::DecodedPacket packet = packet_for_key("Acurite-986", "2F", "35570", 1000);
   packet.temperature_f = 10.0f;
   packet.battery = 100.0f;
   packet.rssi = -70;
-  packet.seen_ms = 1000;
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected original mapping to match");
 
@@ -453,15 +416,11 @@ void test_duplicate_mappings_update_both() {
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
   state.set_mapping("garage_combo_freezer", "LaCrosse-TX141THBv2/0/203");
 
-  rtl433::DecodedPacket packet;
-  packet.model = "LaCrosse-TX141THBv2";
-  packet.channel = "0";
-  packet.id = "203";
+  rtl433::DecodedPacket packet = packet_for_key("LaCrosse-TX141THBv2", "0", "203", 1500);
   packet.temperature_f = 55.55f;
   packet.humidity = 11.0f;
   packet.battery = 99.0f;
   packet.rssi = -55;
-  packet.seen_ms = 1500;
 
   auto result = state.process_packet(packet);
   require(result == rtl433::PacketResult::MATCHED_KNOWN, "expected duplicate matches to succeed");
@@ -496,10 +455,7 @@ void test_unmatched_packet_is_ignored() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
 
-  rtl433::DecodedPacket packet;
-  packet.model = "LaCrosse-TX141THBv2";
-  packet.channel = "1";
-  packet.id = "999";
+  rtl433::DecodedPacket packet = packet_for_key("LaCrosse-TX141THBv2", "1", "999", 0);
   require(state.process_packet(packet) == rtl433::PacketResult::IGNORED_UNKNOWN,
           "expected unmatched packet to be ignored");
 }
@@ -508,14 +464,10 @@ void test_unknowns_only_record_when_discovery_enabled() {
   rtl433::GatewayState state;
   state.set_candidate_limit(10);
 
-  rtl433::DecodedPacket packet;
-  packet.model = "Acurite-986";
-  packet.channel = "1R";
-  packet.id = "11932";
+  rtl433::DecodedPacket packet = packet_for_key("Acurite-986", "1R", "11932", 2000);
   packet.temperature_f = 75.0f;
   packet.battery = 100.0f;
   packet.rssi = -88;
-  packet.seen_ms = 2000;
 
   require(state.process_packet(packet) == rtl433::PacketResult::IGNORED_UNKNOWN,
           "unknown packet should be ignored while discovery is disabled");
@@ -534,18 +486,11 @@ void test_candidates_are_grouped_capped_and_clearable() {
   state.set_candidate_limit(2);
 
   for (int index = 0; index < 4; ++index) {
-    rtl433::DecodedPacket packet;
-    packet.model = "Noise";
-    if (index == 2) {
-      packet.channel = "1";
-      packet.id = "101";
-    } else {
-      packet.channel = std::to_string(index);
-      packet.id = std::to_string(100 + index);
-    }
+    const std::string channel = index == 2 ? "1" : std::to_string(index);
+    const std::string id = index == 2 ? "101" : std::to_string(100 + index);
+    rtl433::DecodedPacket packet = packet_for_key("Noise", channel, id, 1000 + static_cast<uint32_t>(index));
     packet.temperature_f = static_cast<float>(index);
     packet.rssi = -60 - index;
-    packet.seen_ms = 1000 + static_cast<uint32_t>(index);
     state.process_packet(packet);
   }
 
@@ -568,15 +513,11 @@ void test_duplicate_mappings_record_matched_candidate_once() {
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
   state.set_mapping("garage_combo_freezer", "LaCrosse-TX141THBv2/0/203");
 
-  rtl433::DecodedPacket packet;
-  packet.model = "LaCrosse-TX141THBv2";
-  packet.channel = "0";
-  packet.id = "203";
+  rtl433::DecodedPacket packet = packet_for_key("LaCrosse-TX141THBv2", "0", "203", 1500);
   packet.temperature_f = 55.55f;
   packet.humidity = 11.0f;
   packet.battery = 99.0f;
   packet.rssi = -55;
-  packet.seen_ms = 1500;
 
   auto result = state.process_packet(packet);
   require(result == rtl433::PacketResult::MATCHED_KNOWN, "expected duplicate matches to succeed");
@@ -596,12 +537,8 @@ void test_mapping_override_replaces_default_key() {
   state.set_mapping("garage_freezer_1", "Acurite-986/1R/11932");
   state.set_mapping("garage_freezer_1", "Acurite-986/1R/55555");
 
-  rtl433::DecodedPacket old_packet;
-  old_packet.model = "Acurite-986";
-  old_packet.channel = "1R";
-  old_packet.id = "11932";
+  rtl433::DecodedPacket old_packet = packet_for_key("Acurite-986", "1R", "11932", 1000);
   old_packet.temperature_f = 75.0f;
-  old_packet.seen_ms = 1000;
   require(state.process_packet(old_packet) == rtl433::PacketResult::IGNORED_UNKNOWN,
           "old mapping should no longer match");
 
@@ -618,12 +555,8 @@ void test_stale_detection_uses_last_seen() {
   state.set_stale_after_ms(600000);
   state.set_mapping("garage_combo_freezer", "TFA-303221/2/88");
 
-  rtl433::DecodedPacket packet;
-  packet.model = "TFA-303221";
-  packet.channel = "2";
-  packet.id = "88";
+  rtl433::DecodedPacket packet = packet_for_key("TFA-303221", "2", "88", 1000);
   packet.temperature_f = 1.22f;
-  packet.seen_ms = 1000;
   state.process_packet(packet);
 
   require(!state.is_stale("garage_combo_freezer", 601000), "exact threshold should not be stale");
@@ -636,11 +569,7 @@ void test_stale_detection_wraps_with_uint32_delta() {
   state.set_stale_after_ms(1000);
   state.set_mapping("garage_combo_freezer", "Noise/0/1");
 
-  rtl433::DecodedPacket packet;
-  packet.model = "Noise";
-  packet.channel = "0";
-  packet.id = "1";
-  packet.seen_ms = 0xFFFFFF00;
+  rtl433::DecodedPacket packet = packet_for_key("Noise", "0", "1", 0xFFFFFF00);
   state.process_packet(packet);
 
   require(!state.is_stale("garage_combo_freezer", 0xFFFFFF80), "post-wrap packets before threshold should not be stale");
@@ -651,18 +580,10 @@ void test_candidate_order_is_deterministic_for_equal_seen_time() {
   rtl433::GatewayState state;
   state.set_discovery_enabled(true);
 
-  rtl433::DecodedPacket apple;
-  apple.model = "Apple";
-  apple.channel = "1";
-  apple.id = "10";
-  apple.seen_ms = 5000;
+  rtl433::DecodedPacket apple = packet_for_key("Apple", "1", "10", 5000);
   state.process_packet(apple);
 
-  rtl433::DecodedPacket zebra;
-  zebra.model = "Zebra";
-  zebra.channel = "0";
-  zebra.id = "1";
-  zebra.seen_ms = 5000;
+  rtl433::DecodedPacket zebra = packet_for_key("Zebra", "0", "1", 5000);
   state.process_packet(zebra);
 
   require(state.candidates().size() == 2, "candidate table should capture both equal-time rows");
@@ -676,18 +597,10 @@ void test_candidates_pruned_by_age() {
   state.set_discovery_enabled(true);
   state.set_stale_after_ms(1000);
 
-  rtl433::DecodedPacket old_candidate;
-  old_candidate.model = "OldSensor";
-  old_candidate.channel = "0";
-  old_candidate.id = "111";
-  old_candidate.seen_ms = 1000;
+  rtl433::DecodedPacket old_candidate = packet_for_key("OldSensor", "0", "111", 1000);
   state.process_packet(old_candidate);
 
-  rtl433::DecodedPacket recent_candidate;
-  recent_candidate.model = "NewSensor";
-  recent_candidate.channel = "0";
-  recent_candidate.id = "222";
-  recent_candidate.seen_ms = 3000;
+  rtl433::DecodedPacket recent_candidate = packet_for_key("NewSensor", "0", "222", 3000);
   state.process_packet(recent_candidate);
 
   require(state.candidates().size() == 1, "candidate age window should remove stale rows");
@@ -699,18 +612,10 @@ void test_candidate_age_pruning_is_uint32_wrap_safe() {
   state.set_discovery_enabled(true);
   state.set_stale_after_ms(200);
 
-  rtl433::DecodedPacket pre_wrap_candidate;
-  pre_wrap_candidate.model = "Rollover";
-  pre_wrap_candidate.channel = "0";
-  pre_wrap_candidate.id = "001";
-  pre_wrap_candidate.seen_ms = 0xFFFFFF80;
+  rtl433::DecodedPacket pre_wrap_candidate = packet_for_key("Rollover", "0", "001", 0xFFFFFF80);
   state.process_packet(pre_wrap_candidate);
 
-  rtl433::DecodedPacket post_wrap_candidate;
-  post_wrap_candidate.model = "Fresh";
-  post_wrap_candidate.channel = "0";
-  post_wrap_candidate.id = "002";
-  post_wrap_candidate.seen_ms = 0x00000110;
+  rtl433::DecodedPacket post_wrap_candidate = packet_for_key("Fresh", "0", "002", 0x00000110);
   state.process_packet(post_wrap_candidate);
 
   require(state.candidates().size() == 1, "uint32 wrap should not prevent age pruning");
