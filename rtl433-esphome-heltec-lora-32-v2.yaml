@@ -36,6 +36,10 @@ wifi:
     ssid: "${friendly_name} Fallback"
     password: !secret fallback_ap_password
 
+web_server:
+  version: 3
+  ota: false
+
 captive_portal:
 
 external_components:
