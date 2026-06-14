@@ -62,10 +62,10 @@ rtl433_native:
 - `device_id` assigns generated entities to a per-sensor ESPHome sub-device.
 - Omit `device_id` to keep generated entities on the main ESPHome device.
 - When `device_id` is omitted, compact `name` serves as the entity-name prefix in Home Assistant.
-- `mapping` adds a Home Assistant text entity named `Mapping` for runtime mapping changes.
+- `mapping` adds a gateway-local Home Assistant text entity named from the known sensor, such as `Garage Fridge Mapping`.
 - Mapping text values persist across reboots and OTA updates.
 - RSSI and last-updated entities are disabled by default.
-- Mapping text entities follow the linked known-sensor device when `device_id` is set.
+- Mapping text entities stay on the main ESPHome device even when `device_id` is set.
 - `time_id` is required so restored stale-state aging and last-updated timestamps use a real wall-clock source.
 
 ### Default gateway diagnostics

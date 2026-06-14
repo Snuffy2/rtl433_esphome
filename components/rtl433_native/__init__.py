@@ -257,7 +257,7 @@ def _validate_gateway_entity_names(value: list[dict[str, Any]]) -> list[dict[str
     for entry in value:
         for entity in KNOWN_SENSOR_ENTITIES:
             if entity == ENTITY_MAPPING:
-                if not _entry_has_mapping_text(entry) or CONF_DEVICE_ID in entry:
+                if not _entry_has_mapping_text(entry):
                     continue
                 entity_name = _mapping_text_name(entry)
             else:
@@ -373,7 +373,9 @@ def _mapping_text_name(entry: dict[str, Any]) -> str:
         The generated mapping text entity name.
     """
 
-    return "Mapping"
+    if CONF_NAME in entry:
+        return f"{entry[CONF_NAME]} Mapping"
+    return f"{entry[CONF_TEMPERATURE][CONF_NAME]} Mapping"
 
 
 def _mapping_text_id_fragment(logical_key: str) -> str:
@@ -779,8 +781,6 @@ async def to_code(config: dict[str, Any]) -> None:
                 "disabled_by_default": False,
                 "mode": text.TextMode.TEXT_MODE_TEXT,
             }
-            if CONF_DEVICE_ID in entry:
-                mapping_text_config[CONF_DEVICE_ID] = entry[CONF_DEVICE_ID]
             CORE.component_ids.add(mapping_text_id.id)
             mapping_text = await text.new_text(
                 mapping_text_config,

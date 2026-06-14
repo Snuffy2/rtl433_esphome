@@ -879,7 +879,7 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         {"name": "candidate_1"},
         {"name": "last_packet"},
     ]
-    assert [text_config["name"] for text_config in fake_env.text.created] == ["Mapping"]
+    assert [text_config["name"] for text_config in fake_env.text.created] == ["temperature Mapping"]
     assert fake_env.text.texts[0].calls == [
         ("set_parent", (fake_env.gateway,)),
         ("set_logical_key", ("garage_freezer_1",)),
@@ -948,7 +948,7 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
     assert fake_env.sensor.created == [{"name": "temperature"}]
     assert fake_env.binary_sensor.created == []
     assert fake_env.text_sensor.created == []
-    assert [text_config["name"] for text_config in fake_env.text.created] == ["Mapping"]
+    assert [text_config["name"] for text_config in fake_env.text.created] == ["temperature Mapping"]
     assert fake_env.text.texts[0].calls == [
         ("set_parent", (fake_env.gateway,)),
         ("set_logical_key", ("garage_freezer_1",)),
@@ -1039,7 +1039,7 @@ async def test_to_code_sanitizes_generated_mapping_text_id_only(
 
     mapping_text_id = fake_env.text.created[0][CONF_ID]
     assert getattr(mapping_text_id, "id") == "garage_freezer_1_mapping"
-    assert fake_env.text.created[0][CONF_NAME] == "Mapping"
+    assert fake_env.text.created[0][CONF_NAME] == "Temperature Mapping"
     assert fake_env.text.texts[0].calls == [
         ("set_parent", (fake_env.gateway,)),
         ("set_logical_key", ("garage-freezer-1",)),
@@ -1401,9 +1401,9 @@ def test_config_schema_leaves_name_only_compact_known_entities_on_gateway() -> N
 
 
 def test_config_schema_rejects_duplicate_gateway_mapping_names() -> None:
-    """Reject generic mapping text names that collide on the gateway device."""
+    """Reject mapping text names that collide on the gateway device."""
 
-    with pytest.raises(cv.Invalid, match="duplicate gateway entity name 'Mapping'"):
+    with pytest.raises(cv.Invalid, match="duplicate gateway entity name 'Garage Freezer Mapping'"):
         CONFIG_SCHEMA(
             {
                 CONF_ID: "gateway_id",
@@ -1411,22 +1411,18 @@ def test_config_schema_rejects_duplicate_gateway_mapping_names() -> None:
                 **gateway_diagnostic_overrides("Duplicate Gateway Fixture"),
                 **gateway_control_overrides("Duplicate Gateway Fixture"),
                 CONF_KNOWN_SENSORS: [
-                    {
-                        CONF_KEY: "garage_freezer",
-                        CONF_MAPPING: "Acurite-986/1R/11932",
-                        CONF_TEMPERATURE: {
-                            CONF_NAME: "Garage Freezer Temperature",
-                            CONF_DEVICE_ID: "garage_freezer_device",
-                        },
-                    },
-                    {
-                        CONF_KEY: "kitchen_fridge",
-                        CONF_MAPPING: "Acurite-986/1R/11933",
-                        CONF_TEMPERATURE: {
-                            CONF_NAME: "Kitchen Fridge Temperature",
-                            CONF_DEVICE_ID: "kitchen_fridge_device",
-                        },
-                    },
+                    compact_known_sensor_config(
+                        "Garage Freezer",
+                        ["temperature", "mapping"],
+                        key="garage_freezer",
+                        device_id="garage_freezer_device",
+                    ),
+                    compact_known_sensor_config(
+                        "Garage Freezer",
+                        ["temperature", "mapping"],
+                        key="kitchen_fridge",
+                        device_id="kitchen_fridge_device",
+                    ),
                 ],
             }
         )
@@ -1474,25 +1470,29 @@ def test_config_schema_uses_explicit_known_sensor_device_id() -> None:
         assert entry[entity][CONF_DEVICE_ID].id == "combo_fridge_device"
 
 
-def test_validate_gateway_entity_names_allows_linked_known_sensor_devices() -> None:
-    """Allow generic known-sensor names when entities are on separate sub-devices."""
+def test_validate_gateway_entity_names_allows_distinct_gateway_mapping_names() -> None:
+    """Allow distinct mapping names when known sensors are on separate sub-devices."""
 
     config = [
         {
             CONF_KEY: "garage_freezer",
+            CONF_NAME: "Garage Freezer",
             CONF_DEVICE_ID: "garage_freezer_device",
             CONF_TEMPERATURE: {
                 CONF_NAME: "Temperature",
                 CONF_DEVICE_ID: "garage_freezer_device",
             },
+            CONF_ENTITIES: ["mapping"],
         },
         {
             CONF_KEY: "kitchen_fridge",
+            CONF_NAME: "Kitchen Fridge",
             CONF_DEVICE_ID: "kitchen_fridge_device",
             CONF_TEMPERATURE: {
                 CONF_NAME: "Temperature",
                 CONF_DEVICE_ID: "kitchen_fridge_device",
             },
+            CONF_ENTITIES: ["mapping"],
         },
     ]
 
@@ -1738,7 +1738,7 @@ async def test_compact_known_sensor_mapping_entity_is_optional(
 async def test_compact_known_sensor_mapping_entity_uses_base_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Name compact mapping text entities from their data point."""
+    """Name compact mapping text entities from the base known sensor name."""
 
     config = CONFIG_SCHEMA(
         {
@@ -1758,14 +1758,16 @@ async def test_compact_known_sensor_mapping_entity_uses_base_name(
 
     await to_code(config)
 
-    assert [text_config["name"] for text_config in fake_env.text.created] == ["Mapping"]
+    assert [text_config["name"] for text_config in fake_env.text.created] == [
+        "Garage Mapping Fixture Mapping"
+    ]
     assert CONF_DEVICE_ID not in fake_env.text.created[0]
 
 
-async def test_compact_known_sensor_entities_propagate_device_id_to_mapping_text(
+async def test_compact_known_sensor_entities_keep_mapping_text_on_gateway(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Propagate device_id to mapping text when compact known sensor has device_id."""
+    """Generate known sensor entities on a sub-device while mapping text stays on gateway."""
 
     config = CONFIG_SCHEMA(
         {
@@ -1792,7 +1794,7 @@ async def test_compact_known_sensor_entities_propagate_device_id_to_mapping_text
     created_entity_configs = fake_env.sensor.created[:3] + fake_env.binary_sensor.created[:2]
     for entity_config in created_entity_configs:
         assert entity_config[CONF_DEVICE_ID].id == "garage_freezer_1_device"
-    assert fake_env.text.created[0][CONF_DEVICE_ID].id == "garage_freezer_1_device"
+    assert CONF_DEVICE_ID not in fake_env.text.created[0]
 
 
 async def test_action_to_code_registers_parented_action(monkeypatch: pytest.MonkeyPatch) -> None:
