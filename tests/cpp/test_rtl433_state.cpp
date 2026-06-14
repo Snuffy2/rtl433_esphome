@@ -284,6 +284,10 @@ void test_mapping_match_checks_equivalent_runtime_mapping() {
   rtl433::GatewayState state;
   state.set_mapping("garage_freezer_2", "Acurite-986/2F/35570;TFA-303221/1/99");
 
+  const auto mapping_value = state.mapping_value("garage_freezer_2");
+  require(mapping_value.has_value(), "expected current mapping value to be available");
+  require(*mapping_value == "Acurite-986/2F/35570;TFA-303221/1/99",
+          "expected current mapping value to preserve normalized mapping");
   require(state.mapping_matches("garage_freezer_2", "TFA-303221/1/99;Acurite-986/2F/35570"),
           "expected reordered saved mapping to match current runtime mapping");
   require(!state.mapping_matches("garage_freezer_2", ""),
