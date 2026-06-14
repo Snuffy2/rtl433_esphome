@@ -672,56 +672,35 @@ def test_config_schema_accepts_long_mapping_without_generated_text() -> None:
     assert validated[CONF_KNOWN_SENSORS][0][CONF_MAPPING] == config[CONF_MAPPING]
 
 
-def test_project_version_uses_matching_package_metadata(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize(
+    ("pyproject_text", "expected_version"),
+    [
+        pytest.param(
+            '[project]\nname = "rtl433-esphome"\nversion = "v9.8.7"\n',
+            "v9.8.7",
+            id="matching-package",
+        ),
+        pytest.param(
+            '[project]\nname = "other-project"\nversion = "v9.8.7"\n',
+            "unknown",
+            id="foreign-package",
+        ),
+        pytest.param(
+            '[project]\nname = "rtl433-esphome"\n',
+            "unknown",
+            id="missing-version",
+        ),
+        pytest.param("[project\n", "unknown", id="malformed-metadata"),
+    ],
+)
+def test_project_version_reads_owned_package_metadata_or_falls_back(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, pyproject_text: str, expected_version: str
 ) -> None:
-    """Read the version from package metadata owned by this component."""
+    """Read owned package metadata and fall back safely for unusable metadata."""
 
-    install_project_version_fixture(
-        monkeypatch,
-        tmp_path,
-        '[project]\nname = "rtl433-esphome"\nversion = "v9.8.7"\n',
-    )
+    install_project_version_fixture(monkeypatch, tmp_path, pyproject_text)
 
-    assert _project_version() == "v9.8.7"
-
-
-def test_project_version_ignores_foreign_package_metadata(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Avoid logging an unrelated parent project's version for vendored components."""
-
-    install_project_version_fixture(
-        monkeypatch,
-        tmp_path,
-        '[project]\nname = "other-project"\nversion = "v9.8.7"\n',
-    )
-
-    assert _project_version() == "unknown"
-
-
-def test_project_version_falls_back_for_missing_version(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Keep ESPHome generation working when parent metadata is incomplete."""
-
-    install_project_version_fixture(
-        monkeypatch,
-        tmp_path,
-        '[project]\nname = "rtl433-esphome"\n',
-    )
-
-    assert _project_version() == "unknown"
-
-
-def test_project_version_falls_back_for_malformed_metadata(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Keep ESPHome generation working when parent metadata is not valid TOML."""
-
-    install_project_version_fixture(monkeypatch, tmp_path, "[project\n")
-
-    assert _project_version() == "unknown"
+    assert _project_version() == expected_version
 
 
 def test_arduino_network_include_flag_quotes_platformio_path() -> None:
