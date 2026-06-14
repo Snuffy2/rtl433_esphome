@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -15,11 +14,6 @@ void require(bool condition, const std::string &message) {
     std::cerr << message << '\n';
     std::exit(1);
   }
-}
-
-bool changed_keys_include(const rtl433::GatewayState &state, const std::string &logical_key) {
-  const auto &changed_keys = state.changed_logical_keys();
-  return std::find(changed_keys.begin(), changed_keys.end(), logical_key) != changed_keys.end();
 }
 
 void test_key_parsing() {
@@ -71,12 +65,10 @@ void test_repeated_packet_refreshes_last_seen_without_reporting_value_change() {
 
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected first known packet match");
-  require(changed_keys_include(state, "garage_combo_fridge"), "expected first packet to report changed logical values");
 
   packet.seen_ms = 2000;
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected repeated known packet match");
-  require(state.changed_logical_keys().empty(), "same-value packet should not report changed logical values");
 
   const auto *logical = state.logical_sensor("garage_combo_fridge");
   require(logical != nullptr, "expected logical sensor state");
@@ -86,7 +78,6 @@ void test_repeated_packet_refreshes_last_seen_without_reporting_value_change() {
   packet.seen_ms = 2500;
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected RSSI-only known packet match");
-  require(state.changed_logical_keys().empty(), "RSSI-only packet should not report changed persisted values");
 
   logical = state.logical_sensor("garage_combo_fridge");
   require(logical != nullptr, "expected logical sensor state after RSSI-only packet");
@@ -96,7 +87,10 @@ void test_repeated_packet_refreshes_last_seen_without_reporting_value_change() {
   packet.seen_ms = 3000;
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected changed known packet match");
-  require(changed_keys_include(state, "garage_combo_fridge"), "changed value should report changed logical values");
+  logical = state.logical_sensor("garage_combo_fridge");
+  require(logical != nullptr, "expected logical sensor state after changed packet");
+  require(std::fabs(logical->temperature_f - 34.52f) < 0.001f, "changed packet should update temperature");
+  require(logical->last_seen_ms == 3000, "changed packet should update last seen");
 }
 
 void test_synonym_key_updates_logical_sensor() {
@@ -330,66 +324,84 @@ void test_mapping_change_reporting() {
           "expected remapping to report a change");
 }
 
-void test_mapping_match_checks_equivalent_runtime_mapping() {
-  rtl433::GatewayState state;
-  state.set_mapping("garage_freezer_2", "Acurite-986/2F/35570;TFA-303221/1/99");
+void test_mapping_hash_uses_full_long_mapping() {
+  std::string long_mapping_a = "Acurite-986/2F/35570";
+  std::string long_mapping_b = "Acurite-986/2F/35570";
+  for (int index = 0; index < 30; ++index) {
+    long_mapping_a += ";LongModel/" + std::to_string(index) + "/1234567890";
+    long_mapping_b += ";LongModel/" + std::to_string(index) + "/1234567890";
+  }
+  long_mapping_b += ";LongModel/31/changed-after-prefix";
 
-  const auto mapping_fingerprint = state.mapping_fingerprint("garage_freezer_2");
-  require(mapping_fingerprint.has_value(), "expected current mapping fingerprint to be available");
-
-  const auto reordered = rtl433::parse_sensor_mapping("TFA-303221/1/99;Acurite-986/2F/35570");
-  require(reordered.has_value(), "expected reordered mapping fixture to parse");
-  require(rtl433::mapping_fingerprint(*reordered) == *mapping_fingerprint,
-          "expected free mapping fingerprint helper to canonicalize equivalent mappings");
-  require(state.mapping_matches("garage_freezer_2", rtl433::mapping_fingerprint(*reordered)),
-          "expected reordered saved mapping fingerprint to match current runtime mapping");
-
-  const auto different = rtl433::parse_sensor_mapping("Acurite-986/2F/31274");
-  require(different.has_value(), "expected different mapping fixture to parse");
-  require(!state.mapping_matches("garage_freezer_2", rtl433::mapping_fingerprint(*different)),
-          "expected different saved mapping to not match current runtime mapping");
-  require(!state.mapping_matches("missing", *mapping_fingerprint),
-          "expected missing logical key to not match saved mapping");
+  require(long_mapping_a.size() > 240, "expected long mapping to exceed text UI limit");
+  require(long_mapping_b.size() > 240, "expected changed long mapping to exceed text UI limit");
+  require(rtl433::sensor_mapping_hash(long_mapping_a) != rtl433::sensor_mapping_hash(long_mapping_b),
+          "mapping hash should include bytes past the text UI limit");
 }
 
-void test_mapping_match_detects_default_mapping_change() {
+void test_mapping_hash_is_cached_for_runtime_mapping() {
+  rtl433::GatewayState state;
+  require(!state.mapping_hash("garage_freezer_2").has_value(), "missing mapping should not have a hash");
+
+  state.set_mapping("garage_freezer_2", "TFA-303221/2/88;LaCrosse-TX141THBv2/1/88");
+  const auto first_hash = state.mapping_hash("garage_freezer_2");
+  require(first_hash.has_value(), "configured mapping should have a hash");
+
+  state.set_mapping("garage_freezer_2", "LaCrosse-TX141THBv2/1/88;TFA-303221/2/88");
+  const auto reordered_hash = state.mapping_hash("garage_freezer_2");
+  require(reordered_hash.has_value(), "reordered mapping should have a hash");
+  require(*first_hash == *reordered_hash, "equivalent mapping order should keep the same cached hash");
+
+  state.set_mapping("garage_freezer_2", "Acurite-986/2F/35570");
+  const auto remapped_hash = state.mapping_hash("garage_freezer_2");
+  require(remapped_hash.has_value(), "remapped sensor should have a hash");
+  require(*remapped_hash != *first_hash, "changed mapping should update the cached hash");
+}
+
+void test_restore_requires_saved_mapping_metadata() {
+  require(!rtl433::should_restore_saved_logical_state(false, false),
+          "restore without mapping provenance should be skipped");
+  require(rtl433::should_restore_saved_logical_state(true, true),
+          "restore should allow saved values from the same mapping");
+  require(!rtl433::should_restore_saved_logical_state(true, false),
+          "restore should skip saved values when saved mapping differs from current config mapping");
+}
+
+void test_mapping_provenance_save_decision() {
+  require(!rtl433::should_save_mapping_provenance(std::nullopt, 0),
+          "missing runtime mapping hash should not save provenance");
+  require(rtl433::should_save_mapping_provenance(12345, 0),
+          "first runtime mapping hash should save provenance");
+  require(!rtl433::should_save_mapping_provenance(12345, 12345),
+          "unchanged runtime mapping hash should not rewrite provenance");
+  require(rtl433::should_save_mapping_provenance(67890, 12345),
+          "changed runtime mapping hash should save provenance");
+}
+
+void test_remap_accepts_next_packet_even_with_same_values() {
   rtl433::GatewayState state;
   state.set_mapping("garage_freezer_2", "Acurite-986/2F/35570");
-  const auto saved_fingerprint = state.mapping_fingerprint("garage_freezer_2");
-  require(saved_fingerprint.has_value(), "expected saved mapping provenance");
 
-  state.set_mapping("garage_freezer_2", "Acurite-986/2F/31274");
+  rtl433::DecodedPacket packet;
+  packet.model = "Acurite-986";
+  packet.channel = "2F";
+  packet.id = "35570";
+  packet.temperature_f = 10.0f;
+  packet.battery = 100.0f;
+  packet.rssi = -70;
+  packet.seen_ms = 1000;
+  require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
+          "expected original mapping to match");
 
-  require(!state.mapping_matches("garage_freezer_2", *saved_fingerprint),
-          "expected saved provenance to reject a changed default mapping");
-}
-
-void test_long_mapping_has_fixed_size_provenance() {
-  rtl433::GatewayState state;
-  state.set_mapping("long_combo",
-                    "VeryLongModelName001/1/100001;VeryLongModelName002/2/100002;"
-                    "VeryLongModelName003/3/100003;VeryLongModelName004/4/100004;"
-                    "VeryLongModelName005/5/100005;VeryLongModelName006/6/100006;"
-                    "VeryLongModelName007/7/100007;VeryLongModelName008/8/100008;"
-                    "VeryLongModelName009/9/100009");
-
-  const auto fingerprint = state.mapping_fingerprint("long_combo");
-  require(fingerprint.has_value(), "expected long mapping fingerprint to be available");
-  require(state.mapping_matches("long_combo", *fingerprint),
-          "expected long mapping fingerprint to match without text truncation");
-}
-
-void test_remapped_restore_requires_saved_mapping_metadata() {
-  require(rtl433::should_restore_saved_logical_state(false, false, false),
-          "unmapped restore should preserve legacy saved values");
-  require(rtl433::should_restore_saved_logical_state(true, true, true),
-          "remapped restore should allow saved values from the same mapping");
-  require(!rtl433::should_restore_saved_logical_state(true, false, false),
-          "remapped restore should skip saved values without mapping metadata");
-  require(!rtl433::should_restore_saved_logical_state(true, true, false),
-          "remapped restore should skip saved values from a different mapping");
-  require(!rtl433::should_restore_saved_logical_state(false, true, false),
-          "restore should skip saved values when saved mapping differs from current config mapping");
+  state.set_mapping("garage_freezer_2", "Acurite-986/2F/35571");
+  packet.id = "35571";
+  packet.seen_ms = 2000;
+  require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
+          "expected remapped packet to match");
+  const auto *logical = state.logical_sensor("garage_freezer_2");
+  require(logical != nullptr, "expected logical sensor state after remapped packet");
+  require(logical->has_value, "expected remapped packet to repopulate logical state");
+  require(logical->last_seen_ms == 2000, "expected remapped packet to refresh last seen");
 }
 
 void test_duplicate_mappings_update_both() {
@@ -591,28 +603,6 @@ void test_stale_detection_wraps_with_uint32_delta() {
   require(state.is_stale("garage_combo_freezer", 0x00000500), "post-wrap packets after threshold should be stale");
 }
 
-void test_persist_state_decision_throttles_unchanged_values() {
-  require(rtl433::should_persist_logical_state(true, 2000, 1999, 60000),
-          "changed values should always persist");
-  require(rtl433::should_persist_logical_state(false, 2000, 0, 60000),
-          "first unchanged value should persist");
-  require(!rtl433::should_persist_logical_state(false, 59000, 1000, 60000),
-          "unchanged values should wait for the throttle interval");
-  require(rtl433::should_persist_logical_state(false, 61000, 1000, 60000),
-          "unchanged values should persist at the throttle interval");
-  require(!rtl433::should_persist_logical_state(false, 0x00000010, 0xFFFFFFF0, 60000),
-          "wrapped unchanged values should still wait for the throttle interval");
-}
-
-void test_mapping_snapshot_decision_skips_unchanged_values() {
-  require(rtl433::should_save_mapping_snapshot("Acurite-986/2F/35570", ""),
-          "missing saved mapping snapshot should be written");
-  require(!rtl433::should_save_mapping_snapshot("Acurite-986/2F/35570", "Acurite-986/2F/35570"),
-          "unchanged mapping snapshot should not be rewritten");
-  require(rtl433::should_save_mapping_snapshot("Acurite-986/2F/35570", "Acurite-986/2F/31274"),
-          "changed mapping snapshot should be written");
-}
-
 void test_candidate_order_is_deterministic_for_equal_seen_time() {
   rtl433::GatewayState state;
   state.set_discovery_enabled(true);
@@ -766,10 +756,11 @@ int main() {
   test_spaced_reordered_mapping_preserves_restored_reading();
   test_invalid_mapping_input_preserves_state_and_mapping();
   test_mapping_change_reporting();
-  test_mapping_match_checks_equivalent_runtime_mapping();
-  test_mapping_match_detects_default_mapping_change();
-  test_long_mapping_has_fixed_size_provenance();
-  test_remapped_restore_requires_saved_mapping_metadata();
+  test_mapping_hash_uses_full_long_mapping();
+  test_mapping_hash_is_cached_for_runtime_mapping();
+  test_restore_requires_saved_mapping_metadata();
+  test_mapping_provenance_save_decision();
+  test_remap_accepts_next_packet_even_with_same_values();
   test_duplicate_mappings_update_both();
   test_invalid_packet_is_rejected();
   test_unmatched_packet_is_ignored();
@@ -779,8 +770,6 @@ int main() {
   test_mapping_override_replaces_default_key();
   test_stale_detection_uses_last_seen();
   test_stale_detection_wraps_with_uint32_delta();
-  test_persist_state_decision_throttles_unchanged_values();
-  test_mapping_snapshot_decision_skips_unchanged_values();
   test_candidate_order_is_deterministic_for_equal_seen_time();
   test_candidates_pruned_by_age();
   test_candidate_age_pruning_is_uint32_wrap_safe();

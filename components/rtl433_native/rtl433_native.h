@@ -53,7 +53,7 @@ struct SavedMappingText {
 
 struct SavedLogicalMapping {
   bool has_value{false};
-  uint32_t fingerprint{0};
+  uint32_t mapping_hash{0};
 };
 
 struct EntitySet {
@@ -118,9 +118,7 @@ class Gateway : public Component
   std::unordered_map<std::string, ESPPreferenceObject> preferences_{};
   std::unordered_set<std::string> pending_clock_age_restore_{};
   std::unordered_map<std::string, uint32_t> last_updated_values_{};
-  std::unordered_map<std::string, uint32_t> last_saved_mapping_values_{};
-  std::unordered_map<std::string, uint32_t> last_state_save_ms_{};
-  std::unordered_map<std::string, std::string> last_saved_state_mapping_values_{};
+  std::unordered_map<std::string, uint32_t> last_saved_state_mapping_hashes_{};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};
   std::array<std::string, 20> last_candidate_values_{};
   std::string version_{"unknown"};
@@ -147,8 +145,6 @@ class Gateway : public Component
   uint32_t current_timestamp();
   void update_last_updated(const std::string &logical_key, uint32_t last_updated);
   void save_state(const std::string &logical_key);
-  bool load_saved_mapping(const std::string &logical_key, SavedLogicalMapping &saved_mapping);
-  void save_mapping_state(const std::string &logical_key);
   void publish_stale_state(const std::string &logical_key, EntitySet &entities, uint32_t now_ms);
   void publish_state(const std::string &logical_key);
   void publish_candidates();

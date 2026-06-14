@@ -62,28 +62,24 @@ enum class PacketResult {
 std::optional<SensorKey> parse_sensor_key(const std::string &value);
 std::optional<SensorMapping> parse_sensor_mapping(const std::string &value);
 std::string format_sensor_key(const SensorKey &key);
-uint32_t mapping_fingerprint(const SensorMapping &mapping);
+std::string format_sensor_mapping(const SensorMapping &mapping);
+uint32_t sensor_mapping_hash(const std::string &mapping_value);
 std::string format_candidate(const CandidateRow &candidate);
 bool matches_key(const DecodedPacket &packet, const SensorKey &key);
 uint32_t resolve_last_updated_timestamp(uint32_t current_timestamp, uint32_t previous_timestamp);
 uint32_t resolve_projected_timestamp(uint32_t sync_epoch, uint32_t sync_ms, uint32_t now_ms);
 uint32_t resolve_restored_last_seen_ms(
     uint32_t saved_last_updated, uint32_t current_timestamp, uint32_t now_ms, uint32_t stale_after_ms);
-bool should_persist_logical_state(
-    bool value_changed, uint32_t now_ms, uint32_t previous_save_ms, uint32_t interval_ms);
-bool should_restore_saved_logical_state(
-    bool remapped_before_restore, bool saved_mapping_available, bool saved_mapping_matches);
-bool should_save_mapping_snapshot(const std::string &current_mapping_value, const std::string &saved_mapping_value);
+bool should_restore_saved_logical_state(bool saved_mapping_available, bool saved_mapping_matches);
+bool should_save_mapping_provenance(std::optional<uint32_t> current_mapping_hash, uint32_t previous_mapping_hash);
 
 class GatewayState {
  public:
   bool set_mapping(const std::string &logical_key, const std::string &mapping);
   void restore_logical_state(const std::string &logical_key, const LogicalSensorState &state);
   const LogicalSensorState *logical_sensor(const std::string &logical_key) const;
-  bool mapping_matches(const std::string &logical_key, uint32_t fingerprint) const;
-  std::optional<uint32_t> mapping_fingerprint(const std::string &logical_key) const;
+  std::optional<uint32_t> mapping_hash(const std::string &logical_key) const;
   PacketResult process_packet(const DecodedPacket &packet);
-  const std::vector<std::string> &changed_logical_keys() const { return changed_logical_keys_; }
   void set_discovery_enabled(bool enabled) { discovery_enabled_ = enabled; }
   bool discovery_enabled() const { return discovery_enabled_; }
   void set_candidate_limit(std::size_t limit) { candidate_limit_ = limit; }
@@ -96,11 +92,11 @@ class GatewayState {
 
  private:
   std::unordered_map<std::string, SensorMapping> mappings_{};
+  std::unordered_map<std::string, uint32_t> mapping_hashes_{};
   std::unordered_map<std::string, LogicalSensorState> logical_states_{};
   bool discovery_enabled_{false};
   std::size_t candidate_limit_{10};
   uint32_t stale_after_ms_{3600000};
-  std::vector<std::string> changed_logical_keys_{};
   std::vector<CandidateRow> candidates_{};
   void record_candidate(const DecodedPacket &packet, bool matched_known);
   void prune_candidates(uint32_t now_ms);
