@@ -33,7 +33,6 @@ from components.rtl433_native import (
     CONF_DIO0,
     CONF_DIO1,
     CONF_DIO2,
-    CONF_DISCOVERY_ENABLED,
     CONF_DISCOVERY_MODE,
     CONF_ENTITIES,
     CONF_EXTRA_SCRIPTS,
@@ -107,7 +106,6 @@ GENERATED_GATEWAY_METHODS = frozenset(
         "set_battery_sensor",
         "set_candidate_limit",
         "set_candidate_text_sensor",
-        "set_discovery_enabled_sensor",
         "set_humidity_sensor",
         "set_known_packet_count_sensor",
         "set_led_pin",
@@ -139,7 +137,6 @@ GATEWAY_DIAGNOSTIC_DEFAULTS = (
     (CONF_PACKET_COUNT, "Packet Count"),
     (CONF_KNOWN_PACKET_COUNT, "Known Packet Count"),
     (CONF_UNKNOWN_PACKET_COUNT, "Unknown Packet Count"),
-    (CONF_DISCOVERY_ENABLED, "Discovery Enabled"),
 )
 GATEWAY_CONTROL_DEFAULTS = (
     (CONF_DISCOVERY_MODE, "Discovery Mode"),
@@ -831,7 +828,6 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         CONF_PACKET_COUNT: {"name": "packet_count"},
         CONF_KNOWN_PACKET_COUNT: {"name": "known_packet_count"},
         CONF_UNKNOWN_PACKET_COUNT: {"name": "unknown_packet_count"},
-        CONF_DISCOVERY_ENABLED: {"name": "discovery_enabled"},
     }
 
     await to_code(config)
@@ -851,7 +847,6 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
     assert fake_env.binary_sensor.created == [
         {"name": "battery"},
         {"name": "stale"},
-        {"name": "discovery_enabled"},
     ]
     assert fake_env.text_sensor.created == [
         {"name": "candidate_0"},
@@ -884,7 +879,6 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         ("set_packet_count_sensor", ("sensor:packet_count",)),
         ("set_known_packet_count_sensor", ("sensor:known_packet_count",)),
         ("set_unknown_packet_count_sensor", ("sensor:unknown_packet_count",)),
-        ("set_discovery_enabled_sensor", ("binary:discovery_enabled",)),
     ]
     for call in fake_env.gateway.calls:
         assert call in fake_env.codegen.added
@@ -1113,11 +1107,7 @@ async def test_config_schema_generates_default_gateway_diagnostics(
         ("Unknown Packet Count", "diagnostic"),
     ]
     assert all(entity[CONF_DISABLED_BY_DEFAULT] is True for entity in fake_env.sensor.created[-3:])
-    assert _entity_name_and_category(fake_env.binary_sensor.created[0]) == (
-        "Discovery Enabled",
-        "diagnostic",
-    )
-    assert fake_env.binary_sensor.created[0][CONF_DISABLED_BY_DEFAULT] is True
+    assert fake_env.binary_sensor.created == []
 
 
 async def test_config_schema_generates_default_gateway_controls(

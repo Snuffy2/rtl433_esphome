@@ -73,7 +73,6 @@ rtl433_native:
 - `packet_count`
 - `known_packet_count`
 - `unknown_packet_count`
-- `discovery_enabled`
 
 ### Notes
 
