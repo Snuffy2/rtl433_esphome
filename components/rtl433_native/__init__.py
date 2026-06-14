@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 import tomllib
@@ -36,6 +37,8 @@ AUTO_LOAD = [
     "time",
 ]
 CODEOWNERS = ["@Snuffy2"]
+
+_LOGGER = logging.getLogger(__name__)
 
 CONF_CANDIDATE_LIMIT = "candidate_limit"
 CONF_CANDIDATES = "candidates"
@@ -117,9 +120,21 @@ def _project_version() -> str:
             pyproject = tomllib.load(pyproject_file)
         project = pyproject["project"]
         if project["name"] != "rtl433-esphome":
+            _LOGGER.debug(
+                "Ignoring version metadata for foreign project %r in %s",
+                project["name"],
+                pyproject_path,
+            )
             return "unknown"
         return str(project["version"])
-    except (FileNotFoundError, KeyError, tomllib.TOMLDecodeError):
+    except FileNotFoundError:
+        _LOGGER.debug("No pyproject.toml found at %s; using version 'unknown'", pyproject_path)
+        return "unknown"
+    except KeyError:
+        _LOGGER.debug("Missing [project].version in %s; using version 'unknown'", pyproject_path)
+        return "unknown"
+    except tomllib.TOMLDecodeError:
+        _LOGGER.debug("Invalid TOML in %s; using version 'unknown'", pyproject_path)
         return "unknown"
 
 

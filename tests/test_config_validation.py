@@ -873,8 +873,9 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         ("set_logical_key", ("garage_freezer_1",)),
         ("set_initial_value", ("Acurite-986/1R/11932",)),
     ]
+    expected_version = _project_version()
     assert fake_env.gateway.calls == [
-        ("set_version", ("v0.1.2",)),
+        ("set_version", (expected_version,)),
         ("set_candidate_limit", (2,)),
         ("set_stale_after_ms", (3_600_000,)),
         ("set_led_pin", (25,)),
@@ -941,8 +942,9 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
         ("set_logical_key", ("garage_freezer_1",)),
         ("set_initial_value", ("Acurite-986/1R/11932",)),
     ]
+    expected_version = _project_version()
     assert fake_env.gateway.calls == [
-        ("set_version", ("v0.1.2",)),
+        ("set_version", (expected_version,)),
         ("set_candidate_limit", (1,)),
         ("set_stale_after_ms", (60_000,)),
         ("set_led_pin", (25,)),
