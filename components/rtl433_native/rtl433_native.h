@@ -119,6 +119,7 @@ class Gateway : public Component
   std::unordered_set<std::string> pending_clock_age_restore_{};
   std::unordered_map<std::string, uint32_t> last_updated_values_{};
   std::unordered_map<std::string, uint32_t> last_saved_state_mapping_hashes_{};
+  std::unordered_map<std::string, uint32_t> last_state_save_ms_{};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};
   std::array<std::string, 20> last_candidate_values_{};
   std::string version_{"unknown"};

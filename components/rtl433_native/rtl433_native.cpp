@@ -17,6 +17,7 @@ namespace esphome::rtl433_native {
 namespace {
 
 const char *const TAG = "rtl433_native";
+constexpr uint32_t UNCHANGED_STATE_SAVE_INTERVAL_MS = 60000;
 
 float json_float_or_nan(JsonObject root, const char *key) {
   if (root[key].is<float>()) {
@@ -140,6 +141,7 @@ void Gateway::set_override(const std::string &logical_key, const std::string &se
   if (mapping_changed) {
     this->pending_clock_age_restore_.erase(logical_key);
     this->last_saved_state_mapping_hashes_.erase(logical_key);
+    this->last_state_save_ms_.erase(logical_key);
   }
 }
 
@@ -317,13 +319,24 @@ void Gateway::process_message(char *message) {
 
     if (result == ::esphome::rtl433_native::PacketResult::MATCHED_KNOWN) {
       const uint32_t last_updated = this->current_timestamp();
+      const auto &changed_logical_keys = this->state_.changed_logical_keys();
       for (const auto &entry : this->entities_) {
         const auto &logical_key = entry.first;
         const auto *logical = this->state_.logical_sensor(logical_key);
         if (logical != nullptr && logical->last_seen_ms == packet.seen_ms) {
           this->pending_clock_age_restore_.erase(logical_key);
           this->update_last_updated(logical_key, last_updated);
-          this->save_state(logical_key);
+          const bool value_changed =
+              std::find(changed_logical_keys.begin(), changed_logical_keys.end(), logical_key) !=
+              changed_logical_keys.end();
+          const auto previous_save = this->last_state_save_ms_.find(logical_key);
+          const uint32_t previous_save_ms =
+              previous_save == this->last_state_save_ms_.end() ? 0 : previous_save->second;
+          if (should_persist_logical_state(
+                  value_changed, packet.seen_ms, previous_save_ms, UNCHANGED_STATE_SAVE_INTERVAL_MS)) {
+            this->save_state(logical_key);
+            this->last_state_save_ms_[logical_key] = packet.seen_ms;
+          }
           this->publish_state(logical_key);
         }
       }

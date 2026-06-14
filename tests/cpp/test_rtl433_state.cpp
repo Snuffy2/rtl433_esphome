@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -14,6 +15,11 @@ void require(bool condition, const std::string &message) {
     std::cerr << message << '\n';
     std::exit(1);
   }
+}
+
+bool changed_keys_include(const rtl433::GatewayState &state, const std::string &logical_key) {
+  const auto &changed_keys = state.changed_logical_keys();
+  return std::find(changed_keys.begin(), changed_keys.end(), logical_key) != changed_keys.end();
 }
 
 void test_key_parsing() {
@@ -65,10 +71,13 @@ void test_repeated_packet_refreshes_last_seen_without_reporting_value_change() {
 
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected first known packet match");
+  require(changed_keys_include(state, "garage_combo_fridge"), "first packet should be persistence-worthy");
 
   packet.seen_ms = 2000;
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected repeated known packet match");
+  require(!changed_keys_include(state, "garage_combo_fridge"),
+          "same-value packet should not be persistence-worthy");
 
   const auto *logical = state.logical_sensor("garage_combo_fridge");
   require(logical != nullptr, "expected logical sensor state");
@@ -78,6 +87,8 @@ void test_repeated_packet_refreshes_last_seen_without_reporting_value_change() {
   packet.seen_ms = 2500;
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected RSSI-only known packet match");
+  require(!changed_keys_include(state, "garage_combo_fridge"),
+          "RSSI-only packet should not be persistence-worthy");
 
   logical = state.logical_sensor("garage_combo_fridge");
   require(logical != nullptr, "expected logical sensor state after RSSI-only packet");
@@ -87,6 +98,8 @@ void test_repeated_packet_refreshes_last_seen_without_reporting_value_change() {
   packet.seen_ms = 3000;
   require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "expected changed known packet match");
+  require(changed_keys_include(state, "garage_combo_fridge"),
+          "changed sensor value should be persistence-worthy");
   logical = state.logical_sensor("garage_combo_fridge");
   require(logical != nullptr, "expected logical sensor state after changed packet");
   require(std::fabs(logical->temperature_f - 34.52f) < 0.001f, "changed packet should update temperature");
@@ -376,6 +389,19 @@ void test_mapping_provenance_save_decision() {
           "unchanged runtime mapping hash should not rewrite provenance");
   require(rtl433::should_save_mapping_provenance(67890, 12345),
           "changed runtime mapping hash should save provenance");
+}
+
+void test_persist_state_decision_throttles_unchanged_values() {
+  require(rtl433::should_persist_logical_state(true, 2000, 1999, 60000),
+          "changed values should always persist");
+  require(rtl433::should_persist_logical_state(false, 2000, 0, 60000),
+          "first unchanged value should persist");
+  require(!rtl433::should_persist_logical_state(false, 59000, 1000, 60000),
+          "unchanged values should wait for the throttle interval");
+  require(rtl433::should_persist_logical_state(false, 61000, 1000, 60000),
+          "unchanged values should persist at the throttle interval");
+  require(!rtl433::should_persist_logical_state(false, 0x00000010, 0xFFFFFFF0, 60000),
+          "wrapped unchanged values should still wait for the throttle interval");
 }
 
 void test_remap_accepts_next_packet_even_with_same_values() {
@@ -760,6 +786,7 @@ int main() {
   test_mapping_hash_is_cached_for_runtime_mapping();
   test_restore_requires_saved_mapping_metadata();
   test_mapping_provenance_save_decision();
+  test_persist_state_decision_throttles_unchanged_values();
   test_remap_accepts_next_packet_even_with_same_values();
   test_duplicate_mappings_update_both();
   test_invalid_packet_is_rejected();
