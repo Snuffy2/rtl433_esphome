@@ -379,33 +379,28 @@ void Gateway::sync_time_base() {
   if (!now.is_valid()) {
     return;
   }
-  const auto next_epoch = static_cast<uint32_t>(now.timestamp);
-  if (this->time_sync_epoch_ > 0) {
-    const uint32_t current_epoch = this->time_sync_epoch_ + ((millis() - this->time_sync_ms_) / 1000);
-    if (next_epoch <= current_epoch) {
-      return;
-    }
-  }
-  this->time_sync_epoch_ = next_epoch;
+  this->time_sync_epoch_ = static_cast<uint32_t>(now.timestamp);
   this->time_sync_ms_ = millis();
 }
 
 uint32_t Gateway::current_timestamp() {
-  if (this->time_sync_epoch_ > 0) {
-    return this->time_sync_epoch_ + ((millis() - this->time_sync_ms_) / 1000);
-  }
+  uint32_t clock_timestamp = 0;
   if (this->time_ != nullptr) {
     ESPTime now = this->time_->utcnow();
     if (now.is_valid()) {
-      return static_cast<uint32_t>(now.timestamp);
+      clock_timestamp = static_cast<uint32_t>(now.timestamp);
     }
   }
+  if (clock_timestamp > 0) {
+    return resolve_current_timestamp(clock_timestamp, this->time_sync_epoch_, this->time_sync_ms_, millis());
+  }
+
   const time_t timestamp = ::time(nullptr);
   ESPTime now = ESPTime::from_epoch_local(timestamp);
-  if (!now.is_valid()) {
-    return 0;
+  if (now.is_valid()) {
+    clock_timestamp = static_cast<uint32_t>(timestamp);
   }
-  return static_cast<uint32_t>(timestamp);
+  return resolve_current_timestamp(clock_timestamp, this->time_sync_epoch_, this->time_sync_ms_, millis());
 }
 
 void Gateway::save_state(const std::string &logical_key, uint32_t last_updated) {
