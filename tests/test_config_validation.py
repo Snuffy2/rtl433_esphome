@@ -703,6 +703,8 @@ def test_gateway_reprojects_pending_restored_state_after_time_sync() -> None:
 
     assert "std::unordered_set<std::string> pending_clock_age_restore_{};" in header
     assert "this->pending_clock_age_restore_.insert(logical_key);" in restore_saved_states
+    assert "const uint32_t next_epoch = static_cast<uint32_t>(now.timestamp);" in sync_time_base
+    assert "this->time_sync_epoch_ = next_epoch;" in sync_time_base
     assert "this->reproject_pending_restored_states(next_epoch);" in sync_time_base
     assert "resolve_restored_last_seen_ms(" in reproject_pending_restored_states
     assert (

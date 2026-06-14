@@ -389,7 +389,8 @@ void Gateway::sync_time_base() {
   if (!now.is_valid()) {
     return;
   }
-  this->time_sync_epoch_ = static_cast<uint32_t>(now.timestamp);
+  const uint32_t next_epoch = static_cast<uint32_t>(now.timestamp);
+  this->time_sync_epoch_ = next_epoch;
   this->time_sync_ms_ = millis();
   this->reproject_pending_restored_states(next_epoch);
 }
