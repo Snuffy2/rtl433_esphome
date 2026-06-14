@@ -237,7 +237,7 @@ void Gateway::process_dispatch(char *message) {
 }
 
 void Gateway::process_message(char *message) {
-  ESP_LOGD(TAG, "Received rtl_433 message: %s", message);
+  ESP_LOGV(TAG, "Received rtl_433 message: %s", message);
   json::parse_json(message, [this](JsonObject root) {
     const char *model = root["model"] | "";
     if (std::string(model) == "status") {
