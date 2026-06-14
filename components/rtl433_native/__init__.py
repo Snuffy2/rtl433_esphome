@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+import tomllib
 from typing import Any
 
 from esphome import automation
@@ -105,6 +106,20 @@ RTL433_NATIVE_LIBRARIES = (
     ("SPI", None, None),
     ("EEPROM", None, None),
 )
+
+
+def _project_version() -> str:
+    """Return the package version configured for startup logging."""
+
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    try:
+        with pyproject_path.open("rb") as pyproject_file:
+            pyproject = tomllib.load(pyproject_file)
+    except FileNotFoundError:
+        return "unknown"
+    return str(pyproject["project"]["version"])
+
+
 CONF_EXTRA_SCRIPTS = "extra_scripts"
 DEFAULT_RADIO_MODULE = "SX1278"
 SUPPORTED_RADIO_MODULES = frozenset({"CC1101", "SX1276", "SX1278"})
@@ -671,6 +686,7 @@ async def to_code(config: dict[str, Any]) -> None:
 
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
+    cg.add(var.set_version(_project_version()))
     cg.add(var.set_candidate_limit(config[CONF_CANDIDATE_LIMIT]))
     cg.add(var.set_stale_after_ms(config[CONF_STALE_AFTER].total_milliseconds))
     cg.add(var.set_led_pin(config[CONF_LED_PIN]))

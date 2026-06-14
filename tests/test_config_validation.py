@@ -119,6 +119,7 @@ GENERATED_GATEWAY_METHODS = frozenset(
         "set_temperature_sensor",
         "set_time",
         "set_unknown_packet_count_sensor",
+        "set_version",
     }
 )
 
@@ -639,6 +640,14 @@ def test_mapping_text_setup_applies_initial_value_without_saving() -> None:
     assert "this->apply_value(this->initial_value_, true);" not in source
 
 
+def test_gateway_dump_config_logs_version() -> None:
+    """Show the component version in the ESPHome startup config log."""
+
+    source = Path("components/rtl433_native/rtl433_native.cpp").read_text()
+
+    assert 'ESP_LOGCONFIG(TAG, "  Version: %s", this->version_.c_str());' in source
+
+
 def test_arduino_network_include_flag_quotes_platformio_path() -> None:
     """Keep PlatformIO package paths with spaces as one include flag."""
 
@@ -799,6 +808,7 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         ("set_initial_value", ("Acurite-986/1R/11932",)),
     ]
     assert fake_env.gateway.calls == [
+        ("set_version", ("v0.1.2",)),
         ("set_candidate_limit", (2,)),
         ("set_stale_after_ms", (3_600_000,)),
         ("set_led_pin", (25,)),
@@ -866,6 +876,7 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
         ("set_initial_value", ("Acurite-986/1R/11932",)),
     ]
     assert fake_env.gateway.calls == [
+        ("set_version", ("v0.1.2",)),
         ("set_candidate_limit", (1,)),
         ("set_stale_after_ms", (60_000,)),
         ("set_led_pin", (25,)),

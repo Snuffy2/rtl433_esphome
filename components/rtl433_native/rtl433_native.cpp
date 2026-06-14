@@ -88,6 +88,7 @@ void Gateway::loop() {
 
 void Gateway::dump_config() {
   ESP_LOGCONFIG(TAG, "RTL433 native gateway");
+  ESP_LOGCONFIG(TAG, "  Version: %s", this->version_.c_str());
   ESP_LOGCONFIG(TAG, "  Candidate limit: %u",
                 static_cast<unsigned>(this->state_.candidate_limit()));
 }
