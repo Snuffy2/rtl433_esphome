@@ -286,6 +286,8 @@ void test_mapping_match_checks_equivalent_runtime_mapping() {
 
   require(state.mapping_matches("garage_freezer_2", "TFA-303221/1/99;Acurite-986/2F/35570"),
           "expected reordered saved mapping to match current runtime mapping");
+  require(!state.mapping_matches("garage_freezer_2", ""),
+          "expected missing saved mapping provenance to not match current runtime mapping");
   require(!state.mapping_matches("garage_freezer_2", "Acurite-986/2F/31274"),
           "expected different saved mapping to not match current runtime mapping");
   require(!state.mapping_matches("missing", "Acurite-986/2F/35570"),

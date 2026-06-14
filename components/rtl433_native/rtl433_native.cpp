@@ -354,7 +354,7 @@ void Gateway::restore_saved_states() {
       auto mapping_preference =
           global_preferences->make_preference<SavedLogicalMapping>(saved_state_mapping_preference_key(logical_key), true);
       SavedLogicalMapping saved_mapping;
-      if (mapping_preference.load(&saved_mapping) && saved_mapping.has_value && saved_mapping.value[0] != '\0' &&
+      if (!mapping_preference.load(&saved_mapping) || !saved_mapping.has_value || saved_mapping.value[0] == '\0' ||
           !this->state_.mapping_matches(logical_key, saved_mapping.value)) {
         continue;
       }
