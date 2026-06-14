@@ -106,7 +106,6 @@ class Gateway : public Component
   void set_packet_count_sensor(sensor::Sensor *sensor);
   void set_known_packet_count_sensor(sensor::Sensor *sensor);
   void set_unknown_packet_count_sensor(sensor::Sensor *sensor);
-  void set_discovery_enabled_sensor(binary_sensor::BinarySensor *sensor);
   void set_time(esphome::time::RealTimeClock *time) { this->time_ = time; }
 
  protected:
@@ -127,7 +126,6 @@ class Gateway : public Component
   sensor::Sensor *packet_count_sensor_{nullptr};
   sensor::Sensor *known_packet_count_sensor_{nullptr};
   sensor::Sensor *unknown_packet_count_sensor_{nullptr};
-  binary_sensor::BinarySensor *discovery_enabled_sensor_{nullptr};
   esphome::time::RealTimeClock *time_{nullptr};
   uint32_t time_sync_epoch_{0};
   uint32_t time_sync_ms_{0};

@@ -44,7 +44,6 @@ CONF_CANDIDATE_LIMIT = "candidate_limit"
 CONF_CANDIDATES = "candidates"
 CONF_BATTERY = "battery"
 CONF_CLEAR_CANDIDATES_BUTTON = "clear_candidates_button"
-CONF_DISCOVERY_ENABLED = "discovery_enabled"
 CONF_DISCOVERY_MODE = "discovery_mode"
 CONF_ENTITIES = "entities"
 CONF_HUMIDITY = "humidity"
@@ -643,17 +642,6 @@ CONFIG_SCHEMA = cv.All(
                 state_class="total_increasing",
             ),
             cv.Optional(
-                CONF_DISCOVERY_ENABLED,
-                default={
-                    "name": "Discovery Enabled",
-                    "entity_category": "diagnostic",
-                    CONF_DISABLED_BY_DEFAULT: True,
-                },
-            ): binary_sensor.binary_sensor_schema(
-                # Diagnostic read-only binary sensor mirroring runtime discovery enable state.
-                entity_category="diagnostic",
-            ),
-            cv.Optional(
                 CONF_DISCOVERY_MODE,
                 default={"name": "Discovery Mode", "entity_category": "config"},
             ): switch.switch_schema(
@@ -773,11 +761,6 @@ async def to_code(config: dict[str, Any]) -> None:
     if CONF_UNKNOWN_PACKET_COUNT in config:
         unknown_packet_count_sensor = await sensor.new_sensor(config[CONF_UNKNOWN_PACKET_COUNT])
         cg.add(var.set_unknown_packet_count_sensor(unknown_packet_count_sensor))
-    if CONF_DISCOVERY_ENABLED in config:
-        discovery_enabled_sensor = await binary_sensor.new_binary_sensor(
-            config[CONF_DISCOVERY_ENABLED]
-        )
-        cg.add(var.set_discovery_enabled_sensor(discovery_enabled_sensor))
     _add_generated_component_count(generated_component_count)
     if CONF_DISCOVERY_MODE in config:
         discovery_mode = await switch.new_switch(config[CONF_DISCOVERY_MODE])

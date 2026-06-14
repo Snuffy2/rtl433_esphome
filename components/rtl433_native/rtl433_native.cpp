@@ -120,9 +120,6 @@ void Gateway::clear_candidates() {
 
 void Gateway::set_discovery_enabled(bool enabled) {
   this->state_.set_discovery_enabled(enabled);
-  if (this->discovery_enabled_sensor_ != nullptr) {
-    this->discovery_enabled_sensor_->publish_state(enabled);
-  }
 }
 
 void Gateway::add_mapping(const std::string &logical_key, const std::string &mapping) {
@@ -193,13 +190,6 @@ void Gateway::set_known_packet_count_sensor(sensor::Sensor *sensor) {
 
 void Gateway::set_unknown_packet_count_sensor(sensor::Sensor *sensor) {
   this->unknown_packet_count_sensor_ = sensor;
-}
-
-void Gateway::set_discovery_enabled_sensor(binary_sensor::BinarySensor *sensor) {
-  this->discovery_enabled_sensor_ = sensor;
-  if (this->discovery_enabled_sensor_ != nullptr) {
-    this->discovery_enabled_sensor_->publish_state(this->state_.discovery_enabled());
-  }
 }
 
 void DiscoverySwitch::setup() {
