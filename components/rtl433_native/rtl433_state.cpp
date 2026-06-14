@@ -173,6 +173,19 @@ uint32_t resolve_current_timestamp(uint32_t current_timestamp, uint32_t sync_epo
   return sync_epoch + ((now_ms - sync_ms) / 1000);
 }
 
+uint32_t resolve_restored_last_seen_ms(
+    uint32_t saved_last_updated, uint32_t current_timestamp, uint32_t now_ms, uint32_t stale_after_ms) {
+  if (saved_last_updated == 0 || current_timestamp == 0 || saved_last_updated >= current_timestamp) {
+    return now_ms;
+  }
+
+  const uint64_t elapsed_ms = static_cast<uint64_t>(current_timestamp - saved_last_updated) * 1000U;
+  if (elapsed_ms <= stale_after_ms) {
+    return now_ms - static_cast<uint32_t>(elapsed_ms);
+  }
+  return now_ms - stale_after_ms - 1U;
+}
+
 bool matches_mapping(const DecodedPacket &packet, const SensorMapping &mapping) {
   if (matches_key(packet, mapping.primary)) {
     return true;

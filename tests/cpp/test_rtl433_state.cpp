@@ -582,6 +582,19 @@ void test_current_timestamp_resolution_returns_zero_without_clock_or_cache() {
   require(resolved == 0, "missing clock timestamp and cache should remain unavailable");
 }
 
+void test_restored_last_seen_marks_old_saved_reading_stale() {
+  const uint32_t stale_after_ms = 3600000;
+  const uint32_t now_ms = 43200000;
+  const uint32_t current_timestamp = 1781395200;
+  const uint32_t saved_last_updated = current_timestamp - 86400;
+
+  const uint32_t restored_last_seen =
+      rtl433::resolve_restored_last_seen_ms(saved_last_updated, current_timestamp, now_ms, stale_after_ms);
+
+  require(static_cast<uint32_t>(now_ms - restored_last_seen) > stale_after_ms,
+          "old persisted readings should restore as stale");
+}
+
 }  // namespace
 
 int main() {
@@ -615,5 +628,6 @@ int main() {
   test_current_timestamp_resolution_prefers_valid_clock_over_cached_projection();
   test_current_timestamp_resolution_uses_cached_projection_when_clock_is_invalid();
   test_current_timestamp_resolution_returns_zero_without_clock_or_cache();
+  test_restored_last_seen_marks_old_saved_reading_stale();
   return 0;
 }

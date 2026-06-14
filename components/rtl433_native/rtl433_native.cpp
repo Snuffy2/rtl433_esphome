@@ -354,7 +354,8 @@ void Gateway::restore_saved_states() {
     restored.humidity = saved.humidity;
     restored.battery = saved.battery;
     restored.rssi = saved.rssi;
-    restored.last_seen_ms = millis();
+    restored.last_seen_ms = resolve_restored_last_seen_ms(
+        saved.last_updated, this->current_timestamp(), millis(), this->state_.stale_after_ms());
     this->state_.restore_logical_state(logical_key, restored);
     this->last_updated_values_[logical_key] = saved.last_updated;
     this->publish_state(logical_key);
