@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -8,6 +9,7 @@
 namespace {
 
 namespace rtl433 = esphome::rtl433_native;
+constexpr std::size_t SAVED_MAPPING_BUFFER_LIMIT = 240;
 
 void require(bool condition, const std::string &message) {
   if (!condition) {
@@ -321,7 +323,8 @@ void test_long_mapping_value_exceeds_fixed_persistence_buffer() {
 
   const auto mapping_value = state.mapping_value("long_combo");
   require(mapping_value.has_value(), "expected long mapping value to be available");
-  require(mapping_value->size() > 240, "expected fixture to exceed fixed persistence buffer");
+  require(mapping_value->size() > SAVED_MAPPING_BUFFER_LIMIT,
+          "expected fixture to exceed fixed persistence buffer");
 }
 
 void test_duplicate_mappings_update_both() {

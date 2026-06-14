@@ -481,13 +481,12 @@ void Gateway::save_mapping_state(const std::string &logical_key) {
              logical_key.c_str(), static_cast<unsigned>(mapping_value->size()),
              static_cast<unsigned>(MAPPING_TEXT_MAX_LENGTH));
     mapping_preference.save(&saved_mapping);
-    this->last_saved_mapping_values_[logical_key] = *mapping_value;
-    return;
+  } else {
+    saved_mapping.has_value = true;
+    std::strncpy(saved_mapping.value, mapping_value->c_str(), sizeof(saved_mapping.value) - 1);
+    saved_mapping.value[sizeof(saved_mapping.value) - 1] = '\0';
+    mapping_preference.save(&saved_mapping);
   }
-  saved_mapping.has_value = true;
-  std::strncpy(saved_mapping.value, mapping_value->c_str(), sizeof(saved_mapping.value) - 1);
-  saved_mapping.value[sizeof(saved_mapping.value) - 1] = '\0';
-  mapping_preference.save(&saved_mapping);
   this->last_saved_mapping_values_[logical_key] = *mapping_value;
 }
 
