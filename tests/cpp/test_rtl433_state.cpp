@@ -1,5 +1,4 @@
 #include <cmath>
-#include <cstddef>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -9,7 +8,6 @@
 namespace {
 
 namespace rtl433 = esphome::rtl433_native;
-constexpr std::size_t SAVED_MAPPING_BUFFER_LIMIT = 240;
 
 void require(bool condition, const std::string &message) {
   if (!condition) {
@@ -286,33 +284,35 @@ void test_mapping_match_checks_equivalent_runtime_mapping() {
   rtl433::GatewayState state;
   state.set_mapping("garage_freezer_2", "Acurite-986/2F/35570;TFA-303221/1/99");
 
-  const auto mapping_value = state.mapping_value("garage_freezer_2");
-  require(mapping_value.has_value(), "expected current mapping value to be available");
-  require(*mapping_value == "Acurite-986/2F/35570;TFA-303221/1/99",
-          "expected current mapping value to preserve normalized mapping");
-  require(state.mapping_matches("garage_freezer_2", "TFA-303221/1/99;Acurite-986/2F/35570"),
-          "expected reordered saved mapping to match current runtime mapping");
-  require(!state.mapping_matches("garage_freezer_2", ""),
-          "expected missing saved mapping provenance to not match current runtime mapping");
-  require(!state.mapping_matches("garage_freezer_2", "Acurite-986/2F/31274"),
+  const auto mapping_fingerprint = state.mapping_fingerprint("garage_freezer_2");
+  require(mapping_fingerprint.has_value(), "expected current mapping fingerprint to be available");
+
+  const auto reordered = rtl433::parse_sensor_mapping("TFA-303221/1/99;Acurite-986/2F/35570");
+  require(reordered.has_value(), "expected reordered mapping fixture to parse");
+  require(state.mapping_matches("garage_freezer_2", rtl433::mapping_fingerprint(*reordered)),
+          "expected reordered saved mapping fingerprint to match current runtime mapping");
+
+  const auto different = rtl433::parse_sensor_mapping("Acurite-986/2F/31274");
+  require(different.has_value(), "expected different mapping fixture to parse");
+  require(!state.mapping_matches("garage_freezer_2", rtl433::mapping_fingerprint(*different)),
           "expected different saved mapping to not match current runtime mapping");
-  require(!state.mapping_matches("missing", "Acurite-986/2F/35570"),
+  require(!state.mapping_matches("missing", *mapping_fingerprint),
           "expected missing logical key to not match saved mapping");
 }
 
 void test_mapping_match_detects_default_mapping_change() {
   rtl433::GatewayState state;
   state.set_mapping("garage_freezer_2", "Acurite-986/2F/35570");
-  const auto saved_mapping = state.mapping_value("garage_freezer_2");
-  require(saved_mapping.has_value(), "expected saved mapping provenance");
+  const auto saved_fingerprint = state.mapping_fingerprint("garage_freezer_2");
+  require(saved_fingerprint.has_value(), "expected saved mapping provenance");
 
   state.set_mapping("garage_freezer_2", "Acurite-986/2F/31274");
 
-  require(!state.mapping_matches("garage_freezer_2", *saved_mapping),
+  require(!state.mapping_matches("garage_freezer_2", *saved_fingerprint),
           "expected saved provenance to reject a changed default mapping");
 }
 
-void test_long_mapping_value_exceeds_fixed_persistence_buffer() {
+void test_long_mapping_has_fixed_size_provenance() {
   rtl433::GatewayState state;
   state.set_mapping("long_combo",
                     "VeryLongModelName001/1/100001;VeryLongModelName002/2/100002;"
@@ -321,10 +321,10 @@ void test_long_mapping_value_exceeds_fixed_persistence_buffer() {
                     "VeryLongModelName007/7/100007;VeryLongModelName008/8/100008;"
                     "VeryLongModelName009/9/100009");
 
-  const auto mapping_value = state.mapping_value("long_combo");
-  require(mapping_value.has_value(), "expected long mapping value to be available");
-  require(mapping_value->size() > SAVED_MAPPING_BUFFER_LIMIT,
-          "expected fixture to exceed fixed persistence buffer");
+  const auto fingerprint = state.mapping_fingerprint("long_combo");
+  require(fingerprint.has_value(), "expected long mapping fingerprint to be available");
+  require(state.mapping_matches("long_combo", *fingerprint),
+          "expected long mapping fingerprint to match without text truncation");
 }
 
 void test_duplicate_mappings_update_both() {
@@ -680,7 +680,7 @@ int main() {
   test_mapping_change_reporting();
   test_mapping_match_checks_equivalent_runtime_mapping();
   test_mapping_match_detects_default_mapping_change();
-  test_long_mapping_value_exceeds_fixed_persistence_buffer();
+  test_long_mapping_has_fixed_size_provenance();
   test_duplicate_mappings_update_both();
   test_invalid_packet_is_rejected();
   test_unmatched_packet_is_ignored();

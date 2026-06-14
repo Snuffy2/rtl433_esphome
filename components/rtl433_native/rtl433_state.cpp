@@ -146,6 +146,15 @@ std::string format_sensor_mapping(const SensorMapping &mapping) {
   return value;
 }
 
+uint32_t mapping_fingerprint(const SensorMapping &mapping) {
+  uint32_t hash = 2166136261UL;
+  for (const char value : format_sensor_mapping(mapping)) {
+    hash ^= static_cast<uint8_t>(value);
+    hash *= 16777619UL;
+  }
+  return hash;
+}
+
 std::string format_candidate(const CandidateRow &candidate) {
   std::string value = format_sensor_key(candidate.key);
   value += " temp=" + std::to_string(candidate.temperature_f);
@@ -229,21 +238,20 @@ const LogicalSensorState *GatewayState::logical_sensor(const std::string &logica
   return &item->second;
 }
 
-bool GatewayState::mapping_matches(const std::string &logical_key, const std::string &mapping_value) const {
+bool GatewayState::mapping_matches(const std::string &logical_key, uint32_t fingerprint) const {
   const auto existing = mappings_.find(logical_key);
   if (existing == mappings_.end()) {
     return false;
   }
-  const auto parsed = parse_sensor_mapping(mapping_value);
-  return parsed.has_value() && same_mapping(existing->second, *parsed);
+  return esphome::rtl433_native::mapping_fingerprint(existing->second) == fingerprint;
 }
 
-std::optional<std::string> GatewayState::mapping_value(const std::string &logical_key) const {
+std::optional<uint32_t> GatewayState::mapping_fingerprint(const std::string &logical_key) const {
   const auto existing = mappings_.find(logical_key);
   if (existing == mappings_.end()) {
     return {};
   }
-  return format_sensor_mapping(existing->second);
+  return esphome::rtl433_native::mapping_fingerprint(existing->second);
 }
 
 PacketResult GatewayState::process_packet(const DecodedPacket &packet) {

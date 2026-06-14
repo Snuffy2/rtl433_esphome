@@ -53,7 +53,7 @@ struct SavedMappingText {
 
 struct SavedLogicalMapping {
   bool has_value{false};
-  char value[MAPPING_TEXT_MAX_LENGTH + 1]{};
+  uint32_t fingerprint{0};
 };
 
 struct EntitySet {
@@ -118,7 +118,7 @@ class Gateway : public Component
   std::unordered_map<std::string, ESPPreferenceObject> preferences_{};
   std::unordered_set<std::string> pending_clock_age_restore_{};
   std::unordered_map<std::string, uint32_t> last_updated_values_{};
-  std::unordered_map<std::string, std::string> last_saved_mapping_values_{};
+  std::unordered_map<std::string, uint32_t> last_saved_mapping_values_{};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};
   std::array<std::string, 20> last_candidate_values_{};
   std::string version_{"unknown"};
