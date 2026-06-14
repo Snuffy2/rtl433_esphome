@@ -22,6 +22,11 @@ bool changed_keys_include(const rtl433::GatewayState &state, const std::string &
   return std::find(changed_keys.begin(), changed_keys.end(), logical_key) != changed_keys.end();
 }
 
+bool matched_keys_include(const rtl433::GatewayState &state, const std::string &logical_key) {
+  const auto &matched_keys = state.matched_logical_keys();
+  return std::find(matched_keys.begin(), matched_keys.end(), logical_key) != matched_keys.end();
+}
+
 void test_key_parsing() {
   auto key = rtl433::parse_sensor_key("LaCrosse-TX141THBv2/0/203");
   require(key.has_value(), "expected valid LaCrosse key");
@@ -104,6 +109,43 @@ void test_repeated_packet_refreshes_last_seen_without_reporting_value_change() {
   require(logical != nullptr, "expected logical sensor state after changed packet");
   require(std::fabs(logical->temperature_f - 34.52f) < 0.001f, "changed packet should update temperature");
   require(logical->last_seen_ms == 3000, "changed packet should update last seen");
+}
+
+void test_same_millisecond_packets_report_only_current_matches() {
+  rtl433::GatewayState state;
+  state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
+  state.set_mapping("garage_combo_freezer", "TFA-303221/2/88");
+
+  rtl433::DecodedPacket fridge_packet;
+  fridge_packet.model = "LaCrosse-TX141THBv2";
+  fridge_packet.channel = "0";
+  fridge_packet.id = "203";
+  fridge_packet.temperature_f = 34.16f;
+  fridge_packet.humidity = 10.0f;
+  fridge_packet.battery = 100.0f;
+  fridge_packet.rssi = -70;
+  fridge_packet.seen_ms = 5000;
+
+  require(state.process_packet(fridge_packet) == rtl433::PacketResult::MATCHED_KNOWN,
+          "expected first same-ms packet match");
+  require(matched_keys_include(state, "garage_combo_fridge"), "expected first packet to match fridge");
+  require(!matched_keys_include(state, "garage_combo_freezer"), "first packet should not match freezer");
+
+  rtl433::DecodedPacket freezer_packet;
+  freezer_packet.model = "TFA-303221";
+  freezer_packet.channel = "2";
+  freezer_packet.id = "88";
+  freezer_packet.temperature_f = 0.5f;
+  freezer_packet.humidity = 44.0f;
+  freezer_packet.battery = 100.0f;
+  freezer_packet.rssi = -67;
+  freezer_packet.seen_ms = 5000;
+
+  require(state.process_packet(freezer_packet) == rtl433::PacketResult::MATCHED_KNOWN,
+          "expected second same-ms packet match");
+  require(matched_keys_include(state, "garage_combo_freezer"), "expected second packet to match freezer");
+  require(!matched_keys_include(state, "garage_combo_fridge"),
+          "same-ms second packet should not report the previous logical key");
 }
 
 void test_synonym_key_updates_logical_sensor() {
@@ -771,6 +813,7 @@ int main() {
   test_key_parsing();
   test_known_packet_updates_logical_sensor();
   test_repeated_packet_refreshes_last_seen_without_reporting_value_change();
+  test_same_millisecond_packets_report_only_current_matches();
   test_synonym_key_updates_logical_sensor();
   test_mapping_list_updates_from_primary_and_synonym();
   test_spaced_mapping_list_updates_from_synonym();

@@ -274,6 +274,7 @@ std::optional<uint32_t> GatewayState::mapping_hash(const std::string &logical_ke
 }
 
 PacketResult GatewayState::process_packet(const DecodedPacket &packet) {
+  matched_logical_keys_.clear();
   changed_logical_keys_.clear();
   if (packet.model.empty() || packet.id.empty()) {
     return PacketResult::REJECTED_INVALID;
@@ -292,6 +293,7 @@ PacketResult GatewayState::process_packet(const DecodedPacket &packet) {
     state.battery = packet.battery;
     state.rssi = packet.rssi;
     state.last_seen_ms = packet.seen_ms;
+    matched_logical_keys_.push_back(logical_key);
     if (value_changed) {
       changed_logical_keys_.push_back(logical_key);
     }

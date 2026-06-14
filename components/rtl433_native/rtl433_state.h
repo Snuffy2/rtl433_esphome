@@ -82,6 +82,7 @@ class GatewayState {
   const LogicalSensorState *logical_sensor(const std::string &logical_key) const;
   std::optional<uint32_t> mapping_hash(const std::string &logical_key) const;
   PacketResult process_packet(const DecodedPacket &packet);
+  const std::vector<std::string> &matched_logical_keys() const { return matched_logical_keys_; }
   const std::vector<std::string> &changed_logical_keys() const { return changed_logical_keys_; }
   void set_discovery_enabled(bool enabled) { discovery_enabled_ = enabled; }
   bool discovery_enabled() const { return discovery_enabled_; }
@@ -97,6 +98,7 @@ class GatewayState {
   std::unordered_map<std::string, SensorMapping> mappings_{};
   std::unordered_map<std::string, uint32_t> mapping_hashes_{};
   std::unordered_map<std::string, LogicalSensorState> logical_states_{};
+  std::vector<std::string> matched_logical_keys_{};
   std::vector<std::string> changed_logical_keys_{};
   bool discovery_enabled_{false};
   std::size_t candidate_limit_{10};

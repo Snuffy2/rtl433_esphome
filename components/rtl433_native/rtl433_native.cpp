@@ -140,6 +140,7 @@ void Gateway::set_override(const std::string &logical_key, const std::string &se
   const bool mapping_changed = this->state_.set_mapping(logical_key, sensor_key);
   if (mapping_changed) {
     this->pending_clock_age_restore_.erase(logical_key);
+    this->last_updated_values_.erase(logical_key);
     this->last_saved_state_mapping_hashes_.erase(logical_key);
     this->last_state_save_ms_.erase(logical_key);
   }
@@ -319,11 +320,11 @@ void Gateway::process_message(char *message) {
 
     if (result == ::esphome::rtl433_native::PacketResult::MATCHED_KNOWN) {
       const uint32_t last_updated = this->current_timestamp();
+      const auto &matched_logical_keys = this->state_.matched_logical_keys();
       const auto &changed_logical_keys = this->state_.changed_logical_keys();
-      for (const auto &entry : this->entities_) {
-        const auto &logical_key = entry.first;
+      for (const auto &logical_key : matched_logical_keys) {
         const auto *logical = this->state_.logical_sensor(logical_key);
-        if (logical != nullptr && logical->last_seen_ms == packet.seen_ms) {
+        if (logical != nullptr) {
           this->pending_clock_age_restore_.erase(logical_key);
           this->update_last_updated(logical_key, last_updated);
           const bool value_changed =
