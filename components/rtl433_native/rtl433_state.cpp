@@ -223,6 +223,18 @@ bool should_persist_logical_state(
   return static_cast<uint32_t>(now_ms - previous_save_ms) >= interval_ms;
 }
 
+bool should_restore_saved_logical_state(
+    bool remapped_before_restore, bool saved_mapping_available, bool saved_mapping_matches) {
+  if (!remapped_before_restore) {
+    return true;
+  }
+  return saved_mapping_available && saved_mapping_matches;
+}
+
+bool should_save_mapping_snapshot(const std::string &current_mapping_value, const std::string &saved_mapping_value) {
+  return !current_mapping_value.empty() && current_mapping_value != saved_mapping_value;
+}
+
 bool matches_mapping(const DecodedPacket &packet, const SensorMapping &mapping) {
   if (matches_key(packet, mapping.primary)) {
     return true;

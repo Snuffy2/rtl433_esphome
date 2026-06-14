@@ -120,6 +120,7 @@ class Gateway : public Component
   std::unordered_map<std::string, uint32_t> last_updated_values_{};
   std::unordered_map<std::string, uint32_t> last_saved_mapping_values_{};
   std::unordered_map<std::string, uint32_t> last_state_save_ms_{};
+  std::unordered_map<std::string, std::string> last_saved_state_mapping_values_{};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};
   std::array<std::string, 20> last_candidate_values_{};
   std::string version_{"unknown"};

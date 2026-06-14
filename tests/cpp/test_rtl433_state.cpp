@@ -369,6 +369,17 @@ void test_long_mapping_has_fixed_size_provenance() {
           "expected long mapping fingerprint to match without text truncation");
 }
 
+void test_remapped_restore_requires_saved_mapping_metadata() {
+  require(rtl433::should_restore_saved_logical_state(false, false, false),
+          "unmapped restore should preserve legacy saved values");
+  require(rtl433::should_restore_saved_logical_state(true, true, true),
+          "remapped restore should allow saved values from the same mapping");
+  require(!rtl433::should_restore_saved_logical_state(true, false, false),
+          "remapped restore should skip saved values without mapping metadata");
+  require(!rtl433::should_restore_saved_logical_state(true, true, false),
+          "remapped restore should skip saved values from a different mapping");
+}
+
 void test_duplicate_mappings_update_both() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
@@ -581,6 +592,15 @@ void test_persist_state_decision_throttles_unchanged_values() {
           "wrapped unchanged values should still wait for the throttle interval");
 }
 
+void test_mapping_snapshot_decision_skips_unchanged_values() {
+  require(rtl433::should_save_mapping_snapshot("Acurite-986/2F/35570", ""),
+          "missing saved mapping snapshot should be written");
+  require(!rtl433::should_save_mapping_snapshot("Acurite-986/2F/35570", "Acurite-986/2F/35570"),
+          "unchanged mapping snapshot should not be rewritten");
+  require(rtl433::should_save_mapping_snapshot("Acurite-986/2F/35570", "Acurite-986/2F/31274"),
+          "changed mapping snapshot should be written");
+}
+
 void test_candidate_order_is_deterministic_for_equal_seen_time() {
   rtl433::GatewayState state;
   state.set_discovery_enabled(true);
@@ -737,6 +757,7 @@ int main() {
   test_mapping_match_checks_equivalent_runtime_mapping();
   test_mapping_match_detects_default_mapping_change();
   test_long_mapping_has_fixed_size_provenance();
+  test_remapped_restore_requires_saved_mapping_metadata();
   test_duplicate_mappings_update_both();
   test_invalid_packet_is_rejected();
   test_unmatched_packet_is_ignored();
@@ -747,6 +768,7 @@ int main() {
   test_stale_detection_uses_last_seen();
   test_stale_detection_wraps_with_uint32_delta();
   test_persist_state_decision_throttles_unchanged_values();
+  test_mapping_snapshot_decision_skips_unchanged_values();
   test_candidate_order_is_deterministic_for_equal_seen_time();
   test_candidates_pruned_by_age();
   test_candidate_age_pruning_is_uint32_wrap_safe();
