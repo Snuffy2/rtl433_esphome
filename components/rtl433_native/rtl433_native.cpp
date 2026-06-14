@@ -139,6 +139,9 @@ void Gateway::set_override(const std::string &logical_key, const std::string &se
   const bool mapping_changed = this->state_.set_mapping(logical_key, sensor_key);
   if (mapping_changed) {
     this->pending_clock_age_restore_.erase(logical_key);
+    this->last_updated_values_.erase(logical_key);
+    this->last_saved_state_mapping_hashes_.erase(logical_key);
+    this->last_state_save_ms_.erase(logical_key);
   }
 }
 
@@ -237,7 +240,7 @@ void Gateway::process_dispatch(char *message) {
 }
 
 void Gateway::process_message(char *message) {
-  ESP_LOGD(TAG, "Received rtl_433 message: %s", message);
+  ESP_LOGV(TAG, "Received rtl_433 message: %s", message);
   json::parse_json(message, [this](JsonObject root) {
     const char *model = root["model"] | "";
     if (std::string(model) == "status") {
@@ -316,14 +319,23 @@ void Gateway::process_message(char *message) {
 
     if (result == ::esphome::rtl433_native::PacketResult::MATCHED_KNOWN) {
       const uint32_t last_updated = this->current_timestamp();
-      for (const auto &entry : this->entities_) {
-        const auto &logical_key = entry.first;
-        const auto *logical = this->state_.logical_sensor(logical_key);
-        if (logical != nullptr && logical->last_seen_ms == packet.seen_ms) {
-          this->pending_clock_age_restore_.erase(logical_key);
-          this->save_state(logical_key, last_updated);
-          this->publish_state(logical_key);
+      const auto &matched_logical_keys = this->state_.matched_logical_keys();
+      const auto &changed_logical_keys = this->state_.changed_logical_keys();
+      for (const auto &logical_key : matched_logical_keys) {
+        this->pending_clock_age_restore_.erase(logical_key);
+        this->update_last_updated(logical_key, last_updated);
+        const bool value_changed =
+            std::find(changed_logical_keys.begin(), changed_logical_keys.end(), logical_key) !=
+            changed_logical_keys.end();
+        const auto previous_save = this->last_state_save_ms_.find(logical_key);
+        const uint32_t previous_save_ms =
+            previous_save == this->last_state_save_ms_.end() ? 0 : previous_save->second;
+        if (should_persist_logical_state(value_changed, packet.seen_ms, previous_save_ms,
+                                         unchanged_state_save_interval_ms(this->state_.stale_after_ms()))) {
+          this->save_state(logical_key);
+          this->last_state_save_ms_[logical_key] = packet.seen_ms;
         }
+        this->publish_state(logical_key);
       }
     } else if (result == ::esphome::rtl433_native::PacketResult::RECORDED_CANDIDATE ||
                result == ::esphome::rtl433_native::PacketResult::IGNORED_UNKNOWN) {
@@ -347,9 +359,20 @@ void Gateway::restore_saved_states() {
     if (!preference.load(&saved) || !saved.has_value) {
       continue;
     }
+    auto mapping_preference =
+        global_preferences->make_preference<SavedLogicalMapping>(saved_state_mapping_preference_key(logical_key), true);
     SavedLogicalMapping saved_mapping;
-    if (!this->load_saved_mapping(logical_key, saved_mapping) ||
-        !this->state_.mapping_matches(logical_key, saved_mapping.fingerprint)) {
+    const bool saved_mapping_available =
+        mapping_preference.load(&saved_mapping) && saved_mapping.has_value &&
+        saved_mapping.mapping_hash != 0;
+    const auto current_mapping_hash = this->state_.mapping_hash(logical_key);
+    const bool saved_mapping_matches =
+        saved_mapping_available && current_mapping_hash.has_value() &&
+        *current_mapping_hash == saved_mapping.mapping_hash;
+    if (saved_mapping_available) {
+      this->last_saved_state_mapping_hashes_[logical_key] = saved_mapping.mapping_hash;
+    }
+    if (!saved_mapping_available || !saved_mapping_matches) {
       continue;
     }
 
@@ -420,7 +443,17 @@ uint32_t Gateway::current_timestamp() {
   return resolve_projected_timestamp(this->time_sync_epoch_, this->time_sync_ms_, millis());
 }
 
-void Gateway::save_state(const std::string &logical_key, uint32_t last_updated) {
+void Gateway::update_last_updated(const std::string &logical_key, uint32_t last_updated) {
+  const auto previous_last_updated = this->last_updated_values_.find(logical_key);
+  const uint32_t previous_timestamp =
+      previous_last_updated == this->last_updated_values_.end() ? 0 : previous_last_updated->second;
+  const uint32_t adjusted_last_updated = resolve_last_updated_timestamp(last_updated, previous_timestamp);
+  if (adjusted_last_updated > 0) {
+    this->last_updated_values_[logical_key] = adjusted_last_updated;
+  }
+}
+
+void Gateway::save_state(const std::string &logical_key) {
   const auto *logical = this->state_.logical_sensor(logical_key);
   if (logical == nullptr || !logical->has_value) {
     return;
@@ -441,47 +474,24 @@ void Gateway::save_state(const std::string &logical_key, uint32_t last_updated) 
   saved.humidity = logical->humidity;
   saved.battery = logical->battery;
   saved.rssi = logical->rssi;
-  const auto previous_last_updated = this->last_updated_values_.find(logical_key);
-  const uint32_t previous_timestamp =
-      previous_last_updated == this->last_updated_values_.end() ? 0 : previous_last_updated->second;
-  const uint32_t adjusted_last_updated = resolve_last_updated_timestamp(last_updated, previous_timestamp);
-  if (adjusted_last_updated > 0) {
-    this->last_updated_values_[logical_key] = adjusted_last_updated;
-  }
   const auto last_updated_item = this->last_updated_values_.find(logical_key);
   if (last_updated_item != this->last_updated_values_.end()) {
     saved.last_updated = last_updated_item->second;
   }
   preference_item->second.save(&saved);
-  this->save_mapping_state(logical_key);
-}
-
-bool Gateway::load_saved_mapping(const std::string &logical_key, SavedLogicalMapping &saved_mapping) {
-  auto mapping_preference =
-      global_preferences->make_preference<SavedLogicalMapping>(saved_state_mapping_preference_key(logical_key), true);
-  if (!mapping_preference.load(&saved_mapping) || !saved_mapping.has_value) {
-    return false;
+  const auto mapping_hash = this->state_.mapping_hash(logical_key);
+  const auto previous_mapping_item = this->last_saved_state_mapping_hashes_.find(logical_key);
+  const uint32_t previous_mapping_hash =
+      previous_mapping_item == this->last_saved_state_mapping_hashes_.end() ? 0 : previous_mapping_item->second;
+  if (mapping_hash.has_value() && *mapping_hash != previous_mapping_hash) {
+    SavedLogicalMapping saved_mapping;
+    saved_mapping.has_value = true;
+    saved_mapping.mapping_hash = *mapping_hash;
+    auto mapping_preference =
+        global_preferences->make_preference<SavedLogicalMapping>(saved_state_mapping_preference_key(logical_key), true);
+    mapping_preference.save(&saved_mapping);
+    this->last_saved_state_mapping_hashes_[logical_key] = *mapping_hash;
   }
-  this->last_saved_mapping_values_[logical_key] = saved_mapping.fingerprint;
-  return true;
-}
-
-void Gateway::save_mapping_state(const std::string &logical_key) {
-  const auto fingerprint = this->state_.mapping_fingerprint(logical_key);
-  if (!fingerprint.has_value()) {
-    return;
-  }
-  const auto cached = this->last_saved_mapping_values_.find(logical_key);
-  if (cached != this->last_saved_mapping_values_.end() && cached->second == *fingerprint) {
-    return;
-  }
-  SavedLogicalMapping saved_mapping;
-  auto mapping_preference =
-      global_preferences->make_preference<SavedLogicalMapping>(saved_state_mapping_preference_key(logical_key), true);
-  saved_mapping.has_value = true;
-  saved_mapping.fingerprint = *fingerprint;
-  mapping_preference.save(&saved_mapping);
-  this->last_saved_mapping_values_[logical_key] = *fingerprint;
 }
 
 void Gateway::publish_stale_state(const std::string &logical_key, EntitySet &entities, uint32_t now_ms) {

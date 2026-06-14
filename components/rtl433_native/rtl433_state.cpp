@@ -16,6 +16,7 @@ namespace esphome::rtl433_native {
 namespace {
 
 static const char *const TAG = "rtl433_state";
+constexpr uint32_t DEFAULT_UNCHANGED_STATE_SAVE_INTERVAL_MS = 60000;
 
 bool same_key(const SensorKey &left, const SensorKey &right) {
   return left.model == right.model && left.channel == right.channel && left.id == right.id;
@@ -70,6 +71,16 @@ bool candidate_less(const CandidateRow &left, const CandidateRow &right) {
 
 bool is_older_than(uint32_t now_ms, uint32_t seen_ms, uint32_t age_ms) {
   return static_cast<uint32_t>(now_ms - seen_ms) > age_ms;
+}
+
+bool same_float_value(float left, float right) {
+  return left == right || (std::isnan(left) && std::isnan(right));
+}
+
+bool same_persisted_values(const LogicalSensorState &state, const DecodedPacket &packet) {
+  return same_float_value(state.temperature_f, packet.temperature_f) &&
+         same_float_value(state.humidity, packet.humidity) &&
+         same_float_value(state.battery, packet.battery);
 }
 
 }  // namespace
@@ -138,8 +149,6 @@ std::string format_sensor_key(const SensorKey &key) {
   return key.model + "/" + key.channel + "/" + key.id;
 }
 
-namespace {
-
 std::string format_sensor_mapping(const SensorMapping &mapping) {
   std::string value = format_sensor_key(mapping.primary);
   for (const auto &synonym : mapping.synonyms) {
@@ -148,17 +157,13 @@ std::string format_sensor_mapping(const SensorMapping &mapping) {
   return value;
 }
 
-}  // namespace
-
-uint32_t mapping_fingerprint(const SensorMapping &mapping) {
-  SensorMapping canonical = mapping;
-  canonicalize_mapping(canonical);
-  uint32_t hash = 2166136261U;
-  for (const unsigned char value : format_sensor_mapping(canonical)) {
-    hash ^= value;
-    hash *= 16777619U;
+uint32_t sensor_mapping_hash(const std::string &mapping_value) {
+  uint32_t hash = 2166136261UL;
+  for (char value : mapping_value) {
+    hash ^= static_cast<uint8_t>(value);
+    hash *= 16777619UL;
   }
-  return hash;
+  return hash == 0 ? 2166136261UL : hash;
 }
 
 std::string format_candidate(const CandidateRow &candidate) {
@@ -205,6 +210,18 @@ uint32_t resolve_restored_last_seen_ms(
   return now_ms - stale_after_ms - 1U;
 }
 
+uint32_t unchanged_state_save_interval_ms(uint32_t stale_after_ms) {
+  return std::min(DEFAULT_UNCHANGED_STATE_SAVE_INTERVAL_MS, stale_after_ms);
+}
+
+bool should_persist_logical_state(
+    bool value_changed, uint32_t now_ms, uint32_t previous_save_ms, uint32_t interval_ms) {
+  if (value_changed || previous_save_ms == 0) {
+    return true;
+  }
+  return static_cast<uint32_t>(now_ms - previous_save_ms) >= interval_ms;
+}
+
 bool matches_mapping(const DecodedPacket &packet, const SensorMapping &mapping) {
   if (matches_key(packet, mapping.primary)) {
     return true;
@@ -225,6 +242,7 @@ bool GatewayState::set_mapping(const std::string &logical_key, const std::string
     return false;
   }
   mappings_[logical_key] = std::move(*parsed);
+  mapping_hashes_[logical_key] = sensor_mapping_hash(format_sensor_mapping(mappings_[logical_key]));
   logical_states_[logical_key] = LogicalSensorState{};
   return true;
 }
@@ -244,20 +262,17 @@ const LogicalSensorState *GatewayState::logical_sensor(const std::string &logica
   return &item->second;
 }
 
-bool GatewayState::mapping_matches(const std::string &logical_key, uint32_t fingerprint) const {
-  const auto current = this->mapping_fingerprint(logical_key);
-  return current.has_value() && *current == fingerprint;
-}
-
-std::optional<uint32_t> GatewayState::mapping_fingerprint(const std::string &logical_key) const {
-  const auto existing = mappings_.find(logical_key);
-  if (existing == mappings_.end()) {
+std::optional<uint32_t> GatewayState::mapping_hash(const std::string &logical_key) const {
+  const auto existing = mapping_hashes_.find(logical_key);
+  if (existing == mapping_hashes_.end()) {
     return {};
   }
-  return esphome::rtl433_native::mapping_fingerprint(existing->second);
+  return existing->second;
 }
 
 PacketResult GatewayState::process_packet(const DecodedPacket &packet) {
+  matched_logical_keys_.clear();
+  changed_logical_keys_.clear();
   if (packet.model.empty() || packet.id.empty()) {
     return PacketResult::REJECTED_INVALID;
   }
@@ -268,12 +283,17 @@ PacketResult GatewayState::process_packet(const DecodedPacket &packet) {
       continue;
     }
     auto &state = logical_states_[logical_key];
+    const bool value_changed = !state.has_value || !same_persisted_values(state, packet);
     state.has_value = true;
     state.temperature_f = packet.temperature_f;
     state.humidity = packet.humidity;
     state.battery = packet.battery;
     state.rssi = packet.rssi;
     state.last_seen_ms = packet.seen_ms;
+    matched_logical_keys_.push_back(logical_key);
+    if (value_changed) {
+      changed_logical_keys_.push_back(logical_key);
+    }
     matched = true;
   }
 
