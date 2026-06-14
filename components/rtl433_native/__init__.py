@@ -334,9 +334,7 @@ def _add_default_candidates(config: dict[str, Any]) -> dict[str, Any]:
 def _mapping_text_name(entry: dict[str, Any]) -> str:
     """Return the generated mapping text entity name for a known sensor."""
 
-    if CONF_NAME in entry:
-        return f"{entry[CONF_NAME]} Mapping"
-    return f"{entry[CONF_TEMPERATURE]['name']} Mapping"
+    return "Mapping"
 
 
 def _mapping_text_id_fragment(logical_key: str) -> str:
@@ -413,7 +411,7 @@ def _set_compact_sensor_name(entry: dict[str, Any], name: str) -> None:
     entry[CONF_NAME] = name
     for entity in entry.get(CONF_ENTITIES, []):
         if entity != ENTITY_MAPPING and entity in entry:
-            entry[entity][CONF_NAME] = f"{name} {_entity_title(entity)}"
+            entry[entity][CONF_NAME] = _entity_title(entity)
 
 
 def _entity_title(entity: str) -> str:
@@ -435,6 +433,16 @@ def _compact_entity_config(name: str, entity: str, device_id: Any | None) -> dic
     if entity in (CONF_RSSI, CONF_LAST_UPDATED):
         entity_config[CONF_DISABLED_BY_DEFAULT] = True
     return entity_config
+
+
+def _normalize_known_sensor_entity_names(entry: dict[str, Any]) -> dict[str, Any]:
+    """Remove device prefixes from known sensor entity names."""
+
+    for entity in KNOWN_SENSOR_ENTITIES:
+        if entity == ENTITY_MAPPING or entity not in entry:
+            continue
+        entry[entity][CONF_NAME] = _entity_title(entity)
+    return entry
 
 
 def _add_generated_component_count(extra_count: int) -> None:
@@ -561,12 +569,15 @@ COMPACT_SENSOR_ENTRY_SCHEMA = cv.All(
             cv.Required(CONF_ENTITIES): cv.ensure_list(cv.one_of(*KNOWN_SENSOR_ENTITIES)),
         }
     ),
+    _normalize_known_sensor_entity_names,
     _apply_known_sensor_device_id,
 )
 
 KNOWN_SENSOR_ENTRY_SCHEMA = cv.Any(
     COMPACT_SENSOR_ENTRY_SCHEMA,
-    cv.All(SENSOR_ENTRY_SCHEMA, _apply_known_sensor_device_id),
+    cv.All(
+        SENSOR_ENTRY_SCHEMA, _normalize_known_sensor_entity_names, _apply_known_sensor_device_id
+    ),
 )
 
 RADIO_SCHEMA = cv.Schema(
@@ -716,6 +727,8 @@ async def to_code(config: dict[str, Any]) -> None:
                 "disabled_by_default": False,
                 "mode": text.TextMode.TEXT_MODE_TEXT,
             }
+            if CONF_DEVICE_ID in entry:
+                mapping_text_config[CONF_DEVICE_ID] = entry[CONF_DEVICE_ID]
             CORE.component_ids.add(mapping_text_id.id)
             mapping_text = await text.new_text(
                 mapping_text_config,

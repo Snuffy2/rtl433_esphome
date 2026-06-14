@@ -38,6 +38,12 @@
 - By default, run the full pytest suite. If running targeted tests, explain why.
 - Use `./scripts/build` for ESPHome firmware builds. It runs config validation
   and compiles with `PLATFORMIO_BUILD_JOBS=1`.
+- Before running `./scripts/build`, verify that it will validate the code under
+  test. The default firmware profile may resolve `rtl433_native` from the
+  published external component ref instead of the uncommitted local working
+  tree; do not start the PlatformIO compile gate, especially when the known
+  `~/.platformio/platforms.lock` permission issue is likely, until the config
+  source points at the intended local component or branch.
 - Use `./scripts/build --preflight` when the generated PlatformIO platform cache
   may need repair before compiling.
 - Before OTA upload, run `./scripts/esphome-preflight` if Python, ESPHome, or

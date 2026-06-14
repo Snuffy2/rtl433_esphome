@@ -8,12 +8,14 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from esphome import config_validation as cv
+from esphome.components import sensor as esphome_sensor
 from esphome.const import (
     CONF_DEVICE_ID,
     CONF_DEVICES,
     CONF_DISABLED_BY_DEFAULT,
     CONF_ESPHOME,
     CONF_ID,
+    CONF_INTERNAL,
     CONF_NAME,
     CONF_OTA,
     CONF_PLATFORMIO_OPTIONS,
@@ -527,6 +529,29 @@ def _entity_name_and_category(config: dict[str, Any]) -> tuple[str, str]:
     return config["name"], config["entity_category"]
 
 
+def test_esphome_empty_and_omitted_entity_names_are_not_equivalent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Document why generated entities use data-point names, not empty names."""
+
+    monkeypatch.setattr(CORE, "friendly_name", "Gateway Fixture")
+
+    with pytest.raises(cv.Invalid, match="At least one"):
+        esphome_sensor.sensor_schema(device_class="temperature")({})
+    with pytest.raises(cv.Invalid, match="string value is None"):
+        esphome_sensor.sensor_schema(device_class="temperature")({CONF_NAME: None})
+
+    id_only_config = esphome_sensor.sensor_schema(device_class="temperature")(
+        {CONF_ID: "temperature_sensor"}
+    )
+    empty_name_config = esphome_sensor.sensor_schema(device_class="temperature")({CONF_NAME: ""})
+
+    assert id_only_config[CONF_NAME] == "temperature_sensor"
+    assert id_only_config[CONF_INTERNAL] is True
+    assert empty_name_config[CONF_NAME] == ""
+    assert CONF_INTERNAL not in empty_name_config
+
+
 def install_project_version_fixture(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, pyproject_text: str
 ) -> None:
@@ -853,7 +878,7 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         {"name": "candidate_1"},
         {"name": "last_packet"},
     ]
-    assert [text_config["name"] for text_config in fake_env.text.created] == ["temperature Mapping"]
+    assert [text_config["name"] for text_config in fake_env.text.created] == ["Mapping"]
     assert fake_env.text.texts[0].calls == [
         ("set_parent", (fake_env.gateway,)),
         ("set_logical_key", ("garage_freezer_1",)),
@@ -922,7 +947,7 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
     assert fake_env.sensor.created == [{"name": "temperature"}]
     assert fake_env.binary_sensor.created == []
     assert fake_env.text_sensor.created == []
-    assert [text_config["name"] for text_config in fake_env.text.created] == ["temperature Mapping"]
+    assert [text_config["name"] for text_config in fake_env.text.created] == ["Mapping"]
     assert fake_env.text.texts[0].calls == [
         ("set_parent", (fake_env.gateway,)),
         ("set_logical_key", ("garage_freezer_1",)),
@@ -1013,6 +1038,7 @@ async def test_to_code_sanitizes_generated_mapping_text_id_only(
 
     mapping_text_id = fake_env.text.created[0][CONF_ID]
     assert getattr(mapping_text_id, "id") == "garage_freezer_1_mapping"
+    assert fake_env.text.created[0][CONF_NAME] == "Mapping"
     assert fake_env.text.texts[0].calls == [
         ("set_parent", (fake_env.gateway,)),
         ("set_logical_key", ("garage-freezer-1",)),
@@ -1020,7 +1046,7 @@ async def test_to_code_sanitizes_generated_mapping_text_id_only(
     ]
     expected_gateway_calls = [
         ("add_mapping", ("garage-freezer-1", "Acurite-986/1R/11932")),
-        ("set_temperature_sensor", ("garage-freezer-1", "sensor:Garage Freezer Temperature")),
+        ("set_temperature_sensor", ("garage-freezer-1", "sensor:Temperature")),
     ]
     for call in expected_gateway_calls:
         assert call in fake_env.gateway.calls
@@ -1288,7 +1314,7 @@ async def test_to_code_uses_configured_radio_module(monkeypatch: pytest.MonkeyPa
 
 
 def test_config_schema_expands_compact_known_sensor_entities() -> None:
-    """Expand compact known sensor entries into generated entity configs."""
+    """Expand compact known sensors without prefixing entity names."""
 
     config = CONFIG_SCHEMA(
         {
@@ -1317,12 +1343,12 @@ def test_config_schema_expands_compact_known_sensor_entities() -> None:
 
     entry = config[CONF_KNOWN_SENSORS][0]
 
-    assert entry[CONF_TEMPERATURE]["name"] == "Garage Combo Fridge Temperature"
-    assert entry[CONF_HUMIDITY]["name"] == "Garage Combo Fridge Humidity"
-    assert entry[CONF_BATTERY]["name"] == "Garage Combo Fridge Battery"
-    assert entry[CONF_RSSI]["name"] == "Garage Combo Fridge RSSI"
-    assert entry[CONF_STALE]["name"] == "Garage Combo Fridge Stale"
-    assert entry[CONF_LAST_UPDATED]["name"] == "Garage Combo Fridge Last Updated"
+    assert entry[CONF_TEMPERATURE]["name"] == "Temperature"
+    assert entry[CONF_HUMIDITY]["name"] == "Humidity"
+    assert entry[CONF_BATTERY]["name"] == "Battery"
+    assert entry[CONF_RSSI]["name"] == "RSSI"
+    assert entry[CONF_STALE]["name"] == "Stale"
+    assert entry[CONF_LAST_UPDATED]["name"] == "Last Updated"
     assert "entity_category" not in entry[CONF_HUMIDITY]
     assert entry[CONF_BATTERY]["entity_category"] == "diagnostic"
     assert entry[CONF_RSSI]["entity_category"] == "diagnostic"
@@ -1418,7 +1444,7 @@ def test_config_schema_uses_explicit_known_sensor_device_id() -> None:
 def test_config_schema_uses_device_name_when_compact_name_omitted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Use the linked ESPHome device name when compact known sensor name is omitted."""
+    """Use linked device names only for the device, not the entity name."""
 
     monkeypatch.setattr(
         CORE,
@@ -1463,15 +1489,15 @@ def test_config_schema_uses_device_name_when_compact_name_omitted(
     entry = config[CONF_KNOWN_SENSORS][0]
 
     assert entry["name"] == "Device Name Fixture Fridge"
-    assert entry[CONF_TEMPERATURE]["name"] == "Device Name Fixture Fridge Temperature"
-    assert entry[CONF_HUMIDITY]["name"] == "Device Name Fixture Fridge Humidity"
-    assert entry[CONF_BATTERY]["name"] == "Device Name Fixture Fridge Battery"
+    assert entry[CONF_TEMPERATURE]["name"] == "Temperature"
+    assert entry[CONF_HUMIDITY]["name"] == "Humidity"
+    assert entry[CONF_BATTERY]["name"] == "Battery"
 
 
 def test_config_schema_preserves_explicit_compact_name_matching_device_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Preserve explicit compact names that match the linked device ID."""
+    """Preserve compact device names without copying them to entity names."""
 
     monkeypatch.setattr(
         CORE,
@@ -1509,11 +1535,11 @@ def test_config_schema_preserves_explicit_compact_name_matching_device_id(
     entry = config[CONF_KNOWN_SENSORS][0]
 
     assert entry["name"] == "combo_fridge_device"
-    assert entry[CONF_TEMPERATURE]["name"] == "combo_fridge_device Temperature"
+    assert entry[CONF_TEMPERATURE]["name"] == "Temperature"
 
 
 def test_final_validation_uses_runtime_config_to_resolve_compact_device_name() -> None:
-    """Use ESPHome final-validation config to resolve omitted compact names."""
+    """Resolve omitted compact names without copying them to entity names."""
 
     config = CONFIG_SCHEMA(
         {
@@ -1549,7 +1575,7 @@ def test_final_validation_uses_runtime_config_to_resolve_compact_device_name() -
     entry = config[CONF_KNOWN_SENSORS][0]
 
     assert entry["name"] == "Runtime Device Fridge"
-    assert entry[CONF_TEMPERATURE]["name"] == "Runtime Device Fridge Temperature"
+    assert entry[CONF_TEMPERATURE]["name"] == "Temperature"
 
 
 def test_final_validation_rejects_unresolved_compact_device_name() -> None:
@@ -1645,7 +1671,7 @@ async def test_compact_known_sensor_mapping_entity_is_optional(
         ("set_stale_after_ms", (60_000,)),
         ("set_led_pin", (25,)),
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
-        ("set_temperature_sensor", ("garage_freezer_1", "sensor:Garage Freezer 1 Temperature")),
+        ("set_temperature_sensor", ("garage_freezer_1", "sensor:Temperature")),
     ]
     for call in expected_calls:
         assert call in fake_env.gateway.calls
@@ -1654,7 +1680,7 @@ async def test_compact_known_sensor_mapping_entity_is_optional(
 async def test_compact_known_sensor_mapping_entity_uses_base_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Name compact mapping text entities from the base known sensor name."""
+    """Name compact mapping text entities from their data point."""
 
     config = CONFIG_SCHEMA(
         {
@@ -1674,16 +1700,14 @@ async def test_compact_known_sensor_mapping_entity_uses_base_name(
 
     await to_code(config)
 
-    assert [text_config["name"] for text_config in fake_env.text.created] == [
-        "Garage Mapping Fixture Mapping"
-    ]
+    assert [text_config["name"] for text_config in fake_env.text.created] == ["Mapping"]
     assert CONF_DEVICE_ID not in fake_env.text.created[0]
 
 
 async def test_compact_known_sensor_entities_keep_mapping_text_on_gateway(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Generate known sensor entities on a sub-device while mapping text stays on gateway."""
+    """Generate all known sensor entities on the linked sub-device."""
 
     config = CONFIG_SCHEMA(
         {
@@ -1710,7 +1734,7 @@ async def test_compact_known_sensor_entities_keep_mapping_text_on_gateway(
     created_entity_configs = fake_env.sensor.created[:3] + fake_env.binary_sensor.created[:2]
     for entity_config in created_entity_configs:
         assert entity_config[CONF_DEVICE_ID].id == "garage_freezer_1_device"
-    assert CONF_DEVICE_ID not in fake_env.text.created[0]
+    assert fake_env.text.created[0][CONF_DEVICE_ID].id == "garage_freezer_1_device"
 
 
 async def test_action_to_code_registers_parented_action(monkeypatch: pytest.MonkeyPatch) -> None:
