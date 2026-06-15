@@ -22,7 +22,9 @@ See [YAML Configuration](#yaml_configuration) below for details on the options.
    For each sensor, choose:
    - `key`: a stable YAML key, such as `garage_fridge`.
    - `device_id`: the matching ID from `esphome.devices`.
-   - `mapping`: the `model/channel/id` key for the physical transmitter.
+   - `mapping`: the `model/channel/id` key for the physical transmitter. If
+     you do not know it yet, leave this top-level value out and add `mapping`
+     under `entities` instead.
    - `entities`: the readings you want Home Assistant to create.
 7. Keep the Home Assistant time source in the YAML:
 
@@ -38,7 +40,9 @@ See [YAML Configuration](#yaml_configuration) below for details on the options.
    The custom component requires `time_id` for restored stale-state aging and last-updated timestamps.
 
 8. In the ESPHome dashboard, choose the device and select **Install**.
-9. After the device is online in Home Assistant, use discovery mode to find each sensor's `model/channel/id` key, then paste that key into the matching mapping entity.
+9. After the device is online in Home Assistant, turn on Discovery Mode, find
+   each sensor's `model/channel/id` key, and paste that key into the matching
+   mapping text entity.
 
 ## Discovery Workflow
 
@@ -117,11 +121,13 @@ rtl433_native:
 - `device_id` assigns generated entities to a per-sensor ESPHome sub-device.
 - Use `device_id` when configuring more than one known sensor; without it, generated entities stay on the main ESPHome device and duplicate data-point names are rejected.
 - `mapping` is optional. Omit it when the `model/channel/id` key is not known yet.
-- Adding `mapping` to `entities` creates a gateway-local Home Assistant text entity named from the known sensor, such as `Garage Fridge Mapping`.
-- If the top-level `mapping` value is omitted, the sensor must list `mapping` under `entities` so the discovered key can be entered later.
-- Mapping text entities can start blank; use Discovery Mode to find a key and paste it into the text entity.
+- Adding `mapping` to `entities` creates a gateway-local Home Assistant text
+  entity named from the known sensor, such as `Garage Fridge Mapping`.
+- If the top-level `mapping` value is omitted, include `mapping` under
+  `entities` so the text entity exists for Discovery Mode to fill in later.
+- Mapping text entities can start blank and persist across reboots and OTA
+  updates.
 - `temperature` is optional. List only the entity types you want, such as `humidity` and `mapping` for a humidity-only sensor.
-- Mapping text values persist across reboots and OTA updates.
 - RSSI and last-updated entities are disabled by default.
 - Mapping text entities stay on the main ESPHome device even when `device_id` is set.
 - `time_id` is required so restored stale-state aging and last-updated timestamps use a real wall-clock source.
