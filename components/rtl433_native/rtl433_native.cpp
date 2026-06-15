@@ -122,8 +122,7 @@ void Gateway::set_discovery_enabled(bool enabled) {
   this->state_.set_discovery_enabled(enabled);
 }
 
-void Gateway::add_mapping(const std::string &logical_key, const std::string &mapping) {
-  this->state_.set_mapping(logical_key, mapping);
+void Gateway::register_logical_key(const std::string &logical_key) {
   this->entities_.try_emplace(logical_key);
   if (std::find(this->logical_keys_.begin(), this->logical_keys_.end(), logical_key) ==
       this->logical_keys_.end()) {
@@ -131,8 +130,13 @@ void Gateway::add_mapping(const std::string &logical_key, const std::string &map
   }
 }
 
+void Gateway::add_mapping(const std::string &logical_key, const std::string &mapping) {
+  this->register_logical_key(logical_key);
+  this->state_.set_mapping(logical_key, mapping);
+}
+
 void Gateway::set_override(const std::string &logical_key, const std::string &sensor_key) {
-  this->entities_.try_emplace(logical_key);
+  this->register_logical_key(logical_key);
   const bool mapping_changed = this->state_.set_mapping(logical_key, sensor_key);
   if (mapping_changed) {
     this->pending_clock_age_restore_.erase(logical_key);
@@ -553,7 +557,7 @@ void MappingText::setup() {
       mapping_preference_key(this->logical_key_), true);
 
   SavedMappingText saved;
-  if (this->preference_.load(&saved) && saved.has_value && saved.value[0] != '\0') {
+  if (this->preference_.load(&saved) && saved.has_value) {
     this->apply_value(saved.value, false);
     return;
   }

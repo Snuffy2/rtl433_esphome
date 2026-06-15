@@ -767,6 +767,7 @@ async def to_code(config: dict[str, Any]) -> None:
 
     generated_component_count = 0
     for entry in config[CONF_KNOWN_SENSORS]:
+        cg.add(var.register_logical_key(entry[CONF_KEY]))
         if CONF_MAPPING in entry:
             cg.add(
                 var.add_mapping(

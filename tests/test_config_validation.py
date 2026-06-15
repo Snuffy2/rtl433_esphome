@@ -106,6 +106,7 @@ EXPECTED_LIBRARY_NAMES = ["rtl_433_ESP", "RadioLib", "Networking", "SPI", "EEPRO
 GENERATED_GATEWAY_METHODS = frozenset(
     {
         "add_mapping",
+        "register_logical_key",
         "set_battery_sensor",
         "set_candidate_limit",
         "set_candidate_text_sensor",
@@ -907,6 +908,7 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         ("set_stale_after_ms", (3_600_000,)),
         ("set_led_pin", (25,)),
         ("set_time", ("time:clock",)),
+        ("register_logical_key", ("garage_freezer_1",)),
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
         ("set_temperature_sensor", ("garage_freezer_1", "sensor:Temperature")),
         ("set_humidity_sensor", ("garage_freezer_1", "sensor:Humidity")),
@@ -987,6 +989,7 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
         ("set_stale_after_ms", (60_000,)),
         ("set_led_pin", (25,)),
         ("set_time", ("time:clock",)),
+        ("register_logical_key", ("garage_freezer_1",)),
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
         ("set_temperature_sensor", ("garage_freezer_1", "sensor:Temperature")),
         ("set_last_packet_sensor", ("text:Required Entity Fixture Last Packet",)),
@@ -1772,6 +1775,7 @@ async def test_known_sensor_mapping_entity_is_optional(
         ("set_candidate_limit", (1,)),
         ("set_stale_after_ms", (60_000,)),
         ("set_led_pin", (25,)),
+        ("register_logical_key", ("garage_freezer_1",)),
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
         ("set_temperature_sensor", ("garage_freezer_1", "sensor:Temperature")),
     ]
@@ -1815,6 +1819,7 @@ async def test_to_code_wires_humidity_only_sensor_with_empty_mapping_text(
         ("set_logical_key", ("garage_freezer_1",)),
         ("set_initial_value", ("",)),
     ]
+    assert ("register_logical_key", ("garage_freezer_1",)) in fake_env.gateway.calls
     assert ("add_mapping", ("garage_freezer_1", "")) not in fake_env.gateway.calls
     assert ("set_temperature_sensor", ("garage_freezer_1", "sensor:Temperature")) not in (
         fake_env.gateway.calls

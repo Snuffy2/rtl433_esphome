@@ -91,6 +91,7 @@ class Gateway : public Component
   void set_discovery_enabled(bool enabled);
   void set_led_pin(uint8_t led_pin) { this->led_pin_ = led_pin; }
   void set_version(const std::string &version) { this->version_ = version; }
+  void register_logical_key(const std::string &logical_key);
   void add_mapping(const std::string &logical_key, const std::string &mapping);
   void set_override(const std::string &logical_key, const std::string &sensor_key);
   void set_candidate_limit(std::size_t limit);
