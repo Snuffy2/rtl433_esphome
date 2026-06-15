@@ -232,6 +232,12 @@ bool matches_mapping(const DecodedPacket &packet, const SensorMapping &mapping) 
 }
 
 bool GatewayState::set_mapping(const std::string &logical_key, const std::string &mapping_value) {
+  if (trim_ascii_whitespace(mapping_value).empty()) {
+    const bool had_mapping = mappings_.erase(logical_key) > 0;
+    const bool had_hash = mapping_hashes_.erase(logical_key) > 0;
+    logical_states_[logical_key] = LogicalSensorState{};
+    return had_mapping || had_hash;
+  }
   auto parsed = parse_sensor_mapping(mapping_value);
   if (!parsed.has_value()) {
     ESP_LOGW(TAG, "Ignoring invalid mapping for '%s': '%s'", logical_key.c_str(), mapping_value.c_str());

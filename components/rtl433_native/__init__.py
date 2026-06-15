@@ -92,7 +92,7 @@ UINT32_MAX_MILLISECONDS = 4_294_967_295
 ESP32_GPIO_MAX = 39
 ESP32_OUTPUT_GPIO_MAX = 33
 MAPPING_TEXT_MAX_LENGTH = 240
-MAPPING_TEXT_MIN_LENGTH = 3
+MAPPING_TEXT_MIN_LENGTH = 0
 ESP32_FLASH_GPIO_RANGE = range(6, 12)
 ARDUINO_NETWORK_INCLUDE_FLAG = (
     '-I"${platformio.packages_dir}/framework-arduinoespressif32/libraries/Network/src"'
@@ -276,15 +276,13 @@ def _validate_gateway_entity_names(value: list[dict[str, Any]]) -> list[dict[str
 
 
 def _validate_known_sensor_entities(value: list[str]) -> list[str]:
-    """Ensure known sensor entity names are unique and include temperature."""
+    """Ensure known sensor entity names are unique."""
 
     seen: set[str] = set()
     for entity in value:
         if entity in seen:
             raise cv.Invalid(f"Duplicate known sensor entity '{entity}'")
         seen.add(entity)
-    if CONF_TEMPERATURE not in seen:
-        raise cv.Invalid("Known sensor entries must include temperature")
     return value
 
 
@@ -312,7 +310,11 @@ def _validate_mapping_text_lengths(value: list[dict[str, Any]]) -> list[dict[str
     """Ensure generated mapping text values fit the runtime text storage."""
 
     for entry in value:
-        if _entry_has_mapping_text(entry) and len(entry[CONF_MAPPING]) > MAPPING_TEXT_MAX_LENGTH:
+        if (
+            _entry_has_mapping_text(entry)
+            and CONF_MAPPING in entry
+            and len(entry[CONF_MAPPING]) > MAPPING_TEXT_MAX_LENGTH
+        ):
             raise cv.Invalid(
                 f"Mapping string exceeds {MAPPING_TEXT_MAX_LENGTH} characters: "
                 f"{entry[CONF_MAPPING]}"
@@ -379,7 +381,9 @@ def _mapping_text_name(entry: dict[str, Any]) -> str:
 
     if CONF_NAME in entry:
         return f"{entry[CONF_NAME]} Mapping"
-    return f"{entry[CONF_TEMPERATURE][CONF_NAME]} Mapping"
+    if CONF_TEMPERATURE in entry:
+        return f"{entry[CONF_TEMPERATURE][CONF_NAME]} Mapping"
+    return f"{entry[CONF_KEY]} Mapping"
 
 
 def _mapping_text_id_fragment(logical_key: str) -> str:
@@ -576,8 +580,8 @@ SENSOR_ENTRY_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_KEY): KEY_SCHEMA,
         cv.Optional(CONF_DEVICE_ID): cv.sub_device_id,
-        cv.Required(CONF_MAPPING): _validate_mapping,
-        cv.Required(CONF_TEMPERATURE): sensor.sensor_schema(
+        cv.Optional(CONF_MAPPING): _validate_mapping,
+        cv.Optional(CONF_TEMPERATURE): sensor.sensor_schema(
             unit_of_measurement="°F",
             accuracy_decimals=2,
             device_class="temperature",
@@ -610,7 +614,7 @@ KNOWN_SENSOR_ENTRY_SCHEMA = cv.All(
             cv.Required(CONF_KEY): KEY_SCHEMA,
             cv.Optional(CONF_NAME): cv.string_strict,
             cv.Optional(CONF_DEVICE_ID): cv.sub_device_id,
-            cv.Required(CONF_MAPPING): _validate_mapping,
+            cv.Optional(CONF_MAPPING): _validate_mapping,
             cv.Required(CONF_ENTITIES): cv.All(
                 cv.ensure_list(cv.one_of(*KNOWN_SENSOR_ENTITIES, lower=True)),
                 _validate_known_sensor_entities,
@@ -763,12 +767,13 @@ async def to_code(config: dict[str, Any]) -> None:
 
     generated_component_count = 0
     for entry in config[CONF_KNOWN_SENSORS]:
-        cg.add(
-            var.add_mapping(
-                entry[CONF_KEY],
-                entry[CONF_MAPPING],
+        if CONF_MAPPING in entry:
+            cg.add(
+                var.add_mapping(
+                    entry[CONF_KEY],
+                    entry[CONF_MAPPING],
+                )
             )
-        )
         if _entry_has_mapping_text(entry):
             mapping_text_id = ID(_mapping_text_id(entry), is_declaration=True, type=MappingText)
             mapping_text_config = {
@@ -788,9 +793,10 @@ async def to_code(config: dict[str, Any]) -> None:
             generated_component_count += 1
             cg.add(mapping_text.set_parent(var))
             cg.add(mapping_text.set_logical_key(entry[CONF_KEY]))
-            cg.add(mapping_text.set_initial_value(entry[CONF_MAPPING]))
-        temperature = await sensor.new_sensor(entry[CONF_TEMPERATURE])
-        cg.add(var.set_temperature_sensor(entry[CONF_KEY], temperature))
+            cg.add(mapping_text.set_initial_value(entry.get(CONF_MAPPING, "")))
+        if CONF_TEMPERATURE in entry:
+            temperature = await sensor.new_sensor(entry[CONF_TEMPERATURE])
+            cg.add(var.set_temperature_sensor(entry[CONF_KEY], temperature))
         if CONF_HUMIDITY in entry:
             humidity = await sensor.new_sensor(entry[CONF_HUMIDITY])
             cg.add(var.set_humidity_sensor(entry[CONF_KEY], humidity))

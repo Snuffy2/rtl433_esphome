@@ -569,6 +569,20 @@ void MappingText::dump_config() {
 void MappingText::control(const std::string &value) { this->apply_value(value, true); }
 
 void MappingText::apply_value(const std::string &value, bool save) {
+  if (value.empty()) {
+    this->publish_state(value);
+    if (this->parent_ != nullptr) {
+      this->parent_->set_override(this->logical_key_, value);
+    }
+    if (save) {
+      SavedMappingText saved;
+      saved.has_value = true;
+      saved.value[0] = '\0';
+      this->preference_.save(&saved);
+    }
+    return;
+  }
+
   if (!parse_sensor_mapping(value).has_value()) {
     ESP_LOGW(TAG, "Rejected invalid mapping text for '%s': %s", this->logical_key_.c_str(), value.c_str());
     return;

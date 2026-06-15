@@ -553,6 +553,21 @@ void test_mapping_override_replaces_default_key() {
           "new mapping should match");
 }
 
+void test_empty_mapping_clears_active_mapping() {
+  rtl433::GatewayState state;
+  state.set_mapping("garage_freezer_1", "Acurite-986/1R/11932");
+
+  rtl433::DecodedPacket packet = packet_for_key("Acurite-986", "1R", "11932", 1000);
+  packet.temperature_f = 75.0f;
+  require(state.process_packet(packet) == rtl433::PacketResult::MATCHED_KNOWN,
+          "configured mapping should match before clearing");
+
+  require(state.set_mapping("garage_freezer_1", ""), "empty mapping should clear the active mapping");
+  require(!state.mapping_hash("garage_freezer_1").has_value(), "cleared mapping should remove the cached hash");
+  require(state.process_packet(packet) == rtl433::PacketResult::IGNORED_UNKNOWN,
+          "cleared mapping should not match old packets");
+}
+
 void test_stale_detection_uses_last_seen() {
   rtl433::GatewayState state;
   state.set_stale_after_ms(600000);
@@ -721,6 +736,7 @@ int main() {
   test_candidates_are_grouped_capped_and_clearable();
   test_duplicate_mappings_record_matched_candidate_once();
   test_mapping_override_replaces_default_key();
+  test_empty_mapping_clears_active_mapping();
   test_stale_detection_uses_last_seen();
   test_stale_detection_wraps_with_uint32_delta();
   test_candidate_order_is_deterministic_for_equal_seen_time();
