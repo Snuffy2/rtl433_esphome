@@ -322,6 +322,17 @@ def _validate_mapping_text_lengths(value: list[dict[str, Any]]) -> list[dict[str
     return value
 
 
+def _validate_known_sensor_binding_paths(value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ensure every known sensor can be bound to a discovered packet key."""
+
+    for entry in value:
+        if CONF_MAPPING not in entry and not _entry_has_mapping_text(entry):
+            raise cv.Invalid(
+                f"Known sensor '{entry[CONF_KEY]}' requires mapping or a mapping entity"
+            )
+    return value
+
+
 def _validate_stale_after(value: Any) -> Any:
     """Validate stale duration fits the C++ millisecond storage type."""
 
@@ -650,6 +661,7 @@ CONFIG_SCHEMA = cv.All(
                 cv.ensure_list(KNOWN_SENSOR_ENTRY_SCHEMA),
                 cv.Length(min=1),
                 _validate_known_sensor_keys,
+                _validate_known_sensor_binding_paths,
                 _validate_mapping_text_ids,
                 _validate_gateway_entity_names,
                 _validate_mapping_text_lengths,

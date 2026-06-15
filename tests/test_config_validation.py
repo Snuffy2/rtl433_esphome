@@ -1447,6 +1447,27 @@ def test_config_schema_accepts_humidity_only_sensor_without_mapping() -> None:
     assert entry[CONF_HUMIDITY]["name"] == "Humidity"
 
 
+def test_config_schema_rejects_unbound_sensor_without_mapping_text() -> None:
+    """Reject sensors that omit both a static mapping and runtime mapping text."""
+
+    with pytest.raises(cv.Invalid, match="requires mapping or a mapping entity"):
+        CONFIG_SCHEMA(
+            {
+                CONF_ID: "gateway_id",
+                **REQUIRED_TIME_CONFIG,
+                **gateway_diagnostic_overrides("Unbound Humidity Fixture"),
+                **gateway_control_overrides("Unbound Humidity Fixture"),
+                CONF_KNOWN_SENSORS: [
+                    known_sensor_config(
+                        "Unbound Humidity Fixture Sensor",
+                        ["humidity"],
+                        mapping=None,
+                    )
+                ],
+            }
+        )
+
+
 def test_config_schema_rejects_duplicate_gateway_mapping_names() -> None:
     """Reject mapping text names that collide on the gateway device."""
 

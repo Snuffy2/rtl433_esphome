@@ -50,6 +50,13 @@ uint32_t saved_state_mapping_preference_key(const std::string &logical_key) {
   return preference_key("state_mapping:" + logical_key) ^ 0x5147B433UL;
 }
 
+bool is_blank_mapping_text(const std::string &value) {
+  return std::all_of(value.begin(), value.end(), [](char item) {
+    return item == ' ' || item == '\t' || item == '\n' || item == '\r' || item == '\f' ||
+           item == '\v';
+  });
+}
+
 }  // namespace
 
 Gateway *Gateway::instance_ = nullptr;
@@ -573,10 +580,10 @@ void MappingText::dump_config() {
 void MappingText::control(const std::string &value) { this->apply_value(value, true); }
 
 void MappingText::apply_value(const std::string &value, bool save) {
-  if (value.empty()) {
-    this->publish_state(value);
+  if (is_blank_mapping_text(value)) {
+    this->publish_state("");
     if (this->parent_ != nullptr) {
-      this->parent_->set_override(this->logical_key_, value);
+      this->parent_->set_override(this->logical_key_, "");
     }
     if (save) {
       SavedMappingText saved;

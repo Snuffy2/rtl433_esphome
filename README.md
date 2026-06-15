@@ -60,6 +60,7 @@ rtl433_native:
 - Use `device_id` when configuring more than one known sensor; without it, generated entities stay on the main ESPHome device and duplicate data-point names are rejected.
 - `mapping` is optional. Omit it when the `model/channel/id` key is not known yet.
 - Adding `mapping` to `entities` creates a gateway-local Home Assistant text entity named from the known sensor, such as `Garage Fridge Mapping`.
+- If the top-level `mapping` value is omitted, the sensor must list `mapping` under `entities` so the discovered key can be entered later.
 - Mapping text entities can start blank; use Discovery Mode to find a key and paste it into the text entity.
 - `temperature` is optional. List only the entity types you want, such as `humidity` and `mapping` for a humidity-only sensor.
 - Mapping text values persist across reboots and OTA updates.
