@@ -8,7 +8,7 @@ Start from the included `rtl433-esphome-heltec-lora-32-v2.yaml` file. It is the 
 
 Firmware binaries are not published because the YAML contains deployment-specific device names, Home Assistant names, and sensor mappings. Review those values before installing it on your own device.
 
-See [YAML Configuration](#yaml_configuration) below for details on the options.
+See [YAML Configuration](#yaml-configuration) below for details on the options.
 
 1. Copy `rtl433-esphome-heltec-lora-32-v2.yaml` into your ESPHome project or import it into the ESPHome dashboard.
 2. Update the top-level substitutions:
