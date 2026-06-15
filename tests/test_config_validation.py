@@ -106,6 +106,7 @@ EXPECTED_LIBRARY_NAMES = ["rtl_433_ESP", "RadioLib", "Networking", "SPI", "EEPRO
 GENERATED_GATEWAY_METHODS = frozenset(
     {
         "add_mapping",
+        "register_logical_key",
         "set_battery_sensor",
         "set_candidate_limit",
         "set_candidate_text_sensor",
@@ -479,15 +480,17 @@ def known_sensor_config(
     entities: list[str],
     key: str = "garage_freezer_1",
     device_id: str | None = None,
+    mapping: str | None = "Acurite-986/1R/11932",
 ) -> dict[str, Any]:
     """Return a known sensor test config."""
 
     config = {
         CONF_KEY: key,
         "name": name,
-        CONF_MAPPING: "Acurite-986/1R/11932",
         CONF_ENTITIES: entities,
     }
+    if mapping is not None:
+        config[CONF_MAPPING] = mapping
     if device_id is not None:
         config[CONF_DEVICE_ID] = device_id
     return config
@@ -905,6 +908,7 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         ("set_stale_after_ms", (3_600_000,)),
         ("set_led_pin", (25,)),
         ("set_time", ("time:clock",)),
+        ("register_logical_key", ("garage_freezer_1",)),
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
         ("set_temperature_sensor", ("garage_freezer_1", "sensor:Temperature")),
         ("set_humidity_sensor", ("garage_freezer_1", "sensor:Humidity")),
@@ -985,6 +989,7 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
         ("set_stale_after_ms", (60_000,)),
         ("set_led_pin", (25,)),
         ("set_time", ("time:clock",)),
+        ("register_logical_key", ("garage_freezer_1",)),
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
         ("set_temperature_sensor", ("garage_freezer_1", "sensor:Temperature")),
         ("set_last_packet_sensor", ("text:Required Entity Fixture Last Packet",)),
@@ -1416,6 +1421,53 @@ def test_config_schema_leaves_name_only_known_sensor_entities_on_gateway() -> No
         assert CONF_DEVICE_ID not in entry[entity]
 
 
+def test_config_schema_accepts_humidity_only_sensor_without_mapping() -> None:
+    """Allow initial installs to define humidity-only sensors before discovery mapping."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
+            **gateway_diagnostic_overrides("Humidity Only Fixture"),
+            **gateway_control_overrides("Humidity Only Fixture"),
+            CONF_KNOWN_SENSORS: [
+                known_sensor_config(
+                    "Humidity Only Fixture Sensor",
+                    ["humidity", "mapping"],
+                    mapping=None,
+                )
+            ],
+        }
+    )
+
+    entry = config[CONF_KNOWN_SENSORS][0]
+
+    assert CONF_MAPPING not in entry
+    assert CONF_TEMPERATURE not in entry
+    assert entry[CONF_HUMIDITY]["name"] == "Humidity"
+
+
+def test_config_schema_rejects_unbound_sensor_without_mapping_text() -> None:
+    """Reject sensors that omit both a static mapping and runtime mapping text."""
+
+    with pytest.raises(cv.Invalid, match="requires mapping or a mapping entity"):
+        CONFIG_SCHEMA(
+            {
+                CONF_ID: "gateway_id",
+                **REQUIRED_TIME_CONFIG,
+                **gateway_diagnostic_overrides("Unbound Humidity Fixture"),
+                **gateway_control_overrides("Unbound Humidity Fixture"),
+                CONF_KNOWN_SENSORS: [
+                    known_sensor_config(
+                        "Unbound Humidity Fixture Sensor",
+                        ["humidity"],
+                        mapping=None,
+                    )
+                ],
+            }
+        )
+
+
 def test_config_schema_rejects_duplicate_gateway_mapping_names() -> None:
     """Reject mapping text names that collide on the gateway device."""
 
@@ -1744,11 +1796,58 @@ async def test_known_sensor_mapping_entity_is_optional(
         ("set_candidate_limit", (1,)),
         ("set_stale_after_ms", (60_000,)),
         ("set_led_pin", (25,)),
+        ("register_logical_key", ("garage_freezer_1",)),
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
         ("set_temperature_sensor", ("garage_freezer_1", "sensor:Temperature")),
     ]
     for call in expected_calls:
         assert call in fake_env.gateway.calls
+
+
+async def test_to_code_wires_humidity_only_sensor_with_empty_mapping_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Generate humidity-only sensors and blank mapping text before discovery."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
+            CONF_CANDIDATE_LIMIT: 1,
+            CONF_CANDIDATES: [],
+            CONF_STALE_AFTER: "1min",
+            **gateway_diagnostic_overrides("Humidity Discovery Fixture"),
+            **gateway_control_overrides("Humidity Discovery Fixture"),
+            CONF_KNOWN_SENSORS: [
+                known_sensor_config(
+                    "Humidity Discovery Fixture",
+                    ["humidity", "mapping"],
+                    mapping=None,
+                )
+            ],
+        }
+    )
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
+
+    await to_code(config)
+
+    assert fake_env.sensor.created[0]["name"] == "Humidity"
+    assert [text_config["name"] for text_config in fake_env.text.created] == [
+        "Humidity Discovery Fixture Mapping"
+    ]
+    assert fake_env.text.texts[0].calls == [
+        ("set_parent", (fake_env.gateway,)),
+        ("set_logical_key", ("garage_freezer_1",)),
+        ("set_initial_value", ("",)),
+    ]
+    assert ("register_logical_key", ("garage_freezer_1",)) in fake_env.gateway.calls
+    assert ("add_mapping", ("garage_freezer_1", "")) not in fake_env.gateway.calls
+    assert ("set_temperature_sensor", ("garage_freezer_1", "sensor:Temperature")) not in (
+        fake_env.gateway.calls
+    )
+    assert ("set_humidity_sensor", ("garage_freezer_1", "sensor:Humidity")) in (
+        fake_env.gateway.calls
+    )
 
 
 async def test_known_sensor_mapping_entity_uses_base_name(

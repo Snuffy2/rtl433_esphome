@@ -44,9 +44,7 @@ rtl433_native:
   known_sensors:
     - key: garage_fridge
       device_id: garage_fridge_device
-      mapping: "LaCrosse-TX141THBv2/0/203;TFA-303221/1/203"
       entities:
-        - temperature
         - humidity
         - battery
         - rssi
@@ -60,7 +58,11 @@ rtl433_native:
 - Generated known-sensor entity names are data-point names only, such as `Temperature`. Home Assistant combines them with the linked device name for display and entity IDs.
 - `device_id` assigns generated entities to a per-sensor ESPHome sub-device.
 - Use `device_id` when configuring more than one known sensor; without it, generated entities stay on the main ESPHome device and duplicate data-point names are rejected.
-- `mapping` adds a gateway-local Home Assistant text entity named from the known sensor, such as `Garage Fridge Mapping`.
+- `mapping` is optional. Omit it when the `model/channel/id` key is not known yet.
+- Adding `mapping` to `entities` creates a gateway-local Home Assistant text entity named from the known sensor, such as `Garage Fridge Mapping`.
+- If the top-level `mapping` value is omitted, the sensor must list `mapping` under `entities` so the discovered key can be entered later.
+- Mapping text entities can start blank; use Discovery Mode to find a key and paste it into the text entity.
+- `temperature` is optional. List only the entity types you want, such as `humidity` and `mapping` for a humidity-only sensor.
 - Mapping text values persist across reboots and OTA updates.
 - RSSI and last-updated entities are disabled by default.
 - Mapping text entities stay on the main ESPHome device even when `device_id` is set.
@@ -189,7 +191,7 @@ The names below use the default Heltec profile `friendly_name`.
 4. Watch `rtl433_esphome heltec_lora_32_v2 Candidate 1` through `rtl433_esphome heltec_lora_32_v2 Candidate 10`.
 5. Copy the candidate key in `model/channel/id` format.
 6. Paste it into the matching mapping text entity. Use semicolons to list multiple keys for the same physical sensor.
-7. Confirm the logical temperature entity updates.
+7. Confirm the logical temperature or humidity entity updates.
 8. Turn off `rtl433_esphome heltec_lora_32_v2 Discovery Mode`.
 
 The firmware never creates normal entities for unknown packets and never automatically rebinds a freezer/fridge mapping.

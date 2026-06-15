@@ -50,6 +50,13 @@ uint32_t saved_state_mapping_preference_key(const std::string &logical_key) {
   return preference_key("state_mapping:" + logical_key) ^ 0x5147B433UL;
 }
 
+bool is_blank_mapping_text(const std::string &value) {
+  return std::all_of(value.begin(), value.end(), [](char item) {
+    return item == ' ' || item == '\t' || item == '\n' || item == '\r' || item == '\f' ||
+           item == '\v';
+  });
+}
+
 }  // namespace
 
 Gateway *Gateway::instance_ = nullptr;
@@ -122,8 +129,7 @@ void Gateway::set_discovery_enabled(bool enabled) {
   this->state_.set_discovery_enabled(enabled);
 }
 
-void Gateway::add_mapping(const std::string &logical_key, const std::string &mapping) {
-  this->state_.set_mapping(logical_key, mapping);
+void Gateway::register_logical_key(const std::string &logical_key) {
   this->entities_.try_emplace(logical_key);
   if (std::find(this->logical_keys_.begin(), this->logical_keys_.end(), logical_key) ==
       this->logical_keys_.end()) {
@@ -131,8 +137,13 @@ void Gateway::add_mapping(const std::string &logical_key, const std::string &map
   }
 }
 
+void Gateway::add_mapping(const std::string &logical_key, const std::string &mapping) {
+  this->register_logical_key(logical_key);
+  this->state_.set_mapping(logical_key, mapping);
+}
+
 void Gateway::set_override(const std::string &logical_key, const std::string &sensor_key) {
-  this->entities_.try_emplace(logical_key);
+  this->register_logical_key(logical_key);
   const bool mapping_changed = this->state_.set_mapping(logical_key, sensor_key);
   if (mapping_changed) {
     this->pending_clock_age_restore_.erase(logical_key);
@@ -553,7 +564,7 @@ void MappingText::setup() {
       mapping_preference_key(this->logical_key_), true);
 
   SavedMappingText saved;
-  if (this->preference_.load(&saved) && saved.has_value && saved.value[0] != '\0') {
+  if (this->preference_.load(&saved) && saved.has_value) {
     this->apply_value(saved.value, false);
     return;
   }
@@ -569,6 +580,20 @@ void MappingText::dump_config() {
 void MappingText::control(const std::string &value) { this->apply_value(value, true); }
 
 void MappingText::apply_value(const std::string &value, bool save) {
+  if (is_blank_mapping_text(value)) {
+    this->publish_state("");
+    if (this->parent_ != nullptr) {
+      this->parent_->set_override(this->logical_key_, "");
+    }
+    if (save) {
+      SavedMappingText saved;
+      saved.has_value = true;
+      saved.value[0] = '\0';
+      this->preference_.save(&saved);
+    }
+    return;
+  }
+
   if (!parse_sensor_mapping(value).has_value()) {
     ESP_LOGW(TAG, "Rejected invalid mapping text for '%s': %s", this->logical_key_.c_str(), value.c_str());
     return;
