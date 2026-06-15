@@ -474,13 +474,13 @@ def install_codegen_fakes(
     )
 
 
-def compact_known_sensor_config(
+def known_sensor_config(
     name: str,
     entities: list[str],
     key: str = "garage_freezer_1",
     device_id: str | None = None,
 ) -> dict[str, Any]:
-    """Return a compact known sensor test config."""
+    """Return a known sensor test config."""
 
     config = {
         CONF_KEY: key,
@@ -615,9 +615,7 @@ def test_config_schema_requires_time_id() -> None:
                 CONF_ID: "gateway_id",
                 **gateway_diagnostic_overrides("Missing Time Fixture"),
                 **gateway_control_overrides("Missing Time Fixture"),
-                CONF_KNOWN_SENSORS: [
-                    compact_known_sensor_config("Missing Time Fixture", ["temperature"])
-                ],
+                CONF_KNOWN_SENSORS: [known_sensor_config("Missing Time Fixture", ["temperature"])],
             }
         )
 
@@ -661,7 +659,7 @@ def test_validate_mapping_accepts_values_exceeding_mapping_text_limit() -> None:
 def test_config_schema_rejects_long_generated_mapping_text_value() -> None:
     """Reject mappings that cannot fit in generated runtime mapping text storage."""
 
-    config = compact_known_sensor_config("Long Mapping Text Fixture", ["temperature", "mapping"])
+    config = known_sensor_config("Long Mapping Text Fixture", ["temperature", "mapping"])
     config[CONF_MAPPING] = long_mapping_fixture()
 
     with pytest.raises(cv.Invalid, match=f"exceeds {rtl433_native.MAPPING_TEXT_MAX_LENGTH}"):
@@ -677,9 +675,9 @@ def test_config_schema_rejects_long_generated_mapping_text_value() -> None:
 
 
 def test_config_schema_accepts_long_mapping_without_generated_text() -> None:
-    """Accept long mappings when compact config does not generate a mapping text entity."""
+    """Accept long mappings when known-sensor config does not generate a mapping text entity."""
 
-    config = compact_known_sensor_config("Long Mapping No Text Fixture", ["temperature"])
+    config = known_sensor_config("Long Mapping No Text Fixture", ["temperature"])
     config[CONF_MAPPING] = long_mapping_fixture()
 
     validated = CONFIG_SCHEMA(
@@ -775,23 +773,17 @@ def test_validate_known_sensor_keys_accepts_unique_keys() -> None:
 
 
 @pytest.mark.parametrize("key", ["garage-freezer-1", "Acurite-986/1R/11932", "1_freezer"])
-def test_config_schema_accepts_legacy_known_sensor_keys(key: str) -> None:
+def test_config_schema_accepts_non_identifier_known_sensor_keys(key: str) -> None:
     """Accept existing logical keys even when generated ESPHome IDs need sanitizing."""
 
-    fixture_name = f"Legacy Key {key}"
+    fixture_name = f"Logical Key {key}"
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
             **REQUIRED_TIME_CONFIG,
             **gateway_diagnostic_overrides(fixture_name),
             **gateway_control_overrides(fixture_name),
-            CONF_KNOWN_SENSORS: [
-                {
-                    CONF_KEY: key,
-                    CONF_MAPPING: "Acurite-986/1R/11932",
-                    CONF_TEMPERATURE: {"name": f"{fixture_name} Temperature"},
-                }
-            ],
+            CONF_KNOWN_SENSORS: [known_sensor_config(fixture_name, ["temperature"], key=key)],
         }
     )
 
@@ -809,15 +801,18 @@ def test_config_schema_rejects_duplicate_generated_mapping_text_ids() -> None:
                 **gateway_diagnostic_overrides("Duplicate Mapping ID Fixture"),
                 **gateway_control_overrides("Duplicate Mapping ID Fixture"),
                 CONF_KNOWN_SENSORS: [
+                    known_sensor_config(
+                        "Garage Freezer Dashed",
+                        ["temperature", "mapping"],
+                        key="garage-freezer-1",
+                    ),
                     {
-                        CONF_KEY: "garage-freezer-1",
-                        CONF_MAPPING: "Acurite-986/1R/11932",
-                        CONF_TEMPERATURE: {"name": "Garage Freezer Dashed Temperature"},
-                    },
-                    {
-                        CONF_KEY: "garage_freezer_1",
+                        **known_sensor_config(
+                            "Garage Freezer Underscore",
+                            ["temperature", "mapping"],
+                            key="garage_freezer_1",
+                        ),
                         CONF_MAPPING: "Acurite-986/2F/31274",
-                        CONF_TEMPERATURE: {"name": "Garage Freezer Underscore Temperature"},
                     },
                 ],
             }
@@ -827,59 +822,77 @@ def test_config_schema_rejects_duplicate_generated_mapping_text_ids() -> None:
 async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyPatch) -> None:
     """Generate code for known sensors, diagnostics, counters, candidates, and time."""
 
-    fake_env = install_codegen_fakes(monkeypatch, variables={"time_id": "time:clock"})
     monkeypatch.setattr(CORE, "config", {CONF_OTA: [{}]})
 
-    config: dict[str, Any] = {
-        CONF_ID: "gateway_id",
-        CONF_CANDIDATE_LIMIT: 2,
-        CONF_LED_PIN: 25,
-        CONF_RADIO: DEFAULT_RADIO_CONFIG,
-        CONF_STALE_AFTER: FakeTimePeriod(total_milliseconds=3_600_000),
-        CONF_TIME_ID: "time_id",
-        CONF_KNOWN_SENSORS: [
-            {
-                CONF_KEY: "garage_freezer_1",
-                CONF_MAPPING: "Acurite-986/1R/11932",
-                CONF_TEMPERATURE: {"name": "temperature"},
-                CONF_HUMIDITY: {"name": "humidity"},
-                CONF_BATTERY: {"name": "battery"},
-                CONF_RSSI: {"name": "rssi"},
-                CONF_STALE: {"name": "stale"},
-                CONF_LAST_UPDATED: {"name": "last_updated"},
-            }
-        ],
-        CONF_CANDIDATES: [{"name": "candidate_0"}, {"name": "candidate_1"}],
-        CONF_LAST_PACKET: {"name": "last_packet"},
-        CONF_PACKET_COUNT: {"name": "packet_count"},
-        CONF_KNOWN_PACKET_COUNT: {"name": "known_packet_count"},
-        CONF_UNKNOWN_PACKET_COUNT: {"name": "unknown_packet_count"},
-    }
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            CONF_CANDIDATE_LIMIT: 2,
+            CONF_LED_PIN: 25,
+            CONF_RADIO: DEFAULT_RADIO_CONFIG,
+            CONF_STALE_AFTER: "1h",
+            CONF_TIME_ID: "time_id",
+            CONF_KNOWN_SENSORS: [
+                known_sensor_config(
+                    "To Code Fixture",
+                    [
+                        "temperature",
+                        "humidity",
+                        "battery",
+                        "rssi",
+                        "stale",
+                        "last_updated",
+                        "mapping",
+                    ],
+                )
+            ],
+            CONF_CANDIDATES: [{"name": "candidate_0"}, {"name": "candidate_1"}],
+            CONF_LAST_PACKET: {"name": "All Entities Last Packet"},
+            CONF_PACKET_COUNT: {"name": "All Entities Packet Count"},
+            CONF_KNOWN_PACKET_COUNT: {"name": "All Entities Known Packet Count"},
+            CONF_UNKNOWN_PACKET_COUNT: {"name": "All Entities Unknown Packet Count"},
+            **gateway_control_overrides("All Entities Fixture"),
+        }
+    )
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     await to_code(config)
 
     assert_codegen_dependencies(fake_env, expect_ota_listener=True)
-    assert fake_env.codegen.new_pvariable_calls == [("gateway_id",)]
+    assert [getattr(call[0], "id") for call in fake_env.codegen.new_pvariable_calls] == [
+        "gateway_id"
+    ]
     assert fake_env.codegen.registered_components[0] == (fake_env.gateway, config)
-    assert fake_env.sensor.created == [
-        {"name": "temperature"},
-        {"name": "humidity"},
-        {"name": "rssi"},
-        {"name": "last_updated"},
-        {"name": "packet_count"},
-        {"name": "known_packet_count"},
-        {"name": "unknown_packet_count"},
+    assert [sensor_config[CONF_NAME] for sensor_config in fake_env.sensor.created] == [
+        "Temperature",
+        "Humidity",
+        "RSSI",
+        "Last Updated",
+        "All Entities Packet Count",
+        "All Entities Known Packet Count",
+        "All Entities Unknown Packet Count",
     ]
-    assert fake_env.binary_sensor.created == [
-        {"name": "battery"},
-        {"name": "stale"},
+    assert [
+        sensor_config.get("entity_category") for sensor_config in fake_env.sensor.created[:4]
+    ] == [None, None, "diagnostic", "diagnostic"]
+    assert [
+        sensor_config.get(CONF_DISABLED_BY_DEFAULT) for sensor_config in fake_env.sensor.created[:4]
+    ] == [False, False, True, True]
+    assert [sensor_config[CONF_NAME] for sensor_config in fake_env.binary_sensor.created] == [
+        "Battery",
+        "Stale",
     ]
-    assert fake_env.text_sensor.created == [
-        {"name": "candidate_0"},
-        {"name": "candidate_1"},
-        {"name": "last_packet"},
+    assert [
+        sensor_config.get("entity_category") for sensor_config in fake_env.binary_sensor.created
+    ] == ["diagnostic", "diagnostic"]
+    assert [sensor_config[CONF_NAME] for sensor_config in fake_env.text_sensor.created] == [
+        "candidate_0",
+        "candidate_1",
+        "All Entities Last Packet",
     ]
-    assert [text_config["name"] for text_config in fake_env.text.created] == ["temperature Mapping"]
+    assert [text_config["name"] for text_config in fake_env.text.created] == [
+        "To Code Fixture Mapping"
+    ]
     assert fake_env.text.texts[0].calls == [
         ("set_parent", (fake_env.gateway,)),
         ("set_logical_key", ("garage_freezer_1",)),
@@ -893,18 +906,18 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         ("set_led_pin", (25,)),
         ("set_time", ("time:clock",)),
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
-        ("set_temperature_sensor", ("garage_freezer_1", "sensor:temperature")),
-        ("set_humidity_sensor", ("garage_freezer_1", "sensor:humidity")),
-        ("set_battery_sensor", ("garage_freezer_1", "binary:battery")),
-        ("set_rssi_sensor", ("garage_freezer_1", "sensor:rssi")),
-        ("set_stale_sensor", ("garage_freezer_1", "binary:stale")),
-        ("set_last_updated_sensor", ("garage_freezer_1", "sensor:last_updated")),
+        ("set_temperature_sensor", ("garage_freezer_1", "sensor:Temperature")),
+        ("set_humidity_sensor", ("garage_freezer_1", "sensor:Humidity")),
+        ("set_battery_sensor", ("garage_freezer_1", "binary:Battery")),
+        ("set_rssi_sensor", ("garage_freezer_1", "sensor:RSSI")),
+        ("set_stale_sensor", ("garage_freezer_1", "binary:Stale")),
+        ("set_last_updated_sensor", ("garage_freezer_1", "sensor:Last Updated")),
         ("set_candidate_text_sensor", (0, "text:candidate_0")),
         ("set_candidate_text_sensor", (1, "text:candidate_1")),
-        ("set_last_packet_sensor", ("text:last_packet",)),
-        ("set_packet_count_sensor", ("sensor:packet_count",)),
-        ("set_known_packet_count_sensor", ("sensor:known_packet_count",)),
-        ("set_unknown_packet_count_sensor", ("sensor:unknown_packet_count",)),
+        ("set_last_packet_sensor", ("text:All Entities Last Packet",)),
+        ("set_packet_count_sensor", ("sensor:All Entities Packet Count",)),
+        ("set_known_packet_count_sensor", ("sensor:All Entities Known Packet Count",)),
+        ("set_unknown_packet_count_sensor", ("sensor:All Entities Unknown Packet Count",)),
     ]
     for call in fake_env.gateway.calls:
         assert call in fake_env.codegen.added
@@ -920,35 +933,46 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
 async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPatch) -> None:
     """Generate code when optional entities are omitted."""
 
-    fake_env = install_codegen_fakes(monkeypatch, variables={"time_id": "time:clock"})
     monkeypatch.setattr(CORE, "config", {})
 
-    config: dict[str, Any] = {
-        CONF_ID: "gateway_id",
-        CONF_CANDIDATE_LIMIT: 1,
-        CONF_LED_PIN: 25,
-        CONF_RADIO: DEFAULT_RADIO_CONFIG,
-        CONF_STALE_AFTER: FakeTimePeriod(total_milliseconds=60_000),
-        CONF_TIME_ID: "time_id",
-        CONF_KNOWN_SENSORS: [
-            {
-                CONF_KEY: "garage_freezer_1",
-                CONF_MAPPING: "Acurite-986/1R/11932",
-                CONF_TEMPERATURE: {"name": "temperature"},
-            }
-        ],
-        CONF_CANDIDATES: [],
-    }
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            CONF_CANDIDATE_LIMIT: 1,
+            CONF_LED_PIN: 25,
+            CONF_RADIO: DEFAULT_RADIO_CONFIG,
+            CONF_STALE_AFTER: "1min",
+            CONF_TIME_ID: "time_id",
+            CONF_KNOWN_SENSORS: [
+                known_sensor_config("Required Entity Fixture", ["temperature", "mapping"])
+            ],
+            CONF_CANDIDATES: [],
+            **gateway_diagnostic_overrides("Required Entity Fixture"),
+            **gateway_control_overrides("Required Entity Fixture"),
+        }
+    )
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     await to_code(config)
 
     assert_codegen_dependencies(fake_env, expect_ota_listener=False)
-    assert fake_env.codegen.new_pvariable_calls == [("gateway_id",)]
+    assert [getattr(call[0], "id") for call in fake_env.codegen.new_pvariable_calls] == [
+        "gateway_id"
+    ]
     assert fake_env.codegen.registered_components[0] == (fake_env.gateway, config)
-    assert fake_env.sensor.created == [{"name": "temperature"}]
+    assert [sensor_config[CONF_NAME] for sensor_config in fake_env.sensor.created] == [
+        "Temperature",
+        "Required Entity Fixture Packet Count",
+        "Required Entity Fixture Known Packet Count",
+        "Required Entity Fixture Unknown Packet Count",
+    ]
     assert fake_env.binary_sensor.created == []
-    assert fake_env.text_sensor.created == []
-    assert [text_config["name"] for text_config in fake_env.text.created] == ["temperature Mapping"]
+    assert [text_config[CONF_NAME] for text_config in fake_env.text_sensor.created] == [
+        "Required Entity Fixture Last Packet"
+    ]
+    assert [text_config["name"] for text_config in fake_env.text.created] == [
+        "Required Entity Fixture Mapping"
+    ]
     assert fake_env.text.texts[0].calls == [
         ("set_parent", (fake_env.gateway,)),
         ("set_logical_key", ("garage_freezer_1",)),
@@ -962,7 +986,17 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
         ("set_led_pin", (25,)),
         ("set_time", ("time:clock",)),
         ("add_mapping", ("garage_freezer_1", "Acurite-986/1R/11932")),
-        ("set_temperature_sensor", ("garage_freezer_1", "sensor:temperature")),
+        ("set_temperature_sensor", ("garage_freezer_1", "sensor:Temperature")),
+        ("set_last_packet_sensor", ("text:Required Entity Fixture Last Packet",)),
+        ("set_packet_count_sensor", ("sensor:Required Entity Fixture Packet Count",)),
+        (
+            "set_known_packet_count_sensor",
+            ("sensor:Required Entity Fixture Known Packet Count",),
+        ),
+        (
+            "set_unknown_packet_count_sensor",
+            ("sensor:Required Entity Fixture Unknown Packet Count",),
+        ),
     ]
     for call in fake_env.gateway.calls:
         assert call in fake_env.codegen.added
@@ -975,7 +1009,6 @@ async def test_to_code_normalizes_user_extra_script_string(
 ) -> None:
     """Preserve ESPHome shorthand extra scripts when adding the prebuild hook."""
 
-    fake_env = install_codegen_fakes(monkeypatch, variables={"time_id": "time:clock"})
     core_config: dict[str, Any] = {
         CONF_ESPHOME: {
             CONF_PLATFORMIO_OPTIONS: {
@@ -985,22 +1018,21 @@ async def test_to_code_normalizes_user_extra_script_string(
     }
     monkeypatch.setattr(CORE, "config", core_config)
 
-    config: dict[str, Any] = {
-        CONF_ID: "gateway_id",
-        CONF_CANDIDATE_LIMIT: 1,
-        CONF_LED_PIN: 25,
-        CONF_RADIO: DEFAULT_RADIO_CONFIG,
-        CONF_STALE_AFTER: FakeTimePeriod(total_milliseconds=60_000),
-        CONF_TIME_ID: "time_id",
-        CONF_KNOWN_SENSORS: [
-            {
-                CONF_KEY: "garage_freezer_1",
-                CONF_MAPPING: "Acurite-986/1R/11932",
-                CONF_TEMPERATURE: {"name": "temperature"},
-            }
-        ],
-        CONF_CANDIDATES: [],
-    }
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            CONF_CANDIDATE_LIMIT: 1,
+            CONF_LED_PIN: 25,
+            CONF_RADIO: DEFAULT_RADIO_CONFIG,
+            CONF_STALE_AFTER: "1min",
+            CONF_TIME_ID: "time_id",
+            CONF_KNOWN_SENSORS: [known_sensor_config("Extra Script Fixture", ["temperature"])],
+            CONF_CANDIDATES: [],
+            **gateway_diagnostic_overrides("Extra Script Fixture"),
+            **gateway_control_overrides("Extra Script Fixture"),
+        }
+    )
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     await to_code(config)
 
@@ -1013,7 +1045,7 @@ async def test_to_code_normalizes_user_extra_script_string(
 async def test_to_code_sanitizes_generated_mapping_text_id_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Keep legacy logical keys while generating a valid mapping text component ID."""
+    """Keep logical keys unchanged while generating a valid mapping text component ID."""
 
     config = CONFIG_SCHEMA(
         {
@@ -1025,11 +1057,11 @@ async def test_to_code_sanitizes_generated_mapping_text_id_only(
             **gateway_diagnostic_overrides("Sanitized ID Fixture"),
             **gateway_control_overrides("Sanitized ID Fixture"),
             CONF_KNOWN_SENSORS: [
-                {
-                    CONF_KEY: "garage-freezer-1",
-                    CONF_MAPPING: "Acurite-986/1R/11932",
-                    CONF_TEMPERATURE: {"name": "Garage Freezer Temperature"},
-                }
+                known_sensor_config(
+                    "Sanitized ID Fixture",
+                    ["temperature", "mapping"],
+                    key="garage-freezer-1",
+                )
             ],
         }
     )
@@ -1039,7 +1071,7 @@ async def test_to_code_sanitizes_generated_mapping_text_id_only(
 
     mapping_text_id = fake_env.text.created[0][CONF_ID]
     assert getattr(mapping_text_id, "id") == "garage_freezer_1_mapping"
-    assert fake_env.text.created[0][CONF_NAME] == "Temperature Mapping"
+    assert fake_env.text.created[0][CONF_NAME] == "Sanitized ID Fixture Mapping"
     assert fake_env.text.texts[0].calls == [
         ("set_parent", (fake_env.gateway,)),
         ("set_logical_key", ("garage-freezer-1",)),
@@ -1063,13 +1095,7 @@ def test_config_schema_generates_candidate_sensors_from_limit() -> None:
             CONF_CANDIDATE_LIMIT: 2,
             **gateway_diagnostic_overrides("Candidates Fixture"),
             **gateway_control_overrides("Candidates Fixture"),
-            CONF_KNOWN_SENSORS: [
-                {
-                    CONF_KEY: "garage_freezer_1",
-                    CONF_MAPPING: "Acurite-986/1R/11932",
-                    CONF_TEMPERATURE: {"name": "default profile temperature"},
-                }
-            ],
+            CONF_KNOWN_SENSORS: [known_sensor_config("Candidates Fixture", ["temperature"])],
         }
     )
 
@@ -1109,7 +1135,7 @@ async def test_config_schema_generates_default_gateway_diagnostics(
             CONF_CANDIDATES: [],
             **gateway_control_overrides("Default Diagnostics Fixture"),
             CONF_KNOWN_SENSORS: [
-                compact_known_sensor_config("Default Diagnostics Fixture", ["temperature"])
+                known_sensor_config("Default Diagnostics Fixture", ["temperature"])
             ],
         }
     )
@@ -1148,9 +1174,7 @@ async def test_config_schema_generates_default_gateway_controls(
             **REQUIRED_TIME_CONFIG,
             CONF_CANDIDATES: [],
             **gateway_diagnostic_overrides("Default Controls Fixture"),
-            CONF_KNOWN_SENSORS: [
-                compact_known_sensor_config("Default Controls Fixture", ["temperature"])
-            ],
+            CONF_KNOWN_SENSORS: [known_sensor_config("Default Controls Fixture", ["temperature"])],
         }
     )
     fake_env = install_codegen_fakes_for_config(monkeypatch, config)
@@ -1181,13 +1205,7 @@ def test_config_schema_supplies_default_hardware_profile() -> None:
             **REQUIRED_TIME_CONFIG,
             **gateway_diagnostic_overrides("Hardware Fixture"),
             **gateway_control_overrides("Hardware Fixture"),
-            CONF_KNOWN_SENSORS: [
-                {
-                    CONF_KEY: "garage_freezer_1",
-                    CONF_MAPPING: "Acurite-986/1R/11932",
-                    CONF_TEMPERATURE: {"name": "temperature"},
-                }
-            ],
+            CONF_KNOWN_SENSORS: [known_sensor_config("Hardware Fixture", ["temperature"])],
         }
     )
 
@@ -1218,9 +1236,7 @@ def test_config_schema_accepts_valid_custom_hardware_profile() -> None:
             },
             **gateway_diagnostic_overrides("Custom Hardware Fixture"),
             **gateway_control_overrides("Custom Hardware Fixture"),
-            CONF_KNOWN_SENSORS: [
-                compact_known_sensor_config("Custom Hardware Fixture", ["temperature"])
-            ],
+            CONF_KNOWN_SENSORS: [known_sensor_config("Custom Hardware Fixture", ["temperature"])],
         }
     )
 
@@ -1260,7 +1276,7 @@ def test_config_schema_rejects_invalid_hardware_profile(override: dict[str, Any]
                 **gateway_diagnostic_overrides("Invalid Hardware Fixture"),
                 **gateway_control_overrides("Invalid Hardware Fixture"),
                 CONF_KNOWN_SENSORS: [
-                    compact_known_sensor_config("Invalid Hardware Fixture", ["temperature"])
+                    known_sensor_config("Invalid Hardware Fixture", ["temperature"])
                 ],
             }
         )
@@ -1298,7 +1314,7 @@ async def test_to_code_uses_configured_radio_module(monkeypatch: pytest.MonkeyPa
             CONF_RADIO: {CONF_MODULE: "cc1101"},
             **gateway_diagnostic_overrides("Radio Fixture"),
             **gateway_control_overrides("Radio Fixture"),
-            CONF_KNOWN_SENSORS: [compact_known_sensor_config("Radio Fixture", ["temperature"])],
+            CONF_KNOWN_SENSORS: [known_sensor_config("Radio Fixture", ["temperature"])],
         }
     )
     fake_env = install_codegen_fakes_for_config(monkeypatch, config)
@@ -1314,15 +1330,15 @@ async def test_to_code_uses_configured_radio_module(monkeypatch: pytest.MonkeyPa
     assert "-DRF_MODULE_DIO2=34" not in fake_env.codegen.build_flags
 
 
-def test_config_schema_expands_compact_known_sensor_entities() -> None:
-    """Expand compact known sensors without prefixing entity names."""
+def test_config_schema_expands_known_sensor_entities() -> None:
+    """Expand known sensors without prefixing entity names."""
 
     config = CONFIG_SCHEMA(
         {
             CONF_ID: "gateway_id",
             **REQUIRED_TIME_CONFIG,
-            **gateway_diagnostic_overrides("Compact Fixture"),
-            **gateway_control_overrides("Compact Fixture"),
+            **gateway_diagnostic_overrides("Known Sensor Fixture"),
+            **gateway_control_overrides("Known Sensor Fixture"),
             CONF_KNOWN_SENSORS: [
                 {
                     CONF_KEY: "garage_combo_fridge",
@@ -1359,8 +1375,8 @@ def test_config_schema_expands_compact_known_sensor_entities() -> None:
     assert entry[CONF_LAST_UPDATED][CONF_DISABLED_BY_DEFAULT] is True
 
 
-def test_config_schema_leaves_name_only_compact_known_entities_on_gateway() -> None:
-    """Leave name-only compact known sensor entities on the main device."""
+def test_config_schema_leaves_name_only_known_sensor_entities_on_gateway() -> None:
+    """Leave name-only known sensor entities on the main device."""
 
     config = CONFIG_SCHEMA(
         {
@@ -1411,13 +1427,13 @@ def test_config_schema_rejects_duplicate_gateway_mapping_names() -> None:
                 **gateway_diagnostic_overrides("Duplicate Gateway Fixture"),
                 **gateway_control_overrides("Duplicate Gateway Fixture"),
                 CONF_KNOWN_SENSORS: [
-                    compact_known_sensor_config(
+                    known_sensor_config(
                         "Garage Freezer",
                         ["temperature", "mapping"],
                         key="garage_freezer",
                         device_id="garage_freezer_device",
                     ),
-                    compact_known_sensor_config(
+                    known_sensor_config(
                         "Garage Freezer",
                         ["temperature", "mapping"],
                         key="kitchen_fridge",
@@ -1473,33 +1489,33 @@ def test_config_schema_uses_explicit_known_sensor_device_id() -> None:
 def test_validate_gateway_entity_names_allows_distinct_gateway_mapping_names() -> None:
     """Allow distinct mapping names when known sensors are on separate sub-devices."""
 
-    config = [
+    config = CONFIG_SCHEMA(
         {
-            CONF_KEY: "garage_freezer",
-            CONF_NAME: "Garage Freezer",
-            CONF_DEVICE_ID: "garage_freezer_device",
-            CONF_TEMPERATURE: {
-                CONF_NAME: "Temperature",
-                CONF_DEVICE_ID: "garage_freezer_device",
-            },
-            CONF_ENTITIES: ["mapping"],
-        },
-        {
-            CONF_KEY: "kitchen_fridge",
-            CONF_NAME: "Kitchen Fridge",
-            CONF_DEVICE_ID: "kitchen_fridge_device",
-            CONF_TEMPERATURE: {
-                CONF_NAME: "Temperature",
-                CONF_DEVICE_ID: "kitchen_fridge_device",
-            },
-            CONF_ENTITIES: ["mapping"],
-        },
-    ]
+            CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
+            **gateway_diagnostic_overrides("Distinct Mapping Fixture"),
+            **gateway_control_overrides("Distinct Mapping Fixture"),
+            CONF_KNOWN_SENSORS: [
+                known_sensor_config(
+                    "Distinct Mapping Freezer",
+                    ["temperature", "mapping"],
+                    key="garage_freezer",
+                    device_id="garage_freezer_device",
+                ),
+                known_sensor_config(
+                    "Distinct Mapping Fridge",
+                    ["temperature", "mapping"],
+                    key="kitchen_fridge",
+                    device_id="kitchen_fridge_device",
+                ),
+            ],
+        }
+    )[CONF_KNOWN_SENSORS]
 
     assert _validate_gateway_entity_names(config) == config
 
 
-def test_config_schema_uses_device_name_when_compact_name_omitted(
+def test_config_schema_uses_device_name_when_known_sensor_name_omitted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Use linked device names only for the device, not the entity name."""
@@ -1552,10 +1568,10 @@ def test_config_schema_uses_device_name_when_compact_name_omitted(
     assert entry[CONF_BATTERY]["name"] == "Battery"
 
 
-def test_config_schema_preserves_explicit_compact_name_matching_device_id(
+def test_config_schema_preserves_explicit_known_sensor_name_matching_device_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Preserve compact device names without copying them to entity names."""
+    """Preserve known sensor device names without copying them to entity names."""
 
     monkeypatch.setattr(
         CORE,
@@ -1596,8 +1612,8 @@ def test_config_schema_preserves_explicit_compact_name_matching_device_id(
     assert entry[CONF_TEMPERATURE]["name"] == "Temperature"
 
 
-def test_final_validation_uses_runtime_config_to_resolve_compact_device_name() -> None:
-    """Resolve omitted compact names without copying them to entity names."""
+def test_final_validation_uses_runtime_config_to_resolve_known_sensor_device_name() -> None:
+    """Resolve omitted known sensor names without copying them to entity names."""
 
     config = CONFIG_SCHEMA(
         {
@@ -1636,8 +1652,8 @@ def test_final_validation_uses_runtime_config_to_resolve_compact_device_name() -
     assert entry[CONF_TEMPERATURE]["name"] == "Temperature"
 
 
-def test_final_validation_rejects_unresolved_compact_device_name() -> None:
-    """Reject compact known sensors that omit name and reference an unknown device."""
+def test_final_validation_rejects_unresolved_known_sensor_device_name() -> None:
+    """Reject known sensors that omit name and reference an unknown device."""
 
     config = CONFIG_SCHEMA(
         {
@@ -1663,10 +1679,10 @@ def test_final_validation_rejects_unresolved_compact_device_name() -> None:
         fv.full_config.reset(token)
 
 
-async def test_to_code_rejects_compact_device_without_name_in_core_config(
+async def test_to_code_rejects_known_sensor_device_without_name_in_core_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Reject compact device IDs that match a nameless CORE config device."""
+    """Reject known sensor device IDs that match a nameless CORE config device."""
 
     monkeypatch.setattr(
         CORE,
@@ -1702,10 +1718,10 @@ async def test_to_code_rejects_compact_device_without_name_in_core_config(
         await to_code(config)
 
 
-async def test_compact_known_sensor_mapping_entity_is_optional(
+async def test_known_sensor_mapping_entity_is_optional(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Skip the mapping text entity when compact config omits mapping from entities."""
+    """Skip the mapping text entity when known-sensor config omits mapping from entities."""
 
     config = CONFIG_SCHEMA(
         {
@@ -1716,7 +1732,7 @@ async def test_compact_known_sensor_mapping_entity_is_optional(
             CONF_STALE_AFTER: "1min",
             **gateway_diagnostic_overrides("No Mapping Fixture"),
             **gateway_control_overrides("No Mapping Fixture"),
-            CONF_KNOWN_SENSORS: [compact_known_sensor_config("Garage Freezer 1", ["temperature"])],
+            CONF_KNOWN_SENSORS: [known_sensor_config("Garage Freezer 1", ["temperature"])],
         }
     )
     fake_env = install_codegen_fakes_for_config(monkeypatch, config)
@@ -1735,10 +1751,10 @@ async def test_compact_known_sensor_mapping_entity_is_optional(
         assert call in fake_env.gateway.calls
 
 
-async def test_compact_known_sensor_mapping_entity_uses_base_name(
+async def test_known_sensor_mapping_entity_uses_base_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Name compact mapping text entities from the base known sensor name."""
+    """Name known-sensor mapping text entities from the base known sensor name."""
 
     config = CONFIG_SCHEMA(
         {
@@ -1750,7 +1766,7 @@ async def test_compact_known_sensor_mapping_entity_uses_base_name(
             **gateway_diagnostic_overrides("Mapping Fixture"),
             **gateway_control_overrides("Mapping Fixture"),
             CONF_KNOWN_SENSORS: [
-                compact_known_sensor_config("Garage Mapping Fixture", ["temperature", "mapping"])
+                known_sensor_config("Garage Mapping Fixture", ["temperature", "mapping"])
             ],
         }
     )
@@ -1764,7 +1780,7 @@ async def test_compact_known_sensor_mapping_entity_uses_base_name(
     assert CONF_DEVICE_ID not in fake_env.text.created[0]
 
 
-async def test_compact_known_sensor_entities_keep_mapping_text_on_gateway(
+async def test_known_sensor_entities_keep_mapping_text_on_gateway(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Generate known sensor entities on a sub-device while mapping text stays on gateway."""
@@ -1779,7 +1795,7 @@ async def test_compact_known_sensor_entities_keep_mapping_text_on_gateway(
             **gateway_diagnostic_overrides("Mapping Device Fixture"),
             **gateway_control_overrides("Mapping Device Fixture"),
             CONF_KNOWN_SENSORS: [
-                compact_known_sensor_config(
+                known_sensor_config(
                     "Mapping Device Fixture Freezer",
                     ["temperature", "battery", "rssi", "stale", "last_updated", "mapping"],
                     device_id="garage_freezer_1_device",

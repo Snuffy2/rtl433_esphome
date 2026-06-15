@@ -276,7 +276,7 @@ def _validate_gateway_entity_names(value: list[dict[str, Any]]) -> list[dict[str
 
 
 def _validate_known_sensor_entities(value: list[str]) -> list[str]:
-    """Ensure compact known sensor entity names are unique and include temperature."""
+    """Ensure known sensor entity names are unique and include temperature."""
 
     seen: set[str] = set()
     for entity in value:
@@ -284,7 +284,7 @@ def _validate_known_sensor_entities(value: list[str]) -> list[str]:
             raise cv.Invalid(f"Duplicate known sensor entity '{entity}'")
         seen.add(entity)
     if CONF_TEMPERATURE not in seen:
-        raise cv.Invalid("Compact known sensor entries must include temperature")
+        raise cv.Invalid("Known sensor entries must include temperature")
     return value
 
 
@@ -447,20 +447,20 @@ def _known_sensor_name(entry: dict[str, Any], config: dict[str, Any] | None = No
         if device_name is not None:
             return device_name
         return _id_value(entry[CONF_DEVICE_ID])
-    raise cv.Invalid("Compact known sensor entries require name or a device_id with a device name")
+    raise cv.Invalid("Known sensor entries require name or a device_id with a device name")
 
 
-def _set_compact_sensor_name(entry: dict[str, Any], name: str) -> None:
-    """Refresh compact known-sensor naming after device-name resolution.
+def _set_known_sensor_name(entry: dict[str, Any], name: str) -> None:
+    """Refresh known-sensor naming after device-name resolution.
 
     Args:
-        entry: Compact known-sensor entry to mutate.
+        entry: Known-sensor entry to mutate.
         name: Device display name used for the entry-level known-sensor name.
     """
 
     entry[CONF_NAME] = name
-    for entity in entry.get(CONF_ENTITIES, []):
-        if entity != ENTITY_MAPPING and entity in entry:
+    for entity in entry[CONF_ENTITIES]:
+        if entity != ENTITY_MAPPING:
             entry[entity][CONF_NAME] = _entity_title(entity)
 
 
@@ -472,8 +472,8 @@ def _entity_title(entity: str) -> str:
     return entity.replace("_", " ").title()
 
 
-def _compact_entity_config(name: str, entity: str, device_id: Any | None) -> dict[str, Any]:
-    """Return the generated entity config for a compact known sensor entity."""
+def _generated_entity_config(name: str, entity: str, device_id: Any | None) -> dict[str, Any]:
+    """Return the generated entity config for a known sensor entity."""
 
     entity_config: dict[str, Any] = {CONF_NAME: f"{name} {_entity_title(entity)}"}
     if device_id is not None:
@@ -517,28 +517,28 @@ def _add_generated_component_count(extra_count: int) -> None:
         return
 
 
-def _expand_compact_sensor_entry(entry: dict[str, Any]) -> dict[str, Any]:
-    """Expand a compact known sensor entry into the verbose schema shape."""
+def _expand_known_sensor_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """Expand a known sensor entry into generated entity configs."""
 
     name_was_omitted = CONF_NAME not in entry
     name = _known_sensor_name(entry)
     device_id = entry.get(CONF_DEVICE_ID)
     for entity in entry[CONF_ENTITIES]:
         if entity != ENTITY_MAPPING:
-            entry[entity] = _compact_entity_config(name, entity, device_id)
+            entry[entity] = _generated_entity_config(name, entity, device_id)
     entry[CONF_NAME] = name
     if name_was_omitted and device_id is not None:
         entry[_REFRESH_NAME_FROM_DEVICE] = True
     return entry
 
 
-def _refresh_compact_device_names(
+def _refresh_known_sensor_device_names(
     config: dict[str, Any], full_config: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    """Refresh compact known sensor names from linked ESPHome device names."""
+    """Refresh known sensor names from linked ESPHome device names."""
 
-    for entry in config.get(CONF_KNOWN_SENSORS, []):
-        if CONF_ENTITIES not in entry or CONF_DEVICE_ID not in entry:
+    for entry in config[CONF_KNOWN_SENSORS]:
+        if CONF_DEVICE_ID not in entry:
             continue
         if not entry.pop(_REFRESH_NAME_FROM_DEVICE, False):
             continue
@@ -549,14 +549,14 @@ def _refresh_compact_device_names(
                 f"Known sensor device_id '{placeholder_name}' must reference an "
                 "esphome.devices entry with a name"
             )
-        _set_compact_sensor_name(entry, device_name)
+        _set_known_sensor_name(entry, device_name)
     return config
 
 
 def _final_validate_config(config: dict[str, Any]) -> None:
     """Refresh device-linked names after ESPHome has the full config."""
 
-    _refresh_compact_device_names(config, fv.full_config.get())
+    _refresh_known_sensor_device_names(config, fv.full_config.get())
 
 
 def _apply_known_sensor_device_id(entry: dict[str, Any]) -> dict[str, Any]:
@@ -604,7 +604,7 @@ SENSOR_ENTRY_SCHEMA = cv.Schema(
     }
 )
 
-COMPACT_SENSOR_ENTRY_SCHEMA = cv.All(
+KNOWN_SENSOR_ENTRY_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.Required(CONF_KEY): KEY_SCHEMA,
@@ -617,7 +617,7 @@ COMPACT_SENSOR_ENTRY_SCHEMA = cv.All(
             ),
         }
     ),
-    _expand_compact_sensor_entry,
+    _expand_known_sensor_entry,
     SENSOR_ENTRY_SCHEMA.extend(
         {
             cv.Required(CONF_NAME): cv.string_strict,
@@ -628,13 +628,6 @@ COMPACT_SENSOR_ENTRY_SCHEMA = cv.All(
     ),
     _normalize_known_sensor_entity_names,
     _apply_known_sensor_device_id,
-)
-
-KNOWN_SENSOR_ENTRY_SCHEMA = cv.Any(
-    COMPACT_SENSOR_ENTRY_SCHEMA,
-    cv.All(
-        SENSOR_ENTRY_SCHEMA, _normalize_known_sensor_entity_names, _apply_known_sensor_device_id
-    ),
 )
 
 RADIO_SCHEMA = cv.Schema(
@@ -738,7 +731,7 @@ GATEWAY_ID_SCHEMA = cv.Schema({cv.GenerateID(): cv.use_id(Gateway)})
 async def to_code(config: dict[str, Any]) -> None:
     """Generate C++ for the rtl433_native component."""
 
-    _refresh_compact_device_names(config)
+    _refresh_known_sensor_device_names(config)
     _normalize_extra_scripts_platformio_option()
 
     cg.add_build_flag(ARDUINO_NETWORK_INCLUDE_FLAG)
@@ -862,8 +855,6 @@ def _normalize_extra_scripts_platformio_option() -> None:
 def _entry_has_mapping_text(entry: dict[str, Any]) -> bool:
     """Return whether this known sensor should generate a mapping text entity."""
 
-    if CONF_ENTITIES not in entry:
-        return True
     return ENTITY_MAPPING in entry[CONF_ENTITIES]
 
 
