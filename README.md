@@ -1,33 +1,95 @@
 # rtl433_esphome
 
-ESPHome firmware and a custom component for native Home Assistant entities from `rtl_433_ESP` packets.
+Use an ESPHome device as a local `rtl_433` receiver and expose selected temperature, humidity, battery, RSSI, stale, and last-updated entities directly in Home Assistant. You start from a checked-in ESPHome YAML file, adjust it for your board and sensors, then install it with ESPHome.
 
-Current firmware profile:
+## Install
 
-- Config: `rtl433-esphome-heltec-lora-32-v2.yaml`
-- ESPHome device name: `rtl433-heltec-lora-32-v2`
-- Board: Heltec WiFi LoRa 32 V2-style 433 MHz ESP32
-- Component source for local builds: latest GitHub release tag by default
-- Local component source for development/tests: `components/rtl433_native/`
-- Firmware binaries: not published, because the checked-in YAML contains deployment-specific sensor names and mappings
-- The checked-in profile uses this deployment's current device and entity names. Review or replace them before OTA if your Home Assistant instance already uses different entity IDs.
+Start from the included `rtl433-esphome-heltec-lora-32-v2.yaml` file. It is the only profile in the repository today, and it targets a Heltec WiFi LoRa 32 V2-style ESP32 with an SX1278 radio at 433.92 MHz.
 
-## Example Known Sensor Mappings
+Firmware binaries are not published because the YAML contains deployment-specific device names, Home Assistant names, and sensor mappings. Review those values before installing it on your own device.
 
-The checked-in YAML includes one local deployment. Replace or remove these entries for your transmitters.
+See [YAML Configuration](#yaml_configuration) below for details on the options.
 
-| Logical sensor | Mapping | Current HA entity |
-| --- | --- | --- |
-| Garage Fridge | `LaCrosse-TX141THBv2/0/203;TFA-303221/1/203` | `sensor.garage_fridge_temperature` |
-| Garage Freezer | `TFA-303221/2/88;LaCrosse-TX141THBv2/1/88` | `sensor.garage_freezer_temperature` |
+1. Copy `rtl433-esphome-heltec-lora-32-v2.yaml` into your ESPHome project or import it into the ESPHome dashboard.
+2. Update the top-level substitutions:
+   - `device_name`: the ESPHome node name.
+   - `friendly_name`: the display name shown in Home Assistant.
+   - `rtl433_esphome_ref`: keep `latest` unless you want to pin a release tag.
+3. Make sure your ESPHome secrets provide `wifi_ssid`, `wifi_password`, and `fallback_ap_password`.
+4. Check the hardware settings. If you are using a different ESP32 board, radio module, frequency, or pin wiring, update the board settings and the `rtl433_native.radio` section.
+5. List the physical sensors you want to track under `esphome.devices`. These are the Home Assistant sub-devices, such as `Garage Fridge` or `Garage Freezer`.
+6. List the same logical sensors under `rtl433_native.known_sensors`.
+   For each sensor, choose:
+   - `key`: a stable YAML key, such as `garage_fridge`.
+   - `device_id`: the matching ID from `esphome.devices`.
+   - `mapping`: the `model/channel/id` key for the physical transmitter. If
+     you do not know it yet, leave this top-level value out and add `mapping`
+     under `entities` instead.
+   - `entities`: the readings you want Home Assistant to create.
+7. Keep the Home Assistant time source in the YAML:
 
-### Mapping notes
+   ```yaml
+   time:
+     - platform: homeassistant
+       id: homeassistant_time
+
+   rtl433_native:
+     time_id: homeassistant_time
+   ```
+
+   The custom component requires `time_id` for restored stale-state aging and last-updated timestamps.
+
+8. In the ESPHome dashboard, choose the device and select **Install**.
+9. After the device is online in Home Assistant, turn on Discovery Mode, find
+   each sensor's `model/channel/id` key, and paste that key into the matching
+   mapping text entity.
+
+## Discovery Workflow
+
+Use Discovery Mode when you need to identify which `rtl_433` packet belongs to which real-world sensor. The most common times to use it are:
+
+- First install, when you are creating your initial `known_sensors` mappings.
+- Adding another fridge, freezer, weather station, or other 433 MHz transmitter.
+- Replacing batteries, if the transmitter comes back with a different ID.
+- Troubleshooting a sensor that stopped updating because its mapping no longer
+  matches the packets being received.
+
+Normal operation does not require Discovery Mode. Known sensors keep updating while it is off, and unknown packets are ignored instead of becoming regular Home Assistant entities. Turning Discovery Mode on temporarily gives you a bounded candidate list so you can copy the right `model/channel/id` key into the mapping for a known sensor.
+
+*The names below use the default Heltec profile `friendly_name`.*
+
+1. Turn on `rtl433_esphome heltec_lora_32_v2 Discovery Mode`.
+2. Press `rtl433_esphome heltec_lora_32_v2 Clear Candidates` so the list starts
+   empty.
+3. Make one physical sensor transmit. For battery-powered sensors, removing and
+   reinserting the batteries is often the easiest way to force a packet.
+4. Watch `rtl433_esphome heltec_lora_32_v2 Candidate 1` through
+   `rtl433_esphome heltec_lora_32_v2 Candidate 10`.
+5. Look for the candidate whose temperature, humidity, battery, and RSSI values
+   match the sensor you just triggered.
+6. Copy the candidate key at the start of the value. It uses
+   `model/channel/id` format.
+7. Paste that key into the matching mapping text entity. Use semicolons to list
+   multiple keys for the same physical sensor.
+8. Confirm the logical temperature or humidity entity updates.
+9. Repeat the clear-and-trigger process for each additional sensor.
+10. Turn off `rtl433_esphome heltec_lora_32_v2 Discovery Mode`.
+
+Work through one sensor at a time when possible. Many 433 MHz devices transmit on their own schedule, so clearing the candidate list before each sensor makes it easier to tell which packet belongs to the sensor in your hand.
+
+## YAML Configuration
+
+### Configure Sensors
+
+The checked-in YAML includes one local deployment as an example. Replace or remove these entries for your transmitters.
+
+#### Choosing a Mapping
 
 - Use `model/channel/id` keys from discovery candidates.
 - Use semicolons when one physical transmitter appears under multiple decoder keys.
 - Example: `LaCrosse-TX141THBv2/0/203;TFA-303221/1/203`
 
-### Single-sensor YAML excerpt
+#### Single-Sensor Example
 
 ```yaml
 esphome:
@@ -53,44 +115,62 @@ rtl433_native:
         - mapping
 ```
 
-### Behavior
+#### Entity Behavior
 
 - Generated known-sensor entity names are data-point names only, such as `Temperature`. Home Assistant combines them with the linked device name for display and entity IDs.
 - `device_id` assigns generated entities to a per-sensor ESPHome sub-device.
 - Use `device_id` when configuring more than one known sensor; without it, generated entities stay on the main ESPHome device and duplicate data-point names are rejected.
 - `mapping` is optional. Omit it when the `model/channel/id` key is not known yet.
-- Adding `mapping` to `entities` creates a gateway-local Home Assistant text entity named from the known sensor, such as `Garage Fridge Mapping`.
-- If the top-level `mapping` value is omitted, the sensor must list `mapping` under `entities` so the discovered key can be entered later.
-- Mapping text entities can start blank; use Discovery Mode to find a key and paste it into the text entity.
+- Adding `mapping` to `entities` creates a gateway-local Home Assistant text
+  entity named from the known sensor, such as `Garage Fridge Mapping`.
+- If the top-level `mapping` value is omitted, include `mapping` under
+  `entities` so the text entity exists for Discovery Mode to fill in later.
+- Mapping text entities can start blank and persist across reboots and OTA
+  updates.
 - `temperature` is optional. List only the entity types you want, such as `humidity` and `mapping` for a humidity-only sensor.
-- Mapping text values persist across reboots and OTA updates.
 - RSSI and last-updated entities are disabled by default.
 - Mapping text entities stay on the main ESPHome device even when `device_id` is set.
 - `time_id` is required so restored stale-state aging and last-updated timestamps use a real wall-clock source.
 
-### Default gateway diagnostics
+#### Available Known-Sensor Entities
 
-- `last_packet`
-- `packet_count`
-- `known_packet_count`
-- `unknown_packet_count`
+Add only the entities you want for each known sensor:
 
-### Notes
+- temperature
+- humidity
+- battery
+- rssi
+- stale
+- last_updated
+- mapping
+
+`mapping` creates the Home Assistant text entity used to change the transmitter key without editing YAML after the device is installed.
+
+### Gateway Diagnostics and Controls
+
+#### Default Gateway Diagnostics
+
+- last_packet
+- packet_count
+- known_packet_count
+- unknown_packet_count
+
+#### Notes
 
 - Gateway diagnostics are disabled by default.
 - Candidate text sensors come from `candidate_limit`.
 - Candidate text sensors are enabled by default but are not part of the primary sensor view.
 - Add diagnostic options under `rtl433_native` only to override generated settings.
 
-### Default gateway controls
+#### Default Gateway Controls
 
-- `discovery_mode`
-- `clear_candidates_button`
-- `status_button`
+- discovery_mode
+- clear_candidates_button
+- status_button
 
 Add control options under `rtl433_native` only to override generated settings.
 
-## Hardware Configuration
+### Hardware Configuration Reference
 
 The Heltec LoRa 32 V2 profile uses these component defaults:
 
@@ -145,8 +225,8 @@ rtl433_native:
       miso: ${rf_miso_pin}
       mosi: ${rf_mosi_pin}
 ```
-
-## Build
+<details>
+<summary><h2>Local Build</h2></summary>
 
 ### Default local build
 
@@ -181,17 +261,4 @@ FIRMWARE_CONFIG=path/to/another-board.yaml ./scripts/build
 - `./scripts/esphome-preflight`: run manually before OTA upload after Python, ESPHome, or PlatformIO changes.
 - `--update-global`: also refresh PlatformIO Core/global packages.
 
-## Discovery Workflow
-
-The names below use the default Heltec profile `friendly_name`.
-
-1. Turn on `rtl433_esphome heltec_lora_32_v2 Discovery Mode`.
-2. Press `rtl433_esphome heltec_lora_32_v2 Clear Candidates`.
-3. Insert batteries into one sensor or force it to transmit.
-4. Watch `rtl433_esphome heltec_lora_32_v2 Candidate 1` through `rtl433_esphome heltec_lora_32_v2 Candidate 10`.
-5. Copy the candidate key in `model/channel/id` format.
-6. Paste it into the matching mapping text entity. Use semicolons to list multiple keys for the same physical sensor.
-7. Confirm the logical temperature or humidity entity updates.
-8. Turn off `rtl433_esphome heltec_lora_32_v2 Discovery Mode`.
-
-The firmware never creates normal entities for unknown packets and never automatically rebinds a freezer/fridge mapping.
+</details>
