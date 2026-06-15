@@ -57,11 +57,9 @@ rtl433_native:
 
 ### Behavior
 
-- Generated known-sensor entity names are data-point names only, such as `Temperature`.
-  Home Assistant combines them with the linked device name for display and entity IDs.
+- Generated known-sensor entity names are data-point names only, such as `Temperature`. Home Assistant combines them with the linked device name for display and entity IDs.
 - `device_id` assigns generated entities to a per-sensor ESPHome sub-device.
-- Use `device_id` when configuring more than one known sensor; without it, generated
-  entities stay on the main ESPHome device and duplicate data-point names are rejected.
+- Use `device_id` when configuring more than one known sensor; without it, generated entities stay on the main ESPHome device and duplicate data-point names are rejected.
 - `mapping` adds a gateway-local Home Assistant text entity named from the known sensor, such as `Garage Fridge Mapping`.
 - Mapping text values persist across reboots and OTA updates.
 - RSSI and last-updated entities are disabled by default.
