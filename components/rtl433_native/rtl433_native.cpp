@@ -122,7 +122,7 @@ void Gateway::status() {
 
 void Gateway::clear_candidates() {
   this->state_.clear_candidates();
-  this->publish_candidates();
+  this->queue_candidate_publish();
 }
 
 void Gateway::set_discovery_enabled(bool enabled) {
@@ -345,7 +345,7 @@ void Gateway::process_message(char *message) {
       }
     }
 
-    this->publish_candidates();
+    this->queue_candidate_publish();
     return true;
   });
 }
@@ -477,6 +477,22 @@ void Gateway::flush_pending_state_saves() {
     this->save_state(logical_key);
     this->last_state_save_ms_[logical_key] = saved_at_ms;
   }
+}
+
+void Gateway::queue_candidate_publish() {
+  if (this->candidate_publish_pending_) {
+    return;
+  }
+  this->candidate_publish_pending_ = true;
+  this->set_timeout("publish_candidates", 50, [this]() { this->flush_pending_candidate_publish(); });
+}
+
+void Gateway::flush_pending_candidate_publish() {
+  if (!this->candidate_publish_pending_) {
+    return;
+  }
+  this->candidate_publish_pending_ = false;
+  this->publish_candidates();
 }
 
 void Gateway::save_state(const std::string &logical_key) {
