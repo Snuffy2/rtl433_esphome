@@ -244,30 +244,33 @@ void Gateway::process_message(char *message) {
   ESP_LOGV(TAG, "Received rtl_433 message: %s", message);
   json::parse_json(message, [this](JsonObject root) {
     const char *model = root["model"] | "";
-    if (std::string(model) == "status") {
+    if (std::strcmp(model, "status") == 0) {
       return true;
     }
 
     ::esphome::rtl433_native::DecodedPacket packet;
     packet.model = model;
-    if (root["id"].is<const char *>()) {
-      packet.id = root["id"].as<const char *>();
-    } else if (root["id"].is<int>()) {
-      packet.id = std::to_string(root["id"].as<int>());
-    } else if (root["id"].is<unsigned int>()) {
-      packet.id = std::to_string(root["id"].as<unsigned int>());
-    } else if (root["id"].is<uint32_t>()) {
-      packet.id = std::to_string(root["id"].as<uint32_t>());
+    const auto id_value = root["id"];
+    if (id_value.is<const char *>()) {
+      packet.id = id_value.as<const char *>();
+    } else if (id_value.is<int>()) {
+      packet.id = std::to_string(id_value.as<int>());
+    } else if (id_value.is<unsigned int>()) {
+      packet.id = std::to_string(id_value.as<unsigned int>());
+    } else if (id_value.is<uint32_t>()) {
+      packet.id = std::to_string(id_value.as<uint32_t>());
     }
 
-    if (root["channel"].is<const char *>()) {
-      packet.channel = root["channel"].as<const char *>();
-    } else if (root["channel"].is<int>()) {
-      packet.channel = std::to_string(root["channel"].as<int>());
-    } else if (root["subtype"].is<int>()) {
-      packet.channel = std::to_string(root["subtype"].as<int>());
-    } else if (root["subtype"].is<const char *>()) {
-      packet.channel = root["subtype"].as<const char *>();
+    const auto channel_value = root["channel"];
+    const auto subtype_value = root["subtype"];
+    if (channel_value.is<const char *>()) {
+      packet.channel = channel_value.as<const char *>();
+    } else if (channel_value.is<int>()) {
+      packet.channel = std::to_string(channel_value.as<int>());
+    } else if (subtype_value.is<int>()) {
+      packet.channel = std::to_string(subtype_value.as<int>());
+    } else if (subtype_value.is<const char *>()) {
+      packet.channel = subtype_value.as<const char *>();
     } else {
       packet.channel = "0";
     }
@@ -284,16 +287,19 @@ void Gateway::process_message(char *message) {
     } else {
       packet.temperature_f = std::numeric_limits<float>::quiet_NaN();
     }
-    packet.humidity = root["humidity"] | NAN;
-    if (root["battery_ok"].is<bool>()) {
-      packet.battery = root["battery_ok"].as<bool>() ? 100.0f : 0.0f;
-    } else if (root["battery_ok"].is<int>()) {
-      packet.battery = root["battery_ok"].as<int>() ? 100.0f : 0.0f;
-    } else if (root["battery_ok"].is<float>()) {
-      packet.battery = root["battery_ok"].as<float>() ? 100.0f : 0.0f;
+    const auto humidity_value = root["humidity"];
+    packet.humidity = humidity_value | NAN;
+    const auto battery_ok_value = root["battery_ok"];
+    if (battery_ok_value.is<bool>()) {
+      packet.battery = battery_ok_value.as<bool>() ? 100.0f : 0.0f;
+    } else if (battery_ok_value.is<int>()) {
+      packet.battery = battery_ok_value.as<int>() ? 100.0f : 0.0f;
+    } else if (battery_ok_value.is<float>()) {
+      packet.battery = battery_ok_value.as<float>() ? 100.0f : 0.0f;
     }
 
-    packet.rssi = root["rssi"] | 0;
+    const auto rssi_value = root["rssi"];
+    packet.rssi = rssi_value | 0;
     packet.seen_ms = millis();
 
     const ::esphome::rtl433_native::PacketResult result = this->state_.process_packet(packet);
@@ -314,8 +320,12 @@ void Gateway::process_message(char *message) {
     }
 
     if (this->last_packet_sensor_ != nullptr) {
-      this->last_packet_sensor_->publish_state(
-          ::esphome::rtl433_native::format_sensor_key({packet.model, packet.channel, packet.id}));
+      const std::string next_packet_value =
+          ::esphome::rtl433_native::format_sensor_key({packet.model, packet.channel, packet.id});
+      if (this->last_packet_value_ != next_packet_value) {
+        this->last_packet_value_ = next_packet_value;
+        this->last_packet_sensor_->publish_state(this->last_packet_value_);
+      }
     }
 
     if (result == ::esphome::rtl433_native::PacketResult::MATCHED_KNOWN) {
