@@ -17,6 +17,7 @@ namespace {
 
 static const char *const TAG = "rtl433_state";
 constexpr uint32_t DEFAULT_UNCHANGED_STATE_SAVE_INTERVAL_MS = 60000;
+constexpr uint32_t LAST_UPDATED_PAST_BIAS_SECONDS = 60;
 
 bool same_key(const SensorKey &left, const SensorKey &right) {
   return left.model == right.model && left.channel == right.channel && left.id == right.id;
@@ -185,6 +186,11 @@ bool matches_key(const DecodedPacket &packet, const SensorKey &key) {
 
 uint32_t resolve_last_updated_timestamp(uint32_t current_timestamp, uint32_t previous_timestamp) {
   if (current_timestamp > 0) {
+    // Bias the published timestamp into the past so Home Assistant relative-time
+    // displays stay on the "ago" side even if the device clock is slightly ahead.
+    if (current_timestamp > LAST_UPDATED_PAST_BIAS_SECONDS) {
+      return current_timestamp - LAST_UPDATED_PAST_BIAS_SECONDS;
+    }
     return current_timestamp;
   }
   return previous_timestamp;
