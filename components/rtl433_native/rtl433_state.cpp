@@ -342,19 +342,33 @@ void GatewayState::record_candidate(const DecodedPacket &packet, bool matched_kn
     CandidateRow row;
     row.key = key;
     row.first_seen_ms = packet.seen_ms;
-    candidates_.push_back(row);
-    existing = std::prev(candidates_.end());
+    row.temperature_f = packet.temperature_f;
+    row.humidity = packet.humidity;
+    row.battery = packet.battery;
+    row.rssi = packet.rssi;
+    row.last_seen_ms = packet.seen_ms;
+    row.packet_count = 1;
+    row.matched_known = matched_known;
+    const auto insertion_point =
+        std::lower_bound(candidates_.begin(), candidates_.end(), row, candidate_less);
+    candidates_.insert(insertion_point, std::move(row));
+    if (candidates_.size() > candidate_limit_) {
+      candidates_.resize(candidate_limit_);
+    }
+    return;
   }
 
-  existing->temperature_f = packet.temperature_f;
-  existing->humidity = packet.humidity;
-  existing->battery = packet.battery;
-  existing->rssi = packet.rssi;
-  existing->last_seen_ms = packet.seen_ms;
-  existing->packet_count += 1;
-  existing->matched_known = matched_known;
-
-  std::sort(candidates_.begin(), candidates_.end(), candidate_less);
+  CandidateRow row = *existing;
+  candidates_.erase(existing);
+  row.temperature_f = packet.temperature_f;
+  row.humidity = packet.humidity;
+  row.battery = packet.battery;
+  row.rssi = packet.rssi;
+  row.last_seen_ms = packet.seen_ms;
+  row.packet_count += 1;
+  row.matched_known = matched_known;
+  const auto insertion_point = std::lower_bound(candidates_.begin(), candidates_.end(), row, candidate_less);
+  candidates_.insert(insertion_point, std::move(row));
 
   if (candidates_.size() > candidate_limit_) {
     candidates_.resize(candidate_limit_);
