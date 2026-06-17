@@ -38,6 +38,10 @@ See [YAML Configuration](#yaml-configuration) below for details on the options.
    ```
 
    The custom component requires `time_id` for restored stale-state aging and last-updated timestamps.
+   It intentionally publishes `last_updated` about 60 seconds in the past so
+   Home Assistant relative-time displays stay on the "ago" side instead of
+   occasionally rendering a small future offset when the device clock runs
+   slightly ahead.
 
 8. In the ESPHome dashboard, choose the device and select **Install**.
 9. After the device is online in Home Assistant, turn on Discovery Mode, find
