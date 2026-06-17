@@ -98,20 +98,6 @@ bool same_persisted_values(const LogicalSensorState &state, const DecodedPacket 
          same_float_value(state.battery, packet.battery);
 }
 
-std::optional<uint32_t> next_stale_delay_ms(const LogicalSensorState &state, uint32_t now_ms,
-                                            uint32_t stale_after_ms) {
-  if (!state.has_value) {
-    return std::nullopt;
-  }
-
-  const uint32_t elapsed_ms = static_cast<uint32_t>(now_ms - state.last_seen_ms);
-  if (elapsed_ms > stale_after_ms) {
-    return 1;
-  }
-  const uint32_t remaining_ms = stale_after_ms - elapsed_ms;
-  return remaining_ms == 0 ? 1 : remaining_ms;
-}
-
 }  // namespace
 
 std::optional<SensorKey> parse_sensor_key(const std::string &value) {
@@ -361,12 +347,14 @@ bool GatewayState::is_stale(const std::string &logical_key, uint32_t now_ms) con
 std::optional<uint32_t> GatewayState::next_stale_state_publish_delay_ms(uint32_t now_ms) const {
   std::optional<uint32_t> next_delay;
   for (const auto &entry : logical_states_) {
-    const auto delay = next_stale_delay_ms(entry.second, now_ms, stale_after_ms_);
-    if (!delay.has_value()) {
+    const auto &state = entry.second;
+    if (!state.has_value) {
       continue;
     }
-    if (!next_delay.has_value() || *delay < *next_delay) {
-      next_delay = delay;
+    const uint32_t elapsed_ms = static_cast<uint32_t>(now_ms - state.last_seen_ms);
+    const uint32_t delay_ms = elapsed_ms > stale_after_ms_ ? 1 : stale_after_ms_ - elapsed_ms;
+    if (!next_delay.has_value() || delay_ms < *next_delay) {
+      next_delay = delay_ms == 0 ? 1 : delay_ms;
     }
   }
   return next_delay;
