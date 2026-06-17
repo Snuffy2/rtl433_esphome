@@ -63,6 +63,20 @@ bool same_mapping(const SensorMapping &left, const SensorMapping &right) {
   return true;
 }
 
+CandidateRow make_candidate_row(const DecodedPacket &packet, bool matched_known) {
+  CandidateRow row;
+  row.key = SensorKey{packet.model, packet.channel, packet.id};
+  row.temperature_f = packet.temperature_f;
+  row.humidity = packet.humidity;
+  row.battery = packet.battery;
+  row.rssi = packet.rssi;
+  row.first_seen_ms = packet.seen_ms;
+  row.last_seen_ms = packet.seen_ms;
+  row.packet_count = 1;
+  row.matched_known = matched_known;
+  return row;
+}
+
 bool candidate_less(const CandidateRow &left, const CandidateRow &right) {
   if (left.last_seen_ms != right.last_seen_ms) {
     return left.last_seen_ms > right.last_seen_ms;
@@ -339,16 +353,7 @@ void GatewayState::record_candidate(const DecodedPacket &packet, bool matched_kn
   });
 
   if (existing == candidates_.end()) {
-    CandidateRow row;
-    row.key = key;
-    row.first_seen_ms = packet.seen_ms;
-    row.temperature_f = packet.temperature_f;
-    row.humidity = packet.humidity;
-    row.battery = packet.battery;
-    row.rssi = packet.rssi;
-    row.last_seen_ms = packet.seen_ms;
-    row.packet_count = 1;
-    row.matched_known = matched_known;
+    CandidateRow row = make_candidate_row(packet, matched_known);
     const auto insertion_point =
         std::lower_bound(candidates_.begin(), candidates_.end(), row, candidate_less);
     candidates_.insert(insertion_point, std::move(row));
@@ -358,17 +363,13 @@ void GatewayState::record_candidate(const DecodedPacket &packet, bool matched_kn
     return;
   }
 
-  CandidateRow row = *existing;
+  const CandidateRow previous_row = *existing;
   candidates_.erase(existing);
-  row.temperature_f = packet.temperature_f;
-  row.humidity = packet.humidity;
-  row.battery = packet.battery;
-  row.rssi = packet.rssi;
-  row.last_seen_ms = packet.seen_ms;
-  row.packet_count += 1;
-  row.matched_known = matched_known;
-  const auto insertion_point = std::lower_bound(candidates_.begin(), candidates_.end(), row, candidate_less);
-  candidates_.insert(insertion_point, std::move(row));
+  CandidateRow updated = make_candidate_row(packet, matched_known);
+  updated.first_seen_ms = previous_row.first_seen_ms;
+  updated.packet_count = previous_row.packet_count + 1;
+  const auto insertion_point = std::lower_bound(candidates_.begin(), candidates_.end(), updated, candidate_less);
+  candidates_.insert(insertion_point, std::move(updated));
 
   if (candidates_.size() > candidate_limit_) {
     candidates_.resize(candidate_limit_);

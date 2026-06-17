@@ -323,8 +323,7 @@ void Gateway::process_message(char *message) {
     if (this->last_packet_sensor_ != nullptr) {
       const std::string next_packet_value =
           ::esphome::rtl433_native::format_sensor_key({packet.model, packet.channel, packet.id});
-      this->last_packet_value_ = next_packet_value;
-      this->last_packet_sensor_->publish_state(this->last_packet_value_);
+      this->last_packet_sensor_->publish_state(next_packet_value);
     }
 
     if (result == ::esphome::rtl433_native::PacketResult::MATCHED_KNOWN) {

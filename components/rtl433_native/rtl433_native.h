@@ -125,7 +125,6 @@ class Gateway : public Component
   uint32_t last_stale_state_publish_ms_{0};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};
   std::array<std::string, 20> last_candidate_values_{};
-  std::string last_packet_value_{};
   std::string version_{"unknown"};
   text_sensor::TextSensor *last_packet_sensor_{nullptr};
   sensor::Sensor *packet_count_sensor_{nullptr};
