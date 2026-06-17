@@ -595,6 +595,11 @@ void Gateway::publish_candidates() {
 
 void Gateway::publish_stale_states() {
   const uint32_t now = millis();
+  if (this->last_stale_state_publish_ms_ != 0 &&
+      static_cast<uint32_t>(now - this->last_stale_state_publish_ms_) < 1000) {
+    return;
+  }
+  this->last_stale_state_publish_ms_ = now;
   for (auto &[logical_key, entities] : this->entities_) {
     this->publish_stale_state(logical_key, entities, now);
   }
