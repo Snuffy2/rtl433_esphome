@@ -90,8 +90,8 @@ void Gateway::loop() {
     this->restored_states_ = true;
     this->restore_saved_states();
   }
-  this->rf_.loop();
   this->publish_stale_states();
+  this->rf_.loop();
 }
 
 void Gateway::dump_config() {
@@ -122,7 +122,8 @@ void Gateway::status() {
 
 void Gateway::clear_candidates() {
   this->state_.clear_candidates();
-  this->queue_candidate_publish();
+  this->candidate_publish_pending_ = false;
+  this->publish_candidates();
 }
 
 void Gateway::set_discovery_enabled(bool enabled) {
@@ -322,10 +323,8 @@ void Gateway::process_message(char *message) {
     if (this->last_packet_sensor_ != nullptr) {
       const std::string next_packet_value =
           ::esphome::rtl433_native::format_sensor_key({packet.model, packet.channel, packet.id});
-      if (this->last_packet_value_ != next_packet_value) {
-        this->last_packet_value_ = next_packet_value;
-        this->last_packet_sensor_->publish_state(this->last_packet_value_);
-      }
+      this->last_packet_value_ = next_packet_value;
+      this->last_packet_sensor_->publish_state(this->last_packet_value_);
     }
 
     if (result == ::esphome::rtl433_native::PacketResult::MATCHED_KNOWN) {
@@ -605,8 +604,10 @@ void Gateway::publish_candidates() {
 
 void Gateway::publish_stale_states() {
   const uint32_t now = millis();
+  const uint32_t publish_interval_ms =
+      std::max<uint32_t>(1, std::min<uint32_t>(1000, this->state_.stale_after_ms() / 4));
   if (this->last_stale_state_publish_ms_ != 0 &&
-      static_cast<uint32_t>(now - this->last_stale_state_publish_ms_) < 1000) {
+      static_cast<uint32_t>(now - this->last_stale_state_publish_ms_) < publish_interval_ms) {
     return;
   }
   this->last_stale_state_publish_ms_ = now;
