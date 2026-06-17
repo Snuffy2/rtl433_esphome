@@ -333,8 +333,7 @@ void Gateway::process_message(char *message) {
             previous_save == this->last_state_save_ms_.end() ? 0 : previous_save->second;
         if (should_persist_logical_state(value_changed, packet.seen_ms, previous_save_ms,
                                          unchanged_state_save_interval_ms(this->state_.stale_after_ms()))) {
-          this->save_state(logical_key);
-          this->last_state_save_ms_[logical_key] = packet.seen_ms;
+          this->queue_state_save(logical_key);
         }
         this->publish_state(logical_key);
       }
@@ -451,6 +450,32 @@ void Gateway::update_last_updated(const std::string &logical_key, uint32_t last_
   const uint32_t adjusted_last_updated = resolve_last_updated_timestamp(last_updated, previous_timestamp);
   if (adjusted_last_updated > 0) {
     this->last_updated_values_[logical_key] = adjusted_last_updated;
+  }
+}
+
+void Gateway::queue_state_save(const std::string &logical_key) {
+  if (!this->pending_state_save_keys_.insert(logical_key).second) {
+    return;
+  }
+  this->set_timeout("flush_pending_state_saves", 50, [this]() { this->flush_pending_state_saves(); });
+}
+
+void Gateway::flush_pending_state_saves() {
+  if (this->pending_state_save_keys_.empty()) {
+    return;
+  }
+
+  std::vector<std::string> pending_keys;
+  pending_keys.reserve(this->pending_state_save_keys_.size());
+  for (const auto &logical_key : this->pending_state_save_keys_) {
+    pending_keys.push_back(logical_key);
+  }
+  this->pending_state_save_keys_.clear();
+
+  const uint32_t saved_at_ms = millis();
+  for (const auto &logical_key : pending_keys) {
+    this->save_state(logical_key);
+    this->last_state_save_ms_[logical_key] = saved_at_ms;
   }
 }
 

@@ -120,6 +120,7 @@ class Gateway : public Component
   std::unordered_map<std::string, uint32_t> last_updated_values_{};
   std::unordered_map<std::string, uint32_t> last_saved_state_mapping_hashes_{};
   std::unordered_map<std::string, uint32_t> last_state_save_ms_{};
+  std::unordered_set<std::string> pending_state_save_keys_{};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};
   std::array<std::string, 20> last_candidate_values_{};
   std::string version_{"unknown"};
@@ -144,6 +145,8 @@ class Gateway : public Component
   void reproject_pending_restored_states(uint32_t current_timestamp);
   uint32_t current_timestamp();
   void update_last_updated(const std::string &logical_key, uint32_t last_updated);
+  void queue_state_save(const std::string &logical_key);
+  void flush_pending_state_saves();
   void save_state(const std::string &logical_key);
   void publish_stale_state(const std::string &logical_key, EntitySet &entities, uint32_t now_ms);
   void publish_state(const std::string &logical_key);
