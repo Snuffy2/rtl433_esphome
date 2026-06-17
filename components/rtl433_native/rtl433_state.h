@@ -91,6 +91,7 @@ class GatewayState {
   uint32_t stale_after_ms() const { return stale_after_ms_; }
   void clear_candidates() { candidates_.clear(); }
   const std::vector<CandidateRow> &candidates() const { return candidates_; }
+  std::optional<uint32_t> next_stale_state_publish_delay_ms(uint32_t now_ms) const;
   bool is_stale(const std::string &logical_key, uint32_t now_ms) const;
 
  private:

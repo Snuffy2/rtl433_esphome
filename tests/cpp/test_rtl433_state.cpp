@@ -594,6 +594,40 @@ void test_stale_detection_wraps_with_uint32_delta() {
   require(state.is_stale("garage_combo_freezer", 0x00000500), "post-wrap packets after threshold should be stale");
 }
 
+void test_next_stale_publish_delay_tracks_earliest_deadline() {
+  rtl433::GatewayState state;
+  state.set_stale_after_ms(1000);
+  state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
+  state.set_mapping("garage_combo_freezer", "TFA-303221/2/88");
+
+  rtl433::DecodedPacket fridge = packet_for_key("LaCrosse-TX141THBv2", "0", "203", 1000);
+  state.process_packet(fridge);
+
+  rtl433::DecodedPacket freezer = packet_for_key("TFA-303221", "2", "88", 1800);
+  state.process_packet(freezer);
+
+  const auto *fridge_state = state.logical_sensor("garage_combo_fridge");
+  const auto *freezer_state = state.logical_sensor("garage_combo_freezer");
+  require(fridge_state != nullptr && freezer_state != nullptr, "expected both logical sensor states");
+
+  auto delay = state.next_stale_state_publish_delay_ms(1900);
+  require(delay.has_value(), "expected a future stale publish deadline");
+  require(*delay == 100,
+          "earliest stale deadline should drive the next publish delay; got " + std::to_string(*delay));
+
+  delay = state.next_stale_state_publish_delay_ms(2000);
+  require(delay.has_value(), "expected a near-immediate stale publish deadline");
+  require(*delay == 1, "reaching the first stale deadline should trigger an immediate publish; got " +
+                           std::to_string(*delay));
+}
+
+void test_next_stale_publish_delay_is_empty_without_values() {
+  rtl433::GatewayState state;
+
+  require(!state.next_stale_state_publish_delay_ms(1234).has_value(),
+          "empty state should not schedule stale publish work");
+}
+
 void test_candidate_order_is_deterministic_for_equal_seen_time() {
   rtl433::GatewayState state;
   state.set_discovery_enabled(true);
@@ -739,6 +773,8 @@ int main() {
   test_empty_mapping_clears_active_mapping();
   test_stale_detection_uses_last_seen();
   test_stale_detection_wraps_with_uint32_delta();
+  test_next_stale_publish_delay_tracks_earliest_deadline();
+  test_next_stale_publish_delay_is_empty_without_values();
   test_candidate_order_is_deterministic_for_equal_seen_time();
   test_candidates_pruned_by_age();
   test_candidate_age_pruning_is_uint32_wrap_safe();

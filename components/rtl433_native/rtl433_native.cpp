@@ -90,7 +90,6 @@ void Gateway::loop() {
     this->restored_states_ = true;
     this->restore_saved_states();
   }
-  this->publish_stale_states();
   this->rf_.loop();
 }
 
@@ -158,6 +157,7 @@ void Gateway::set_candidate_limit(std::size_t limit) { this->state_.set_candidat
 
 void Gateway::set_stale_after_ms(uint32_t stale_after_ms) {
   this->state_.set_stale_after_ms(stale_after_ms);
+  this->schedule_stale_state_publish();
 }
 
 void Gateway::set_temperature_sensor(const std::string &logical_key, sensor::Sensor *sensor) {
@@ -354,6 +354,7 @@ void Gateway::process_message(char *message) {
     }
 
     this->queue_candidate_publish();
+    this->schedule_stale_state_publish();
     return true;
   });
 }
@@ -409,6 +410,7 @@ void Gateway::restore_saved_states() {
       }
     });
   }
+  this->schedule_stale_state_publish();
 }
 
 void Gateway::sync_time_base() {
@@ -441,6 +443,7 @@ void Gateway::reproject_pending_restored_states(uint32_t current_timestamp) {
     this->state_.restore_logical_state(logical_key, restored);
     this->publish_state(logical_key);
   }
+  this->schedule_stale_state_publish();
 }
 
 uint32_t Gateway::current_timestamp() {
@@ -603,16 +606,20 @@ void Gateway::publish_candidates() {
 
 void Gateway::publish_stale_states() {
   const uint32_t now = millis();
-  const uint32_t publish_interval_ms =
-      std::max<uint32_t>(1, std::min<uint32_t>(1000, this->state_.stale_after_ms() / 4));
-  if (this->last_stale_state_publish_ms_ != 0 &&
-      static_cast<uint32_t>(now - this->last_stale_state_publish_ms_) < publish_interval_ms) {
-    return;
-  }
-  this->last_stale_state_publish_ms_ = now;
   for (auto &[logical_key, entities] : this->entities_) {
     this->publish_stale_state(logical_key, entities, now);
   }
+}
+
+void Gateway::schedule_stale_state_publish() {
+  const auto delay_ms = this->state_.next_stale_state_publish_delay_ms(millis());
+  if (!delay_ms.has_value()) {
+    return;
+  }
+  this->set_timeout("publish_stale_states", *delay_ms, [this]() {
+    this->publish_stale_states();
+    this->schedule_stale_state_publish();
+  });
 }
 
 void MappingText::setup() {
