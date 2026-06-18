@@ -73,6 +73,7 @@ uint32_t resolve_restored_last_seen_ms(
 uint32_t unchanged_state_save_interval_ms(uint32_t stale_after_ms);
 bool should_persist_logical_state(
     bool value_changed, uint32_t now_ms, uint32_t previous_save_ms, uint32_t interval_ms);
+bool should_reschedule_stale_publish(std::optional<uint32_t> scheduled_deadline_ms, uint32_t next_deadline_ms);
 
 class GatewayState {
  public:
@@ -93,10 +94,13 @@ class GatewayState {
   const std::vector<CandidateRow> &candidates() const { return candidates_; }
   std::optional<uint32_t> next_stale_state_publish_delay_ms(uint32_t now_ms) const;
   bool is_stale(const std::string &logical_key, uint32_t now_ms) const;
+  std::size_t mapped_logical_key_count(
+      const std::string &model, const std::string &channel, const std::string &id) const;
 
  private:
   std::unordered_map<std::string, SensorMapping> mappings_{};
   std::unordered_map<std::string, uint32_t> mapping_hashes_{};
+  std::unordered_map<std::string, std::vector<std::string>> mapping_index_{};
   std::unordered_map<std::string, LogicalSensorState> logical_states_{};
   std::vector<std::string> matched_logical_keys_{};
   std::vector<std::string> changed_logical_keys_{};
@@ -104,6 +108,8 @@ class GatewayState {
   std::size_t candidate_limit_{10};
   uint32_t stale_after_ms_{3600000};
   std::vector<CandidateRow> candidates_{};
+  void remove_from_mapping_index(const std::string &logical_key, const SensorMapping &mapping);
+  void add_to_mapping_index(const std::string &logical_key, const SensorMapping &mapping);
   void record_candidate(const DecodedPacket &packet, bool matched_known);
   void prune_candidates(uint32_t now_ms);
 };

@@ -649,6 +649,38 @@ void test_next_stale_publish_delay_is_empty_without_values() {
           "empty state should not schedule stale publish work");
 }
 
+void test_stale_schedule_reschedules_only_for_earlier_deadline() {
+  require(rtl433::should_reschedule_stale_publish({}, 1000),
+          "missing stale timer should schedule the next deadline");
+  require(rtl433::should_reschedule_stale_publish(1500, 1000),
+          "earlier stale deadline should replace the existing timer");
+  require(!rtl433::should_reschedule_stale_publish(1000, 1000),
+          "same stale deadline should keep the existing timer");
+  require(!rtl433::should_reschedule_stale_publish(1000, 1500),
+          "later stale deadline should not replace an earlier timer");
+}
+
+void test_mapping_index_tracks_updates_and_duplicate_keys() {
+  rtl433::GatewayState state;
+  state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
+  state.set_mapping("garage_combo_freezer", "LaCrosse-TX141THBv2/0/203;TFA-303221/2/88");
+
+  require(state.mapped_logical_key_count("LaCrosse-TX141THBv2", "0", "203") == 2,
+          "duplicate packet key should index both logical sensors");
+  require(state.mapped_logical_key_count("TFA-303221", "2", "88") == 1,
+          "synonym packet key should index its logical sensor");
+
+  state.set_mapping("garage_combo_fridge", "Acurite-986/1R/11932");
+  require(state.mapped_logical_key_count("LaCrosse-TX141THBv2", "0", "203") == 1,
+          "remapping one duplicate should retain the other indexed logical sensor");
+  require(state.mapped_logical_key_count("Acurite-986", "1R", "11932") == 1,
+          "remapped packet key should be indexed");
+
+  state.set_mapping("garage_combo_freezer", "");
+  require(state.mapped_logical_key_count("LaCrosse-TX141THBv2", "0", "203") == 0,
+          "clearing the last mapping should remove the old packet key from the index");
+}
+
 void test_candidate_order_is_deterministic_for_equal_seen_time() {
   rtl433::GatewayState state;
   state.set_discovery_enabled(true);
@@ -797,6 +829,8 @@ int main() {
   test_next_stale_publish_delay_tracks_earliest_deadline();
   test_next_stale_publish_delay_skips_already_stale_values();
   test_next_stale_publish_delay_is_empty_without_values();
+  test_stale_schedule_reschedules_only_for_earlier_deadline();
+  test_mapping_index_tracks_updates_and_duplicate_keys();
   test_candidate_order_is_deterministic_for_equal_seen_time();
   test_candidates_pruned_by_age();
   test_candidate_age_pruning_is_uint32_wrap_safe();
