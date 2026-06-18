@@ -541,14 +541,15 @@ void Gateway::flush_pending_state_save() {
     this->state_save_flush_pending_ = false;
     return;
   }
+
   const std::string logical_key = *this->pending_state_saves_.begin();
   this->pending_state_saves_.erase(logical_key);
   this->save_state(logical_key);
-  if (this->pending_state_saves_.empty()) {
-    this->state_save_flush_pending_ = false;
-    return;
+
+  this->state_save_flush_pending_ = !this->pending_state_saves_.empty();
+  if (this->state_save_flush_pending_) {
+    this->defer("flush_state_saves", [this]() { this->flush_pending_state_save(); });
   }
-  this->defer("flush_state_saves", [this]() { this->flush_pending_state_save(); });
 }
 
 void Gateway::queue_state_publish(const std::string &logical_key) {
@@ -568,14 +569,15 @@ void Gateway::flush_pending_state_publish() {
     this->state_publish_flush_pending_ = false;
     return;
   }
+
   const std::string logical_key = *this->pending_state_publishes_.begin();
   this->pending_state_publishes_.erase(logical_key);
   this->publish_state(logical_key);
-  if (this->pending_state_publishes_.empty()) {
-    this->state_publish_flush_pending_ = false;
-    return;
+
+  this->state_publish_flush_pending_ = !this->pending_state_publishes_.empty();
+  if (this->state_publish_flush_pending_) {
+    this->defer("publish_states", [this]() { this->flush_pending_state_publish(); });
   }
-  this->defer("publish_states", [this]() { this->flush_pending_state_publish(); });
 }
 
 void Gateway::save_state(const std::string &logical_key) {

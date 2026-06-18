@@ -51,6 +51,14 @@ void canonicalize_mapping(SensorMapping &mapping) {
   mapping.synonyms.assign(std::next(keys.begin()), keys.end());
 }
 
+template <typename Callback>
+void for_each_mapping_key(const SensorMapping &mapping, Callback callback) {
+  callback(mapping.primary);
+  for (const auto &synonym : mapping.synonyms) {
+    callback(synonym);
+  }
+}
+
 bool same_mapping(const SensorMapping &left, const SensorMapping &right) {
   if (!same_key(left.primary, right.primary) || left.synonyms.size() != right.synonyms.size()) {
     return false;
@@ -61,12 +69,6 @@ bool same_mapping(const SensorMapping &left, const SensorMapping &right) {
     }
   }
   return true;
-}
-
-std::vector<SensorKey> mapping_keys(const SensorMapping &mapping) {
-  std::vector<SensorKey> keys{mapping.primary};
-  keys.insert(keys.end(), mapping.synonyms.begin(), mapping.synonyms.end());
-  return keys;
 }
 
 CandidateRow make_candidate_row(const DecodedPacket &packet, bool matched_known) {
@@ -391,26 +393,26 @@ std::size_t GatewayState::mapped_logical_key_count(
 }
 
 void GatewayState::remove_from_mapping_index(const std::string &logical_key, const SensorMapping &mapping) {
-  for (const auto &key : mapping_keys(mapping)) {
+  for_each_mapping_key(mapping, [&](const SensorKey &key) {
     auto item = mapping_index_.find(format_sensor_key(key));
     if (item == mapping_index_.end()) {
-      continue;
+      return;
     }
     auto &logical_keys = item->second;
     logical_keys.erase(std::remove(logical_keys.begin(), logical_keys.end(), logical_key), logical_keys.end());
     if (logical_keys.empty()) {
       mapping_index_.erase(item);
     }
-  }
+  });
 }
 
 void GatewayState::add_to_mapping_index(const std::string &logical_key, const SensorMapping &mapping) {
-  for (const auto &key : mapping_keys(mapping)) {
+  for_each_mapping_key(mapping, [&](const SensorKey &key) {
     auto &logical_keys = mapping_index_[format_sensor_key(key)];
     if (std::find(logical_keys.begin(), logical_keys.end(), logical_key) == logical_keys.end()) {
       logical_keys.push_back(logical_key);
     }
-  }
+  });
 }
 
 void GatewayState::record_candidate(const DecodedPacket &packet, bool matched_known) {
