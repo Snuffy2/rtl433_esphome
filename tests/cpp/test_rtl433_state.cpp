@@ -660,7 +660,7 @@ void test_stale_schedule_reschedules_only_for_earlier_deadline() {
           "later stale deadline should not replace an earlier timer");
 }
 
-void test_mapping_index_tracks_updates_and_duplicate_keys() {
+void test_mapping_index_matches_duplicate_and_synonym_keys() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
   state.set_mapping("garage_combo_freezer", "LaCrosse-TX141THBv2/0/203;TFA-303221/2/88");
@@ -682,6 +682,17 @@ void test_mapping_index_tracks_updates_and_duplicate_keys() {
           "synonym packet key should update the mapped logical sensor");
   require(!keys_include(state.matched_logical_keys(), "garage_combo_fridge"),
           "synonym packet key should not update unrelated logical sensors");
+}
+
+void test_mapping_index_tracks_remaps_and_clears() {
+  rtl433::GatewayState state;
+  state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
+  state.set_mapping("garage_combo_freezer", "LaCrosse-TX141THBv2/0/203;TFA-303221/2/88");
+
+  rtl433::DecodedPacket duplicate_packet = packet_for_key("LaCrosse-TX141THBv2", "0", "203", 1000);
+  duplicate_packet.temperature_f = 33.0f;
+  require(state.process_packet(duplicate_packet) == rtl433::PacketResult::MATCHED_KNOWN,
+          "duplicate packet key should match known sensors before remapping");
 
   state.set_mapping("garage_combo_fridge", "Acurite-986/1R/11932");
   duplicate_packet.seen_ms = 3000;
@@ -855,7 +866,8 @@ int main() {
   test_next_stale_publish_delay_skips_already_stale_values();
   test_next_stale_publish_delay_is_empty_without_values();
   test_stale_schedule_reschedules_only_for_earlier_deadline();
-  test_mapping_index_tracks_updates_and_duplicate_keys();
+  test_mapping_index_matches_duplicate_and_synonym_keys();
+  test_mapping_index_tracks_remaps_and_clears();
   test_candidate_order_is_deterministic_for_equal_seen_time();
   test_candidates_pruned_by_age();
   test_candidate_age_pruning_is_uint32_wrap_safe();
