@@ -150,6 +150,7 @@ void Gateway::set_override(const std::string &logical_key, const std::string &se
     this->last_updated_values_.erase(logical_key);
     this->last_saved_state_mapping_hashes_.erase(logical_key);
     this->last_state_save_ms_.erase(logical_key);
+    this->publish_stale_states();
   }
 }
 
@@ -157,6 +158,7 @@ void Gateway::set_candidate_limit(std::size_t limit) { this->state_.set_candidat
 
 void Gateway::set_stale_after_ms(uint32_t stale_after_ms) {
   this->state_.set_stale_after_ms(stale_after_ms);
+  this->publish_stale_states();
   this->schedule_stale_state_publish();
 }
 
