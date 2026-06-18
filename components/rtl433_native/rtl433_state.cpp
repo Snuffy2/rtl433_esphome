@@ -255,6 +255,10 @@ bool should_reschedule_stale_publish(std::optional<uint32_t> scheduled_deadline_
          static_cast<int32_t>(next_deadline_ms - *scheduled_deadline_ms) < 0;
 }
 
+bool should_restore_saved_logical_state(const LogicalSensorState *current_state) {
+  return current_state == nullptr || !current_state->has_value;
+}
+
 bool matches_mapping(const DecodedPacket &packet, const SensorMapping &mapping) {
   if (matches_key(packet, mapping.primary)) {
     return true;

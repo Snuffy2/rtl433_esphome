@@ -660,6 +660,20 @@ void test_stale_schedule_reschedules_only_for_earlier_deadline() {
           "later stale deadline should not replace an earlier timer");
 }
 
+void test_saved_restore_skips_live_boot_packet_state() {
+  rtl433::LogicalSensorState empty_state;
+  require(rtl433::should_restore_saved_logical_state(nullptr),
+          "missing live state should allow saved startup restore");
+  require(rtl433::should_restore_saved_logical_state(&empty_state),
+          "empty live state should allow saved startup restore");
+
+  rtl433::LogicalSensorState live_state;
+  live_state.has_value = true;
+  live_state.last_seen_ms = 1234;
+  require(!rtl433::should_restore_saved_logical_state(&live_state),
+          "live packet state should not be overwritten by deferred startup restore");
+}
+
 void test_mapping_index_matches_duplicate_and_synonym_keys() {
   rtl433::GatewayState state;
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
@@ -866,6 +880,7 @@ int main() {
   test_next_stale_publish_delay_skips_already_stale_values();
   test_next_stale_publish_delay_is_empty_without_values();
   test_stale_schedule_reschedules_only_for_earlier_deadline();
+  test_saved_restore_skips_live_boot_packet_state();
   test_mapping_index_matches_duplicate_and_synonym_keys();
   test_mapping_index_tracks_remaps_and_clears();
   test_candidate_order_is_deterministic_for_equal_seen_time();

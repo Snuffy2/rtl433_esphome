@@ -74,6 +74,7 @@ uint32_t unchanged_state_save_interval_ms(uint32_t stale_after_ms);
 bool should_persist_logical_state(
     bool value_changed, uint32_t now_ms, uint32_t previous_save_ms, uint32_t interval_ms);
 bool should_reschedule_stale_publish(std::optional<uint32_t> scheduled_deadline_ms, uint32_t next_deadline_ms);
+bool should_restore_saved_logical_state(const LogicalSensorState *current_state);
 
 class GatewayState {
  public:

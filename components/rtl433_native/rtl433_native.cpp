@@ -389,6 +389,10 @@ void Gateway::restore_next_saved_state() {
 }
 
 bool Gateway::restore_saved_state(const std::string &logical_key) {
+  if (!should_restore_saved_logical_state(this->state_.logical_sensor(logical_key))) {
+    return false;
+  }
+
   auto preference = global_preferences->make_preference<SavedLogicalState>(preference_key(logical_key), true);
   SavedLogicalState saved;
   this->preferences_[logical_key] = preference;
