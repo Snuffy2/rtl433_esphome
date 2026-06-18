@@ -323,9 +323,8 @@ PacketResult GatewayState::process_packet(const DecodedPacket &packet) {
     return PacketResult::REJECTED_INVALID;
   }
 
-  bool matched = false;
   const auto indexed_matches = mapping_index_.find(format_sensor_key({packet.model, packet.channel, packet.id}));
-  if (indexed_matches != mapping_index_.end()) {
+  if (indexed_matches != mapping_index_.end() && !indexed_matches->second.empty()) {
     for (const auto &logical_key : indexed_matches->second) {
       auto &state = logical_states_[logical_key];
       const bool value_changed = !state.has_value || !same_persisted_values(state, packet);
@@ -339,11 +338,7 @@ PacketResult GatewayState::process_packet(const DecodedPacket &packet) {
       if (value_changed) {
         changed_logical_keys_.push_back(logical_key);
       }
-      matched = true;
     }
-  }
-
-  if (matched) {
     if (discovery_enabled_) {
       record_candidate(packet, true);
     }
