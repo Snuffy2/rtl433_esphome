@@ -63,6 +63,20 @@ bool same_mapping(const SensorMapping &left, const SensorMapping &right) {
   return true;
 }
 
+CandidateRow make_candidate_row(const DecodedPacket &packet, bool matched_known) {
+  CandidateRow row;
+  row.key = SensorKey{packet.model, packet.channel, packet.id};
+  row.temperature_f = packet.temperature_f;
+  row.humidity = packet.humidity;
+  row.battery = packet.battery;
+  row.rssi = packet.rssi;
+  row.first_seen_ms = packet.seen_ms;
+  row.last_seen_ms = packet.seen_ms;
+  row.packet_count = 1;
+  row.matched_known = matched_known;
+  return row;
+}
+
 bool candidate_less(const CandidateRow &left, const CandidateRow &right) {
   if (left.last_seen_ms != right.last_seen_ms) {
     return left.last_seen_ms > right.last_seen_ms;
@@ -330,6 +344,25 @@ bool GatewayState::is_stale(const std::string &logical_key, uint32_t now_ms) con
   return static_cast<uint32_t>(now_ms - state->last_seen_ms) > stale_after_ms_;
 }
 
+std::optional<uint32_t> GatewayState::next_stale_state_publish_delay_ms(uint32_t now_ms) const {
+  std::optional<uint32_t> next_delay;
+  for (const auto &entry : logical_states_) {
+    const auto &state = entry.second;
+    if (!state.has_value) {
+      continue;
+    }
+    const uint32_t elapsed_ms = static_cast<uint32_t>(now_ms - state.last_seen_ms);
+    if (elapsed_ms > stale_after_ms_) {
+      continue;
+    }
+    const uint32_t delay_ms = stale_after_ms_ - elapsed_ms;
+    if (!next_delay.has_value() || delay_ms < *next_delay) {
+      next_delay = delay_ms == 0 ? 1 : delay_ms;
+    }
+  }
+  return next_delay;
+}
+
 void GatewayState::record_candidate(const DecodedPacket &packet, bool matched_known) {
   prune_candidates(packet.seen_ms);
 
@@ -339,22 +372,23 @@ void GatewayState::record_candidate(const DecodedPacket &packet, bool matched_kn
   });
 
   if (existing == candidates_.end()) {
-    CandidateRow row;
-    row.key = key;
-    row.first_seen_ms = packet.seen_ms;
-    candidates_.push_back(row);
-    existing = std::prev(candidates_.end());
+    CandidateRow row = make_candidate_row(packet, matched_known);
+    const auto insertion_point =
+        std::lower_bound(candidates_.begin(), candidates_.end(), row, candidate_less);
+    candidates_.insert(insertion_point, std::move(row));
+    if (candidates_.size() > candidate_limit_) {
+      candidates_.resize(candidate_limit_);
+    }
+    return;
   }
 
-  existing->temperature_f = packet.temperature_f;
-  existing->humidity = packet.humidity;
-  existing->battery = packet.battery;
-  existing->rssi = packet.rssi;
-  existing->last_seen_ms = packet.seen_ms;
-  existing->packet_count += 1;
-  existing->matched_known = matched_known;
-
-  std::sort(candidates_.begin(), candidates_.end(), candidate_less);
+  const CandidateRow previous_row = *existing;
+  candidates_.erase(existing);
+  CandidateRow updated = make_candidate_row(packet, matched_known);
+  updated.first_seen_ms = previous_row.first_seen_ms;
+  updated.packet_count = previous_row.packet_count + 1;
+  const auto insertion_point = std::lower_bound(candidates_.begin(), candidates_.end(), updated, candidate_less);
+  candidates_.insert(insertion_point, std::move(updated));
 
   if (candidates_.size() > candidate_limit_) {
     candidates_.resize(candidate_limit_);

@@ -91,7 +91,6 @@ void Gateway::loop() {
     this->restore_saved_states();
   }
   this->rf_.loop();
-  this->publish_stale_states();
 }
 
 void Gateway::dump_config() {
@@ -122,6 +121,7 @@ void Gateway::status() {
 
 void Gateway::clear_candidates() {
   this->state_.clear_candidates();
+  this->candidate_publish_pending_ = false;
   this->publish_candidates();
 }
 
@@ -150,6 +150,7 @@ void Gateway::set_override(const std::string &logical_key, const std::string &se
     this->last_updated_values_.erase(logical_key);
     this->last_saved_state_mapping_hashes_.erase(logical_key);
     this->last_state_save_ms_.erase(logical_key);
+    this->publish_stale_states();
   }
 }
 
@@ -157,6 +158,8 @@ void Gateway::set_candidate_limit(std::size_t limit) { this->state_.set_candidat
 
 void Gateway::set_stale_after_ms(uint32_t stale_after_ms) {
   this->state_.set_stale_after_ms(stale_after_ms);
+  this->publish_stale_states();
+  this->schedule_stale_state_publish();
 }
 
 void Gateway::set_temperature_sensor(const std::string &logical_key, sensor::Sensor *sensor) {
@@ -244,30 +247,33 @@ void Gateway::process_message(char *message) {
   ESP_LOGV(TAG, "Received rtl_433 message: %s", message);
   json::parse_json(message, [this](JsonObject root) {
     const char *model = root["model"] | "";
-    if (std::string(model) == "status") {
+    if (std::strcmp(model, "status") == 0) {
       return true;
     }
 
     ::esphome::rtl433_native::DecodedPacket packet;
     packet.model = model;
-    if (root["id"].is<const char *>()) {
-      packet.id = root["id"].as<const char *>();
-    } else if (root["id"].is<int>()) {
-      packet.id = std::to_string(root["id"].as<int>());
-    } else if (root["id"].is<unsigned int>()) {
-      packet.id = std::to_string(root["id"].as<unsigned int>());
-    } else if (root["id"].is<uint32_t>()) {
-      packet.id = std::to_string(root["id"].as<uint32_t>());
+    const auto id_value = root["id"];
+    if (id_value.is<const char *>()) {
+      packet.id = id_value.as<const char *>();
+    } else if (id_value.is<int>()) {
+      packet.id = std::to_string(id_value.as<int>());
+    } else if (id_value.is<unsigned int>()) {
+      packet.id = std::to_string(id_value.as<unsigned int>());
+    } else if (id_value.is<uint32_t>()) {
+      packet.id = std::to_string(id_value.as<uint32_t>());
     }
 
-    if (root["channel"].is<const char *>()) {
-      packet.channel = root["channel"].as<const char *>();
-    } else if (root["channel"].is<int>()) {
-      packet.channel = std::to_string(root["channel"].as<int>());
-    } else if (root["subtype"].is<int>()) {
-      packet.channel = std::to_string(root["subtype"].as<int>());
-    } else if (root["subtype"].is<const char *>()) {
-      packet.channel = root["subtype"].as<const char *>();
+    const auto channel_value = root["channel"];
+    const auto subtype_value = root["subtype"];
+    if (channel_value.is<const char *>()) {
+      packet.channel = channel_value.as<const char *>();
+    } else if (channel_value.is<int>()) {
+      packet.channel = std::to_string(channel_value.as<int>());
+    } else if (subtype_value.is<int>()) {
+      packet.channel = std::to_string(subtype_value.as<int>());
+    } else if (subtype_value.is<const char *>()) {
+      packet.channel = subtype_value.as<const char *>();
     } else {
       packet.channel = "0";
     }
@@ -284,16 +290,19 @@ void Gateway::process_message(char *message) {
     } else {
       packet.temperature_f = std::numeric_limits<float>::quiet_NaN();
     }
-    packet.humidity = root["humidity"] | NAN;
-    if (root["battery_ok"].is<bool>()) {
-      packet.battery = root["battery_ok"].as<bool>() ? 100.0f : 0.0f;
-    } else if (root["battery_ok"].is<int>()) {
-      packet.battery = root["battery_ok"].as<int>() ? 100.0f : 0.0f;
-    } else if (root["battery_ok"].is<float>()) {
-      packet.battery = root["battery_ok"].as<float>() ? 100.0f : 0.0f;
+    const auto humidity_value = root["humidity"];
+    packet.humidity = humidity_value | NAN;
+    const auto battery_ok_value = root["battery_ok"];
+    if (battery_ok_value.is<bool>()) {
+      packet.battery = battery_ok_value.as<bool>() ? 100.0f : 0.0f;
+    } else if (battery_ok_value.is<int>()) {
+      packet.battery = battery_ok_value.as<int>() ? 100.0f : 0.0f;
+    } else if (battery_ok_value.is<float>()) {
+      packet.battery = battery_ok_value.as<float>() ? 100.0f : 0.0f;
     }
 
-    packet.rssi = root["rssi"] | 0;
+    const auto rssi_value = root["rssi"];
+    packet.rssi = rssi_value | 0;
     packet.seen_ms = millis();
 
     const ::esphome::rtl433_native::PacketResult result = this->state_.process_packet(packet);
@@ -314,8 +323,9 @@ void Gateway::process_message(char *message) {
     }
 
     if (this->last_packet_sensor_ != nullptr) {
-      this->last_packet_sensor_->publish_state(
-          ::esphome::rtl433_native::format_sensor_key({packet.model, packet.channel, packet.id}));
+      const std::string next_packet_value =
+          ::esphome::rtl433_native::format_sensor_key({packet.model, packet.channel, packet.id});
+      this->last_packet_sensor_->publish_state(next_packet_value);
     }
 
     if (result == ::esphome::rtl433_native::PacketResult::MATCHED_KNOWN) {
@@ -346,7 +356,8 @@ void Gateway::process_message(char *message) {
       }
     }
 
-    this->publish_candidates();
+    this->queue_candidate_publish();
+    this->schedule_stale_state_publish();
     return true;
   });
 }
@@ -395,6 +406,7 @@ void Gateway::restore_saved_states() {
     restored_any = true;
   }
 
+  this->publish_stale_states();
   if (restored_any) {
     this->set_timeout("publish_restored_states", 2000, [this]() {
       for (const auto &logical_key : this->logical_keys_) {
@@ -402,6 +414,7 @@ void Gateway::restore_saved_states() {
       }
     });
   }
+  this->schedule_stale_state_publish();
 }
 
 void Gateway::sync_time_base() {
@@ -434,6 +447,7 @@ void Gateway::reproject_pending_restored_states(uint32_t current_timestamp) {
     this->state_.restore_logical_state(logical_key, restored);
     this->publish_state(logical_key);
   }
+  this->schedule_stale_state_publish();
 }
 
 uint32_t Gateway::current_timestamp() {
@@ -452,6 +466,22 @@ void Gateway::update_last_updated(const std::string &logical_key, uint32_t last_
   if (adjusted_last_updated > 0) {
     this->last_updated_values_[logical_key] = adjusted_last_updated;
   }
+}
+
+void Gateway::queue_candidate_publish() {
+  if (this->candidate_publish_pending_) {
+    return;
+  }
+  this->candidate_publish_pending_ = true;
+  this->set_timeout("publish_candidates", 50, [this]() { this->flush_pending_candidate_publish(); });
+}
+
+void Gateway::flush_pending_candidate_publish() {
+  if (!this->candidate_publish_pending_) {
+    return;
+  }
+  this->candidate_publish_pending_ = false;
+  this->publish_candidates();
 }
 
 void Gateway::save_state(const std::string &logical_key) {
@@ -557,6 +587,17 @@ void Gateway::publish_stale_states() {
   for (auto &[logical_key, entities] : this->entities_) {
     this->publish_stale_state(logical_key, entities, now);
   }
+}
+
+void Gateway::schedule_stale_state_publish() {
+  const auto delay_ms = this->state_.next_stale_state_publish_delay_ms(millis());
+  if (!delay_ms.has_value()) {
+    return;
+  }
+  this->set_timeout("publish_stale_states", *delay_ms, [this]() {
+    this->publish_stale_states();
+    this->schedule_stale_state_publish();
+  });
 }
 
 void MappingText::setup() {
