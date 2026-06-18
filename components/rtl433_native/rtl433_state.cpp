@@ -352,7 +352,10 @@ std::optional<uint32_t> GatewayState::next_stale_state_publish_delay_ms(uint32_t
       continue;
     }
     const uint32_t elapsed_ms = static_cast<uint32_t>(now_ms - state.last_seen_ms);
-    const uint32_t delay_ms = elapsed_ms > stale_after_ms_ ? 1 : stale_after_ms_ - elapsed_ms;
+    if (elapsed_ms > stale_after_ms_) {
+      continue;
+    }
+    const uint32_t delay_ms = stale_after_ms_ - elapsed_ms;
     if (!next_delay.has_value() || delay_ms < *next_delay) {
       next_delay = delay_ms == 0 ? 1 : delay_ms;
     }

@@ -621,6 +621,27 @@ void test_next_stale_publish_delay_tracks_earliest_deadline() {
                            std::to_string(*delay));
 }
 
+void test_next_stale_publish_delay_skips_already_stale_values() {
+  rtl433::GatewayState state;
+  state.set_stale_after_ms(1000);
+  state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
+  state.set_mapping("garage_combo_freezer", "TFA-303221/2/88");
+
+  rtl433::DecodedPacket stale_packet = packet_for_key("LaCrosse-TX141THBv2", "0", "203", 1000);
+  state.process_packet(stale_packet);
+
+  rtl433::DecodedPacket fresh_packet = packet_for_key("TFA-303221", "2", "88", 1800);
+  state.process_packet(fresh_packet);
+
+  auto delay = state.next_stale_state_publish_delay_ms(2500);
+  require(delay.has_value(), "fresh values should still schedule stale publish work");
+  require(*delay == 300,
+          "already-stale values should not force a tight reschedule; got " + std::to_string(*delay));
+
+  delay = state.next_stale_state_publish_delay_ms(3000);
+  require(!delay.has_value(), "once every value is stale there should be no future stale deadline");
+}
+
 void test_next_stale_publish_delay_is_empty_without_values() {
   rtl433::GatewayState state;
 
@@ -774,6 +795,7 @@ int main() {
   test_stale_detection_uses_last_seen();
   test_stale_detection_wraps_with_uint32_delta();
   test_next_stale_publish_delay_tracks_earliest_deadline();
+  test_next_stale_publish_delay_skips_already_stale_values();
   test_next_stale_publish_delay_is_empty_without_values();
   test_candidate_order_is_deterministic_for_equal_seen_time();
   test_candidates_pruned_by_age();

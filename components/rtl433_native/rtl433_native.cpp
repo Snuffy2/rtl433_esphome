@@ -403,6 +403,7 @@ void Gateway::restore_saved_states() {
     restored_any = true;
   }
 
+  this->publish_stale_states();
   if (restored_any) {
     this->set_timeout("publish_restored_states", 2000, [this]() {
       for (const auto &logical_key : this->logical_keys_) {
