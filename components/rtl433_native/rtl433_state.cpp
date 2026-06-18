@@ -383,15 +383,6 @@ std::optional<uint32_t> GatewayState::next_stale_state_publish_delay_ms(uint32_t
   return next_delay;
 }
 
-std::size_t GatewayState::mapped_logical_key_count(
-    const std::string &model, const std::string &channel, const std::string &id) const {
-  const auto item = mapping_index_.find(format_sensor_key({model, channel, id}));
-  if (item == mapping_index_.end()) {
-    return 0;
-  }
-  return item->second.size();
-}
-
 void GatewayState::remove_from_mapping_index(const std::string &logical_key, const SensorMapping &mapping) {
   for_each_mapping_key(mapping, [&](const SensorKey &key) {
     auto item = mapping_index_.find(format_sensor_key(key));

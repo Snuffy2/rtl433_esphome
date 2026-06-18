@@ -94,8 +94,6 @@ class GatewayState {
   const std::vector<CandidateRow> &candidates() const { return candidates_; }
   std::optional<uint32_t> next_stale_state_publish_delay_ms(uint32_t now_ms) const;
   bool is_stale(const std::string &logical_key, uint32_t now_ms) const;
-  std::size_t mapped_logical_key_count(
-      const std::string &model, const std::string &channel, const std::string &id) const;
 
  private:
   std::unordered_map<std::string, SensorMapping> mappings_{};

@@ -665,19 +665,44 @@ void test_mapping_index_tracks_updates_and_duplicate_keys() {
   state.set_mapping("garage_combo_fridge", "LaCrosse-TX141THBv2/0/203");
   state.set_mapping("garage_combo_freezer", "LaCrosse-TX141THBv2/0/203;TFA-303221/2/88");
 
-  require(state.mapped_logical_key_count("LaCrosse-TX141THBv2", "0", "203") == 2,
-          "duplicate packet key should index both logical sensors");
-  require(state.mapped_logical_key_count("TFA-303221", "2", "88") == 1,
-          "synonym packet key should index its logical sensor");
+  rtl433::DecodedPacket duplicate_packet = packet_for_key("LaCrosse-TX141THBv2", "0", "203", 1000);
+  duplicate_packet.temperature_f = 33.0f;
+  require(state.process_packet(duplicate_packet) == rtl433::PacketResult::MATCHED_KNOWN,
+          "duplicate packet key should match known sensors");
+  require(keys_include(state.matched_logical_keys(), "garage_combo_fridge"),
+          "duplicate packet key should update the first logical sensor");
+  require(keys_include(state.matched_logical_keys(), "garage_combo_freezer"),
+          "duplicate packet key should update the second logical sensor");
+
+  rtl433::DecodedPacket synonym_packet = packet_for_key("TFA-303221", "2", "88", 2000);
+  synonym_packet.temperature_f = 12.0f;
+  require(state.process_packet(synonym_packet) == rtl433::PacketResult::MATCHED_KNOWN,
+          "synonym packet key should match its logical sensor");
+  require(keys_include(state.matched_logical_keys(), "garage_combo_freezer"),
+          "synonym packet key should update the mapped logical sensor");
+  require(!keys_include(state.matched_logical_keys(), "garage_combo_fridge"),
+          "synonym packet key should not update unrelated logical sensors");
 
   state.set_mapping("garage_combo_fridge", "Acurite-986/1R/11932");
-  require(state.mapped_logical_key_count("LaCrosse-TX141THBv2", "0", "203") == 1,
+  duplicate_packet.seen_ms = 3000;
+  duplicate_packet.temperature_f = 34.0f;
+  require(state.process_packet(duplicate_packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "remapping one duplicate should retain the other indexed logical sensor");
-  require(state.mapped_logical_key_count("Acurite-986", "1R", "11932") == 1,
+  require(!keys_include(state.matched_logical_keys(), "garage_combo_fridge"),
+          "remapped logical sensor should leave the old packet-key index");
+  require(keys_include(state.matched_logical_keys(), "garage_combo_freezer"),
+          "remaining duplicate logical sensor should stay indexed");
+
+  rtl433::DecodedPacket remapped_packet = packet_for_key("Acurite-986", "1R", "11932", 4000);
+  remapped_packet.temperature_f = 10.0f;
+  require(state.process_packet(remapped_packet) == rtl433::PacketResult::MATCHED_KNOWN,
           "remapped packet key should be indexed");
+  require(keys_include(state.matched_logical_keys(), "garage_combo_fridge"),
+          "remapped packet key should update the remapped logical sensor");
 
   state.set_mapping("garage_combo_freezer", "");
-  require(state.mapped_logical_key_count("LaCrosse-TX141THBv2", "0", "203") == 0,
+  duplicate_packet.seen_ms = 5000;
+  require(state.process_packet(duplicate_packet) == rtl433::PacketResult::IGNORED_UNKNOWN,
           "clearing the last mapping should remove the old packet key from the index");
 }
 
