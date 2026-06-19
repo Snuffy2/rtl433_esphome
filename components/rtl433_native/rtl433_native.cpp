@@ -584,7 +584,8 @@ void Gateway::flush_pending_candidate_publish() {
 void Gateway::queue_state_save(const std::string &logical_key, uint32_t seen_ms, bool startup_work) {
   const bool already_pending = this->pending_state_saves_.find(logical_key) != this->pending_state_saves_.end();
   this->pending_state_saves_.insert(logical_key);
-  const bool pace_flush = timing::should_pace_startup_queue(this->startup_pacing_active_, startup_work);
+  const bool pace_flush =
+      timing::startup_pacing_delay_ms(this->startup_pacing_active_, startup_work) != 0;
   if (pace_flush && !already_pending) {
     this->paced_state_saves_.insert(logical_key);
   } else if (!pace_flush) {
@@ -637,7 +638,8 @@ void Gateway::flush_pending_state_save() {
 void Gateway::queue_state_publish(const std::string &logical_key, bool startup_work) {
   const bool already_pending = this->pending_state_publishes_.find(logical_key) != this->pending_state_publishes_.end();
   this->pending_state_publishes_.insert(logical_key);
-  const bool pace_flush = timing::should_pace_startup_queue(this->startup_pacing_active_, startup_work);
+  const bool pace_flush =
+      timing::startup_pacing_delay_ms(this->startup_pacing_active_, startup_work) != 0;
   if (pace_flush && !already_pending) {
     this->paced_state_publishes_.insert(logical_key);
   } else if (!pace_flush) {

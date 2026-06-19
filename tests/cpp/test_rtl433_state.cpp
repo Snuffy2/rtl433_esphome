@@ -856,17 +856,12 @@ void test_timing_threshold_helper_is_wrap_safe_and_configurable() {
 }
 
 void test_startup_pacing_delay_helper() {
-  require(!rtl433::timing::should_pace_startup_queue(false, true),
-          "startup queue pacing should be off when startup mode is inactive");
-  require(!rtl433::timing::should_pace_startup_queue(true, false),
-          "startup queue pacing should be off for live work during startup");
-  require(rtl433::timing::should_pace_startup_queue(true, true),
-          "startup queue pacing should be on for startup work when startup mode is active");
   require(rtl433::timing::startup_pacing_delay_ms(false, true) == 0u,
           "inactive startup queue should not schedule delay");
   require(rtl433::timing::startup_pacing_delay_ms(true, false) == 0u,
           "live queue work should not schedule delay during startup");
-  require(rtl433::timing::startup_pacing_delay_ms(true, true) == 25u,
+  require(rtl433::timing::startup_pacing_delay_ms(true, true) ==
+              rtl433::timing::kStartupPacingDelayMs,
           "active startup queue should schedule the startup pacing delay");
 }
 
