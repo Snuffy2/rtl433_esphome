@@ -122,10 +122,16 @@ class Gateway : public Component
   std::unordered_map<std::string, uint32_t> last_state_save_ms_{};
   std::unordered_set<std::string> pending_state_saves_{};
   std::unordered_set<std::string> pending_state_publishes_{};
+  std::unordered_set<std::string> paced_state_saves_{};
+  std::unordered_set<std::string> paced_state_publishes_{};
   bool candidate_publish_pending_{false};
   bool diagnostic_publish_pending_{false};
   bool state_save_flush_pending_{false};
   bool state_publish_flush_pending_{false};
+  bool state_save_flush_paced_{false};
+  bool state_publish_flush_paced_{false};
+  std::size_t state_save_unpaced_selection_streak_{0};
+  std::size_t state_publish_unpaced_selection_streak_{0};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};
   std::array<std::string, 20> last_candidate_values_{};
   std::string version_{"unknown"};
@@ -147,6 +153,8 @@ class Gateway : public Component
   bool restored_states_{false};
   bool restored_any_saved_state_{false};
   bool restore_saved_state_pending_{false};
+  bool startup_pacing_active_{false};
+  bool startup_publish_restored_states_pending_{false};
   static Gateway *instance_;
 
   static void process_dispatch(char *message);
@@ -162,10 +170,14 @@ class Gateway : public Component
   void flush_pending_diagnostic_publish();
   void queue_candidate_publish();
   void flush_pending_candidate_publish();
-  void queue_state_save(const std::string &logical_key, uint32_t seen_ms);
+  void queue_state_save(const std::string &logical_key, uint32_t seen_ms, bool startup_work = false);
   void flush_pending_state_save();
-  void queue_state_publish(const std::string &logical_key);
+  void queue_state_publish(const std::string &logical_key, bool startup_work = false);
   void flush_pending_state_publish();
+  void schedule_restore_saved_states();
+  void schedule_state_publish_flush(bool paced_work);
+  void schedule_state_save_flush(bool paced_work);
+  void maybe_disable_startup_pacing();
   void schedule_stale_state_publish();
   void save_state(const std::string &logical_key);
   void publish_stale_state(const std::string &logical_key, EntitySet &entities, uint32_t now_ms);

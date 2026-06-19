@@ -3,8 +3,10 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
+#include "../../components/rtl433_native/rtl433_timing.h"
 #include "../../components/rtl433_native/rtl433_state.h"
 
 namespace {
@@ -843,6 +845,136 @@ void test_restored_last_seen_falls_back_to_fresh_without_valid_clock_age() {
       "future saved timestamp should restore with previous fresh behavior");
 }
 
+void test_timing_threshold_helper_is_wrap_safe_and_configurable() {
+  const uint32_t start_ms = 0xFFFFFFF0;
+  const uint32_t end_ms = 0x00000020;
+  require(rtl433::timing::operation_duration_ms(start_ms, end_ms) == 0x30u,
+          "operation duration should be wrap-safe for uint32 timer values");
+  require(!rtl433::timing::is_operation_too_long(start_ms, end_ms, 0x30u),
+          "duration equal to threshold should stay unlogged");
+  require(rtl433::timing::is_operation_too_long(start_ms, end_ms, 0x2Fu),
+          "duration above threshold should be considered long");
+}
+
+void test_startup_pacing_delay_helper() {
+  require(rtl433::timing::startup_pacing_delay_ms(false, true) == 0u,
+          "inactive startup queue should not schedule delay");
+  require(rtl433::timing::startup_pacing_delay_ms(true, false) == 0u,
+          "live queue work should not schedule delay during startup");
+  require(rtl433::timing::startup_pacing_delay_ms(true, true) ==
+              rtl433::timing::kStartupPacingDelayMs,
+          "active startup queue should schedule the startup pacing delay");
+}
+
+void test_reprojected_restore_work_treats_as_startup_pacing() {
+  require(!rtl433::timing::should_use_startup_pacing(false, false),
+          "no startup pacing for startup-empty reproject work");
+  require(rtl433::timing::should_use_startup_pacing(true, false),
+          "existing startup pacing should remain enabled for reproject work");
+  require(rtl433::timing::should_use_startup_pacing(false, true),
+          "reprojected restored-state work should force startup pacing");
+  require(rtl433::timing::startup_pacing_delay_ms(rtl433::timing::should_use_startup_pacing(false, true), true) ==
+              rtl433::timing::kStartupPacingDelayMs,
+          "forced startup pacing should schedule paced queue delay");
+}
+
+void test_paced_flush_preemption_helper() {
+  require(rtl433::timing::should_preempt_paced_flush(true, true, false),
+          "live work should preempt a pending paced startup flush");
+  require(!rtl433::timing::should_preempt_paced_flush(true, true, true),
+          "paced startup work should not preempt an existing paced flush");
+  require(!rtl433::timing::should_preempt_paced_flush(true, false, false),
+          "live work should not reschedule an already immediate flush");
+  require(!rtl433::timing::should_preempt_paced_flush(false, true, false),
+          "live work should not preempt when no flush is pending");
+}
+
+void test_pending_queue_prefers_unpaced_live_work() {
+  std::unordered_set<std::string> pending{"restored_fridge", "live_freezer"};
+  std::unordered_set<std::string> paced{"restored_fridge"};
+
+  require(rtl433::timing::pending_queue_has_unpaced_work(pending, paced),
+          "mixed queue should report unpaced live work");
+  require(rtl433::timing::next_pending_queue_key(pending, paced) == "live_freezer",
+          "mixed queue should publish live work before paced startup backlog");
+
+  pending.erase("live_freezer");
+  require(!rtl433::timing::pending_queue_has_unpaced_work(pending, paced),
+          "remaining startup backlog should be treated as fully paced");
+  require(rtl433::timing::next_pending_queue_key(pending, paced) == "restored_fridge",
+          "fully paced queue should still return the remaining startup item");
+}
+
+void test_pending_queue_fairness_bounds_unpaced_preference() {
+  std::unordered_set<std::string> pending{"restored_fridge", "live_freezer"};
+  std::unordered_set<std::string> paced{"restored_fridge"};
+  std::size_t unpaced_selection_streak = 0;
+
+  for (std::size_t index = 0;
+       index < rtl433::timing::kStartupPacingFairnessWindow; ++index) {
+    require(!rtl433::timing::should_select_paced_queue_item(pending, paced, unpaced_selection_streak),
+            "mixed queue should favor unpaced work until the fairness window is reached");
+    require(rtl433::timing::next_pending_queue_key(
+                pending, paced, rtl433::timing::should_select_paced_queue_item(
+                                   pending, paced, unpaced_selection_streak)) == "live_freezer",
+            "mixed queue should schedule the live item before the fairness threshold");
+    ++unpaced_selection_streak;
+  }
+  require(rtl433::timing::should_select_paced_queue_item(pending, paced, unpaced_selection_streak),
+          "mixed queue should select paced work after the fairness window");
+  require(rtl433::timing::next_pending_queue_key(
+              pending, paced, rtl433::timing::should_select_paced_queue_item(pending, paced, unpaced_selection_streak)) ==
+              "restored_fridge",
+          "fairness window should force paced startup backlog selection");
+}
+
+void test_pending_queue_fairness_resets_after_paced_selection() {
+  std::unordered_set<std::string> pending{"restored_fridge", "live_freezer"};
+  std::unordered_set<std::string> paced{"restored_fridge"};
+  std::size_t unpaced_selection_streak = rtl433::timing::kStartupPacingFairnessWindow;
+
+  const bool select_paced = rtl433::timing::should_select_paced_queue_item(pending, paced, unpaced_selection_streak);
+  require(select_paced, "mixed queue should pick paced work at fairness cutoff");
+  const std::string next = rtl433::timing::next_pending_queue_key(pending, paced, select_paced);
+  require(next == "restored_fridge", "paced choice must select startup backlog");
+  if (paced.find(next) != paced.end()) {
+    unpaced_selection_streak = 0;
+  }
+  require(!rtl433::timing::should_select_paced_queue_item(pending, paced, unpaced_selection_streak),
+          "paced selection should reset the unpaced streak");
+}
+
+void test_pending_queue_fairness_resets_when_paced_backlog_clears() {
+  std::unordered_set<std::string> pending{"restored_fridge", "live_freezer"};
+  std::unordered_set<std::string> paced{};
+  std::size_t unpaced_selection_streak = 999;
+
+  require(!rtl433::timing::should_select_paced_queue_item(pending, paced, unpaced_selection_streak),
+          "no paced backlog should not force paced selection");
+}
+
+void test_disjoint_set_does_not_force_paced_selection() {
+  const std::unordered_set<std::string> pending{"live_freezer"};
+  const std::unordered_set<std::string> paced{"restored_fridge"};
+  require(!rtl433::timing::should_select_paced_queue_item(
+      pending, paced, rtl433::timing::kStartupPacingFairnessWindow),
+          "fairness window should not force selection when no paced key is pending");
+  const std::string next = rtl433::timing::next_pending_queue_key(
+      pending, paced,
+      rtl433::timing::should_select_paced_queue_item(pending, paced, rtl433::timing::kStartupPacingFairnessWindow));
+  require(next == "live_freezer", "disjoint paced set should not skip unpaced work");
+}
+
+void test_empty_queue_fails_safely_in_next_key_lookup() {
+  std::unordered_set<std::string> pending;
+  std::unordered_set<std::string> paced;
+
+  require(rtl433::timing::next_pending_queue_key(pending, paced).empty(),
+          "empty pending queue should return empty logical key");
+  require(rtl433::timing::next_pending_queue_key(pending, paced, true).empty(),
+          "empty paced preference should also remain empty");
+}
+
 }  // namespace
 
 int main() {
@@ -893,5 +1025,15 @@ int main() {
   test_restored_last_seen_marks_old_saved_reading_stale();
   test_restored_last_seen_preserves_recent_saved_age();
   test_restored_last_seen_falls_back_to_fresh_without_valid_clock_age();
+  test_timing_threshold_helper_is_wrap_safe_and_configurable();
+  test_startup_pacing_delay_helper();
+  test_reprojected_restore_work_treats_as_startup_pacing();
+  test_paced_flush_preemption_helper();
+  test_pending_queue_prefers_unpaced_live_work();
+  test_pending_queue_fairness_bounds_unpaced_preference();
+  test_pending_queue_fairness_resets_after_paced_selection();
+  test_pending_queue_fairness_resets_when_paced_backlog_clears();
+  test_disjoint_set_does_not_force_paced_selection();
+  test_empty_queue_fails_safely_in_next_key_lookup();
   return 0;
 }
