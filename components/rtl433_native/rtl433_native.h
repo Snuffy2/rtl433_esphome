@@ -173,8 +173,8 @@ class Gateway : public Component
   void queue_state_publish(const std::string &logical_key, bool startup_work = false);
   void flush_pending_state_publish();
   void schedule_restore_saved_states();
-  void schedule_state_publish_flush(bool startup_work);
-  void schedule_state_save_flush(bool startup_work);
+  void schedule_state_publish_flush(bool paced_work);
+  void schedule_state_save_flush(bool paced_work);
   void maybe_disable_startup_pacing();
   void schedule_stale_state_publish();
   void save_state(const std::string &logical_key);

@@ -584,23 +584,23 @@ void Gateway::flush_pending_candidate_publish() {
 void Gateway::queue_state_save(const std::string &logical_key, uint32_t seen_ms, bool startup_work) {
   const bool already_pending = this->pending_state_saves_.find(logical_key) != this->pending_state_saves_.end();
   this->pending_state_saves_.insert(logical_key);
-  const bool pace_flush =
+  const bool paced_work =
       timing::startup_pacing_delay_ms(this->startup_pacing_active_, startup_work) != 0;
-  if (pace_flush && !already_pending) {
+  if (paced_work && !already_pending) {
     this->paced_state_saves_.insert(logical_key);
-  } else if (!pace_flush) {
+  } else if (!paced_work) {
     this->paced_state_saves_.erase(logical_key);
   }
   this->last_state_save_ms_[logical_key] = seen_ms;
   if (this->state_save_flush_pending_) {
-    if (!pace_flush && this->state_save_flush_paced_) {
+    if (!paced_work && this->state_save_flush_paced_) {
       this->cancel_timeout("flush_state_saves");
       this->schedule_state_save_flush(false);
     }
     return;
   }
   this->state_save_flush_pending_ = true;
-  this->schedule_state_save_flush(pace_flush);
+  this->schedule_state_save_flush(paced_work);
 }
 
 void Gateway::flush_pending_state_save() {
@@ -638,22 +638,22 @@ void Gateway::flush_pending_state_save() {
 void Gateway::queue_state_publish(const std::string &logical_key, bool startup_work) {
   const bool already_pending = this->pending_state_publishes_.find(logical_key) != this->pending_state_publishes_.end();
   this->pending_state_publishes_.insert(logical_key);
-  const bool pace_flush =
+  const bool paced_work =
       timing::startup_pacing_delay_ms(this->startup_pacing_active_, startup_work) != 0;
-  if (pace_flush && !already_pending) {
+  if (paced_work && !already_pending) {
     this->paced_state_publishes_.insert(logical_key);
-  } else if (!pace_flush) {
+  } else if (!paced_work) {
     this->paced_state_publishes_.erase(logical_key);
   }
   if (this->state_publish_flush_pending_) {
-    if (!pace_flush && this->state_publish_flush_paced_) {
+    if (!paced_work && this->state_publish_flush_paced_) {
       this->cancel_timeout("publish_states");
       this->schedule_state_publish_flush(false);
     }
     return;
   }
   this->state_publish_flush_pending_ = true;
-  this->schedule_state_publish_flush(pace_flush);
+  this->schedule_state_publish_flush(paced_work);
 }
 
 void Gateway::flush_pending_state_publish() {
@@ -699,8 +699,8 @@ void Gateway::schedule_restore_saved_states() {
   this->set_timeout("restore_saved_states", delay_ms, [this]() { this->restore_next_saved_state(); });
 }
 
-void Gateway::schedule_state_save_flush(bool startup_work) {
-  const uint32_t delay_ms = timing::startup_pacing_delay_ms(this->startup_pacing_active_, startup_work);
+void Gateway::schedule_state_save_flush(bool paced_work) {
+  const uint32_t delay_ms = timing::startup_pacing_delay_ms(this->startup_pacing_active_, paced_work);
   this->state_save_flush_paced_ = delay_ms != 0;
   if (delay_ms == 0) {
     this->defer("flush_state_saves", [this]() { this->flush_pending_state_save(); });
@@ -709,8 +709,8 @@ void Gateway::schedule_state_save_flush(bool startup_work) {
   this->set_timeout("flush_state_saves", delay_ms, [this]() { this->flush_pending_state_save(); });
 }
 
-void Gateway::schedule_state_publish_flush(bool startup_work) {
-  const uint32_t delay_ms = timing::startup_pacing_delay_ms(this->startup_pacing_active_, startup_work);
+void Gateway::schedule_state_publish_flush(bool paced_work) {
+  const uint32_t delay_ms = timing::startup_pacing_delay_ms(this->startup_pacing_active_, paced_work);
   this->state_publish_flush_paced_ = delay_ms != 0;
   if (delay_ms == 0) {
     this->defer("publish_states", [this]() { this->flush_pending_state_publish(); });
