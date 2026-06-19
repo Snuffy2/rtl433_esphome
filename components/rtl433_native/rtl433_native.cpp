@@ -88,7 +88,7 @@ void Gateway::setup() {
 void Gateway::loop() {
   if (!this->restored_states_) {
     this->restored_states_ = true;
-    this->restore_saved_states();
+    this->queue_restore_saved_states();
   }
   this->rf_.loop();
 }
@@ -312,21 +312,12 @@ void Gateway::process_message(char *message) {
     }
 
     this->packet_count_ += 1;
-    if (this->packet_count_sensor_ != nullptr) {
-      this->packet_count_sensor_->publish_state(this->packet_count_);
-    }
     if (result == ::esphome::rtl433_native::PacketResult::MATCHED_KNOWN) {
       this->known_packet_count_ += 1;
-      if (this->known_packet_count_sensor_ != nullptr) {
-        this->known_packet_count_sensor_->publish_state(this->known_packet_count_);
-      }
     }
 
-    if (this->last_packet_sensor_ != nullptr) {
-      const std::string next_packet_value =
-          ::esphome::rtl433_native::format_sensor_key({packet.model, packet.channel, packet.id});
-      this->last_packet_sensor_->publish_state(next_packet_value);
-    }
+    this->queue_diagnostic_publish(
+        ::esphome::rtl433_native::format_sensor_key({packet.model, packet.channel, packet.id}));
 
     if (result == ::esphome::rtl433_native::PacketResult::MATCHED_KNOWN) {
       const uint32_t last_updated = this->current_timestamp();
@@ -343,78 +334,101 @@ void Gateway::process_message(char *message) {
             previous_save == this->last_state_save_ms_.end() ? 0 : previous_save->second;
         if (should_persist_logical_state(value_changed, packet.seen_ms, previous_save_ms,
                                          unchanged_state_save_interval_ms(this->state_.stale_after_ms()))) {
-          this->save_state(logical_key);
-          this->last_state_save_ms_[logical_key] = packet.seen_ms;
+          this->queue_state_save(logical_key, packet.seen_ms);
         }
-        this->publish_state(logical_key);
+        this->queue_state_publish(logical_key);
       }
     } else if (result == ::esphome::rtl433_native::PacketResult::RECORDED_CANDIDATE ||
                result == ::esphome::rtl433_native::PacketResult::IGNORED_UNKNOWN) {
       this->unknown_packet_count_ += 1;
-      if (this->unknown_packet_count_sensor_ != nullptr) {
-        this->unknown_packet_count_sensor_->publish_state(this->unknown_packet_count_);
-      }
     }
 
-    this->queue_candidate_publish();
-    this->schedule_stale_state_publish();
+    if (result == ::esphome::rtl433_native::PacketResult::RECORDED_CANDIDATE ||
+        (result == ::esphome::rtl433_native::PacketResult::MATCHED_KNOWN && this->state_.discovery_enabled())) {
+      this->queue_candidate_publish();
+    }
+    if (result == ::esphome::rtl433_native::PacketResult::MATCHED_KNOWN) {
+      this->schedule_stale_state_publish();
+    }
     return true;
   });
 }
 
-void Gateway::restore_saved_states() {
-  bool restored_any = false;
-  for (const auto &logical_key : this->logical_keys_) {
-    auto preference = global_preferences->make_preference<SavedLogicalState>(preference_key(logical_key), true);
-    SavedLogicalState saved;
-    this->preferences_[logical_key] = preference;
-    if (!preference.load(&saved) || !saved.has_value) {
-      continue;
-    }
-    auto mapping_preference =
-        global_preferences->make_preference<SavedLogicalMapping>(saved_state_mapping_preference_key(logical_key), true);
-    SavedLogicalMapping saved_mapping;
-    const bool saved_mapping_available =
-        mapping_preference.load(&saved_mapping) && saved_mapping.has_value &&
-        saved_mapping.mapping_hash != 0;
-    const auto current_mapping_hash = this->state_.mapping_hash(logical_key);
-    const bool saved_mapping_matches =
-        saved_mapping_available && current_mapping_hash.has_value() &&
-        *current_mapping_hash == saved_mapping.mapping_hash;
-    if (saved_mapping_available) {
-      this->last_saved_state_mapping_hashes_[logical_key] = saved_mapping.mapping_hash;
-    }
-    if (!saved_mapping_available || !saved_mapping_matches) {
-      continue;
-    }
+void Gateway::queue_restore_saved_states() {
+  if (this->restore_saved_state_pending_) {
+    return;
+  }
+  this->restore_saved_state_pending_ = true;
+  this->restore_saved_state_index_ = 0;
+  this->restored_any_saved_state_ = false;
+  this->defer("restore_saved_states", [this]() { this->restore_next_saved_state(); });
+}
 
-    LogicalSensorState restored;
-    restored.has_value = true;
-    restored.temperature_f = saved.temperature_f;
-    restored.humidity = saved.humidity;
-    restored.battery = saved.battery;
-    restored.rssi = saved.rssi;
-    const uint32_t restore_timestamp = this->current_timestamp();
-    restored.last_seen_ms = resolve_restored_last_seen_ms(
-        saved.last_updated, restore_timestamp, millis(), this->state_.stale_after_ms());
-    this->state_.restore_logical_state(logical_key, restored);
-    this->last_updated_values_[logical_key] = saved.last_updated;
-    if (saved.last_updated > 0 && restore_timestamp == 0) {
-      this->pending_clock_age_restore_.insert(logical_key);
+void Gateway::restore_next_saved_state() {
+  if (this->restore_saved_state_index_ >= this->logical_keys_.size()) {
+    this->restore_saved_state_pending_ = false;
+    this->publish_stale_states();
+    if (this->restored_any_saved_state_) {
+      this->set_timeout("publish_restored_states", 2000, [this]() {
+        for (const auto &logical_key : this->logical_keys_) {
+          this->queue_state_publish(logical_key);
+        }
+      });
     }
-    this->publish_state(logical_key);
-    restored_any = true;
+    this->schedule_stale_state_publish();
+    return;
   }
 
-  this->publish_stale_states();
-  if (restored_any) {
-    this->set_timeout("publish_restored_states", 2000, [this]() {
-      for (const auto &logical_key : this->logical_keys_) {
-        this->publish_state(logical_key);
-      }
-    });
+  const std::string logical_key = this->logical_keys_[this->restore_saved_state_index_];
+  this->restore_saved_state_index_ += 1;
+  if (this->restore_saved_state(logical_key)) {
+    this->restored_any_saved_state_ = true;
+    this->queue_state_publish(logical_key);
   }
-  this->schedule_stale_state_publish();
+  this->defer("restore_saved_states", [this]() { this->restore_next_saved_state(); });
+}
+
+bool Gateway::restore_saved_state(const std::string &logical_key) {
+  if (!should_restore_saved_logical_state(this->state_.logical_sensor(logical_key))) {
+    return false;
+  }
+
+  auto preference = global_preferences->make_preference<SavedLogicalState>(preference_key(logical_key), true);
+  SavedLogicalState saved;
+  this->preferences_[logical_key] = preference;
+  if (!preference.load(&saved) || !saved.has_value) {
+    return false;
+  }
+  auto mapping_preference =
+      global_preferences->make_preference<SavedLogicalMapping>(saved_state_mapping_preference_key(logical_key), true);
+  SavedLogicalMapping saved_mapping;
+  const bool saved_mapping_available =
+      mapping_preference.load(&saved_mapping) && saved_mapping.has_value && saved_mapping.mapping_hash != 0;
+  const auto current_mapping_hash = this->state_.mapping_hash(logical_key);
+  const bool saved_mapping_matches =
+      saved_mapping_available && current_mapping_hash.has_value() && *current_mapping_hash == saved_mapping.mapping_hash;
+  if (saved_mapping_available) {
+    this->last_saved_state_mapping_hashes_[logical_key] = saved_mapping.mapping_hash;
+  }
+  if (!saved_mapping_available || !saved_mapping_matches) {
+    return false;
+  }
+
+  LogicalSensorState restored;
+  restored.has_value = true;
+  restored.temperature_f = saved.temperature_f;
+  restored.humidity = saved.humidity;
+  restored.battery = saved.battery;
+  restored.rssi = saved.rssi;
+  const uint32_t restore_timestamp = this->current_timestamp();
+  restored.last_seen_ms = resolve_restored_last_seen_ms(
+      saved.last_updated, restore_timestamp, millis(), this->state_.stale_after_ms());
+  this->state_.restore_logical_state(logical_key, restored);
+  this->last_updated_values_[logical_key] = saved.last_updated;
+  if (saved.last_updated > 0 && restore_timestamp == 0) {
+    this->pending_clock_age_restore_.insert(logical_key);
+  }
+  return true;
 }
 
 void Gateway::sync_time_base() {
@@ -468,6 +482,35 @@ void Gateway::update_last_updated(const std::string &logical_key, uint32_t last_
   }
 }
 
+void Gateway::queue_diagnostic_publish(const std::string &last_packet_value) {
+  this->pending_last_packet_value_ = last_packet_value;
+  if (this->diagnostic_publish_pending_) {
+    return;
+  }
+  this->diagnostic_publish_pending_ = true;
+  this->defer("publish_diagnostics", [this]() { this->flush_pending_diagnostic_publish(); });
+}
+
+void Gateway::flush_pending_diagnostic_publish() {
+  if (!this->diagnostic_publish_pending_) {
+    return;
+  }
+  this->diagnostic_publish_pending_ = false;
+  if (this->packet_count_sensor_ != nullptr) {
+    this->packet_count_sensor_->publish_state(this->packet_count_);
+  }
+  if (this->known_packet_count_sensor_ != nullptr) {
+    this->known_packet_count_sensor_->publish_state(this->known_packet_count_);
+  }
+  if (this->unknown_packet_count_sensor_ != nullptr) {
+    this->unknown_packet_count_sensor_->publish_state(this->unknown_packet_count_);
+  }
+  if (this->last_packet_sensor_ != nullptr && this->pending_last_packet_value_ != this->last_packet_value_) {
+    this->last_packet_value_ = this->pending_last_packet_value_;
+    this->last_packet_sensor_->publish_state(this->last_packet_value_);
+  }
+}
+
 void Gateway::queue_candidate_publish() {
   if (this->candidate_publish_pending_) {
     return;
@@ -482,6 +525,63 @@ void Gateway::flush_pending_candidate_publish() {
   }
   this->candidate_publish_pending_ = false;
   this->publish_candidates();
+}
+
+void Gateway::queue_state_save(const std::string &logical_key, uint32_t seen_ms) {
+  this->pending_state_saves_.insert(logical_key);
+  this->last_state_save_ms_[logical_key] = seen_ms;
+  if (this->state_save_flush_pending_) {
+    return;
+  }
+  this->state_save_flush_pending_ = true;
+  this->defer("flush_state_saves", [this]() { this->flush_pending_state_save(); });
+}
+
+void Gateway::flush_pending_state_save() {
+  if (!this->state_save_flush_pending_) {
+    return;
+  }
+  if (this->pending_state_saves_.empty()) {
+    this->state_save_flush_pending_ = false;
+    return;
+  }
+
+  const std::string logical_key = *this->pending_state_saves_.begin();
+  this->pending_state_saves_.erase(logical_key);
+  this->save_state(logical_key);
+
+  this->state_save_flush_pending_ = !this->pending_state_saves_.empty();
+  if (this->state_save_flush_pending_) {
+    this->defer("flush_state_saves", [this]() { this->flush_pending_state_save(); });
+  }
+}
+
+void Gateway::queue_state_publish(const std::string &logical_key) {
+  this->pending_state_publishes_.insert(logical_key);
+  if (this->state_publish_flush_pending_) {
+    return;
+  }
+  this->state_publish_flush_pending_ = true;
+  this->defer("publish_states", [this]() { this->flush_pending_state_publish(); });
+}
+
+void Gateway::flush_pending_state_publish() {
+  if (!this->state_publish_flush_pending_) {
+    return;
+  }
+  if (this->pending_state_publishes_.empty()) {
+    this->state_publish_flush_pending_ = false;
+    return;
+  }
+
+  const std::string logical_key = *this->pending_state_publishes_.begin();
+  this->pending_state_publishes_.erase(logical_key);
+  this->publish_state(logical_key);
+
+  this->state_publish_flush_pending_ = !this->pending_state_publishes_.empty();
+  if (this->state_publish_flush_pending_) {
+    this->defer("publish_states", [this]() { this->flush_pending_state_publish(); });
+  }
 }
 
 void Gateway::save_state(const std::string &logical_key) {
@@ -590,11 +690,20 @@ void Gateway::publish_stale_states() {
 }
 
 void Gateway::schedule_stale_state_publish() {
-  const auto delay_ms = this->state_.next_stale_state_publish_delay_ms(millis());
+  const uint32_t now_ms = millis();
+  const auto delay_ms = this->state_.next_stale_state_publish_delay_ms(now_ms);
   if (!delay_ms.has_value()) {
+    this->cancel_timeout("publish_stale_states");
+    this->scheduled_stale_publish_at_ms_.reset();
     return;
   }
+  const uint32_t deadline_ms = now_ms + *delay_ms;
+  if (!should_reschedule_stale_publish(this->scheduled_stale_publish_at_ms_, deadline_ms)) {
+    return;
+  }
+  this->scheduled_stale_publish_at_ms_ = deadline_ms;
   this->set_timeout("publish_stale_states", *delay_ms, [this]() {
+    this->scheduled_stale_publish_at_ms_.reset();
     this->publish_stale_states();
     this->schedule_stale_state_publish();
   });

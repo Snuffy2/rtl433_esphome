@@ -51,6 +51,14 @@ void canonicalize_mapping(SensorMapping &mapping) {
   mapping.synonyms.assign(std::next(keys.begin()), keys.end());
 }
 
+template <typename Callback>
+void for_each_mapping_key(const SensorMapping &mapping, Callback callback) {
+  callback(mapping.primary);
+  for (const auto &synonym : mapping.synonyms) {
+    callback(synonym);
+  }
+}
+
 bool same_mapping(const SensorMapping &left, const SensorMapping &right) {
   if (!same_key(left.primary, right.primary) || left.synonyms.size() != right.synonyms.size()) {
     return false;
@@ -242,6 +250,15 @@ bool should_persist_logical_state(
   return static_cast<uint32_t>(now_ms - previous_save_ms) >= interval_ms;
 }
 
+bool should_reschedule_stale_publish(std::optional<uint32_t> scheduled_deadline_ms, uint32_t next_deadline_ms) {
+  return !scheduled_deadline_ms.has_value() ||
+         static_cast<int32_t>(next_deadline_ms - *scheduled_deadline_ms) < 0;
+}
+
+bool should_restore_saved_logical_state(const LogicalSensorState *current_state) {
+  return current_state == nullptr || !current_state->has_value;
+}
+
 bool matches_mapping(const DecodedPacket &packet, const SensorMapping &mapping) {
   if (matches_key(packet, mapping.primary)) {
     return true;
@@ -252,7 +269,11 @@ bool matches_mapping(const DecodedPacket &packet, const SensorMapping &mapping) 
 }
 
 bool GatewayState::set_mapping(const std::string &logical_key, const std::string &mapping_value) {
+  const auto existing = mappings_.find(logical_key);
   if (trim_ascii_whitespace(mapping_value).empty()) {
+    if (existing != mappings_.end()) {
+      remove_from_mapping_index(logical_key, existing->second);
+    }
     const bool had_mapping = mappings_.erase(logical_key) > 0;
     const bool had_hash = mapping_hashes_.erase(logical_key) > 0;
     logical_states_[logical_key] = LogicalSensorState{};
@@ -263,12 +284,15 @@ bool GatewayState::set_mapping(const std::string &logical_key, const std::string
     ESP_LOGW(TAG, "Ignoring invalid mapping for '%s': '%s'", logical_key.c_str(), mapping_value.c_str());
     return false;
   }
-  const auto existing = mappings_.find(logical_key);
   if (existing != mappings_.end() && same_mapping(existing->second, *parsed)) {
     return false;
   }
+  if (existing != mappings_.end()) {
+    remove_from_mapping_index(logical_key, existing->second);
+  }
   mappings_[logical_key] = std::move(*parsed);
   mapping_hashes_[logical_key] = sensor_mapping_hash(format_sensor_mapping(mappings_[logical_key]));
+  add_to_mapping_index(logical_key, mappings_[logical_key]);
   logical_states_[logical_key] = LogicalSensorState{};
   return true;
 }
@@ -303,27 +327,22 @@ PacketResult GatewayState::process_packet(const DecodedPacket &packet) {
     return PacketResult::REJECTED_INVALID;
   }
 
-  bool matched = false;
-  for (const auto &[logical_key, mapping] : mappings_) {
-    if (!matches_mapping(packet, mapping)) {
-      continue;
+  const auto indexed_matches = mapping_index_.find(format_sensor_key({packet.model, packet.channel, packet.id}));
+  if (indexed_matches != mapping_index_.end() && !indexed_matches->second.empty()) {
+    for (const auto &logical_key : indexed_matches->second) {
+      auto &state = logical_states_[logical_key];
+      const bool value_changed = !state.has_value || !same_persisted_values(state, packet);
+      state.has_value = true;
+      state.temperature_f = packet.temperature_f;
+      state.humidity = packet.humidity;
+      state.battery = packet.battery;
+      state.rssi = packet.rssi;
+      state.last_seen_ms = packet.seen_ms;
+      matched_logical_keys_.push_back(logical_key);
+      if (value_changed) {
+        changed_logical_keys_.push_back(logical_key);
+      }
     }
-    auto &state = logical_states_[logical_key];
-    const bool value_changed = !state.has_value || !same_persisted_values(state, packet);
-    state.has_value = true;
-    state.temperature_f = packet.temperature_f;
-    state.humidity = packet.humidity;
-    state.battery = packet.battery;
-    state.rssi = packet.rssi;
-    state.last_seen_ms = packet.seen_ms;
-    matched_logical_keys_.push_back(logical_key);
-    if (value_changed) {
-      changed_logical_keys_.push_back(logical_key);
-    }
-    matched = true;
-  }
-
-  if (matched) {
     if (discovery_enabled_) {
       record_candidate(packet, true);
     }
@@ -361,6 +380,29 @@ std::optional<uint32_t> GatewayState::next_stale_state_publish_delay_ms(uint32_t
     }
   }
   return next_delay;
+}
+
+void GatewayState::remove_from_mapping_index(const std::string &logical_key, const SensorMapping &mapping) {
+  for_each_mapping_key(mapping, [&](const SensorKey &key) {
+    auto item = mapping_index_.find(format_sensor_key(key));
+    if (item == mapping_index_.end()) {
+      return;
+    }
+    auto &logical_keys = item->second;
+    logical_keys.erase(std::remove(logical_keys.begin(), logical_keys.end(), logical_key), logical_keys.end());
+    if (logical_keys.empty()) {
+      mapping_index_.erase(item);
+    }
+  });
+}
+
+void GatewayState::add_to_mapping_index(const std::string &logical_key, const SensorMapping &mapping) {
+  for_each_mapping_key(mapping, [&](const SensorKey &key) {
+    auto &logical_keys = mapping_index_[format_sensor_key(key)];
+    if (std::find(logical_keys.begin(), logical_keys.end(), logical_key) == logical_keys.end()) {
+      logical_keys.push_back(logical_key);
+    }
+  });
 }
 
 void GatewayState::record_candidate(const DecodedPacket &packet, bool matched_known) {
