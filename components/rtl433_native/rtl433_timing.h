@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <cstdint>
 #include <string>
 #include <unordered_set>
@@ -38,6 +39,7 @@ inline bool pending_queue_has_unpaced_work(
 
 inline std::string next_pending_queue_key(
     const std::unordered_set<std::string> &pending, const std::unordered_set<std::string> &paced) {
+  assert(!pending.empty());
   for (const auto &logical_key : pending) {
     if (paced.find(logical_key) == paced.end()) {
       return logical_key;
