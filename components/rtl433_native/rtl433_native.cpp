@@ -1,5 +1,6 @@
 #include "rtl433_native.h"
 #include "ledc_compat.h"
+#include "rtl433_timing.h"
 
 #include <Arduino.h>
 
@@ -17,6 +18,7 @@ namespace esphome::rtl433_native {
 namespace {
 
 const char *const TAG = "rtl433_native";
+constexpr uint32_t kOperationTimingThresholdMs = timing::kDefaultOperationWarnThresholdMs;
 
 float json_float_or_nan(JsonObject root, const char *key) {
   if (root[key].is<float>()) {
@@ -48,6 +50,34 @@ uint32_t mapping_preference_key(const std::string &logical_key) {
 
 uint32_t saved_state_mapping_preference_key(const std::string &logical_key) {
   return preference_key("state_mapping:" + logical_key) ^ 0x5147B433UL;
+}
+
+bool has_unpaced_pending_state(const std::unordered_set<std::string> &pending,
+                               const std::unordered_set<std::string> &paced) {
+  for (const auto &logical_key : pending) {
+    if (paced.find(logical_key) == paced.end()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::string next_pending_state_key(const std::unordered_set<std::string> &pending,
+                                   const std::unordered_set<std::string> &paced) {
+  for (const auto &logical_key : pending) {
+    if (paced.find(logical_key) == paced.end()) {
+      return logical_key;
+    }
+  }
+  return *pending.begin();
+}
+
+void log_if_long_operation(const char *operation_name, uint32_t start_ms, uint32_t end_ms) {
+  if (!timing::is_operation_too_long(start_ms, end_ms, kOperationTimingThresholdMs)) {
+    return;
+  }
+  ESP_LOGD(TAG, "Slow operation [%s] took %u ms", operation_name,
+           static_cast<unsigned>(timing::operation_duration_ms(start_ms, end_ms)));
 }
 
 bool is_blank_mapping_text(const std::string &value) {
@@ -86,11 +116,16 @@ void Gateway::setup() {
 }
 
 void Gateway::loop() {
+  const uint32_t loop_start_ms = millis();
   if (!this->restored_states_) {
     this->restored_states_ = true;
     this->queue_restore_saved_states();
   }
+  const uint32_t rf_loop_start_ms = millis();
   this->rf_.loop();
+  const uint32_t loop_end_ms = millis();
+  log_if_long_operation("Gateway::loop::rf_.loop", rf_loop_start_ms, loop_end_ms);
+  log_if_long_operation("Gateway::loop", loop_start_ms, loop_end_ms);
 }
 
 void Gateway::dump_config() {
@@ -244,8 +279,14 @@ void Gateway::process_dispatch(char *message) {
 }
 
 void Gateway::process_message(char *message) {
+  const uint32_t parse_start_ms = millis();
+  uint32_t parse_json_callback_ms = parse_start_ms;
+  bool callback_invoked = false;
   ESP_LOGV(TAG, "Received rtl_433 message: %s", message);
-  json::parse_json(message, [this](JsonObject root) {
+  json::parse_json(message, [this, &parse_json_callback_ms, &callback_invoked](JsonObject root) {
+    parse_json_callback_ms = millis();
+    callback_invoked = true;
+    const uint32_t handle_start_ms = parse_json_callback_ms;
     const char *model = root["model"] | "";
     if (std::strcmp(model, "status") == 0) {
       return true;
@@ -350,8 +391,13 @@ void Gateway::process_message(char *message) {
     if (result == ::esphome::rtl433_native::PacketResult::MATCHED_KNOWN) {
       this->schedule_stale_state_publish();
     }
+    const uint32_t handle_end_ms = millis();
+    log_if_long_operation("Gateway::process_message::handle", handle_start_ms, handle_end_ms);
     return true;
   });
+  const uint32_t parse_end_ms = millis();
+  log_if_long_operation("Gateway::process_message::parse", parse_start_ms,
+                       callback_invoked ? parse_json_callback_ms : parse_end_ms);
 }
 
 void Gateway::queue_restore_saved_states() {
@@ -361,7 +407,8 @@ void Gateway::queue_restore_saved_states() {
   this->restore_saved_state_pending_ = true;
   this->restore_saved_state_index_ = 0;
   this->restored_any_saved_state_ = false;
-  this->defer("restore_saved_states", [this]() { this->restore_next_saved_state(); });
+  this->startup_pacing_active_ = true;
+  this->schedule_restore_saved_states();
 }
 
 void Gateway::restore_next_saved_state() {
@@ -369,13 +416,17 @@ void Gateway::restore_next_saved_state() {
     this->restore_saved_state_pending_ = false;
     this->publish_stale_states();
     if (this->restored_any_saved_state_) {
+      this->startup_publish_restored_states_pending_ = true;
       this->set_timeout("publish_restored_states", 2000, [this]() {
+        this->startup_publish_restored_states_pending_ = false;
         for (const auto &logical_key : this->logical_keys_) {
-          this->queue_state_publish(logical_key);
+          this->queue_state_publish(logical_key, true);
         }
+        this->maybe_disable_startup_pacing();
       });
     }
     this->schedule_stale_state_publish();
+    this->maybe_disable_startup_pacing();
     return;
   }
 
@@ -383,9 +434,9 @@ void Gateway::restore_next_saved_state() {
   this->restore_saved_state_index_ += 1;
   if (this->restore_saved_state(logical_key)) {
     this->restored_any_saved_state_ = true;
-    this->queue_state_publish(logical_key);
+    this->queue_state_publish(logical_key, true);
   }
-  this->defer("restore_saved_states", [this]() { this->restore_next_saved_state(); });
+  this->schedule_restore_saved_states();
 }
 
 bool Gateway::restore_saved_state(const std::string &logical_key) {
@@ -523,65 +574,157 @@ void Gateway::flush_pending_candidate_publish() {
   if (!this->candidate_publish_pending_) {
     return;
   }
+  const uint32_t flush_start_ms = millis();
   this->candidate_publish_pending_ = false;
   this->publish_candidates();
+  const uint32_t flush_end_ms = millis();
+  log_if_long_operation("Gateway::flush_pending_candidate_publish", flush_start_ms, flush_end_ms);
 }
 
-void Gateway::queue_state_save(const std::string &logical_key, uint32_t seen_ms) {
+void Gateway::queue_state_save(const std::string &logical_key, uint32_t seen_ms, bool startup_work) {
+  const bool already_pending = this->pending_state_saves_.find(logical_key) != this->pending_state_saves_.end();
   this->pending_state_saves_.insert(logical_key);
+  const bool pace_flush = timing::should_pace_startup_queue(this->startup_pacing_active_, startup_work);
+  if (pace_flush && !already_pending) {
+    this->paced_state_saves_.insert(logical_key);
+  } else if (!pace_flush) {
+    this->paced_state_saves_.erase(logical_key);
+  }
   this->last_state_save_ms_[logical_key] = seen_ms;
   if (this->state_save_flush_pending_) {
+    if (!pace_flush && this->state_save_flush_paced_) {
+      this->cancel_timeout("flush_state_saves");
+      this->schedule_state_save_flush(false);
+    }
     return;
   }
   this->state_save_flush_pending_ = true;
-  this->defer("flush_state_saves", [this]() { this->flush_pending_state_save(); });
+  this->schedule_state_save_flush(pace_flush);
 }
 
 void Gateway::flush_pending_state_save() {
   if (!this->state_save_flush_pending_) {
     return;
   }
+  const uint32_t flush_start_ms = millis();
   if (this->pending_state_saves_.empty()) {
     this->state_save_flush_pending_ = false;
+    this->state_save_flush_paced_ = false;
+    this->paced_state_saves_.clear();
+    const uint32_t flush_end_ms = millis();
+    log_if_long_operation("Gateway::flush_pending_state_save", flush_start_ms, flush_end_ms);
+    this->maybe_disable_startup_pacing();
     return;
   }
 
-  const std::string logical_key = *this->pending_state_saves_.begin();
+  const std::string logical_key = next_pending_state_key(this->pending_state_saves_, this->paced_state_saves_);
   this->pending_state_saves_.erase(logical_key);
+  this->paced_state_saves_.erase(logical_key);
   this->save_state(logical_key);
 
   this->state_save_flush_pending_ = !this->pending_state_saves_.empty();
-  if (this->state_save_flush_pending_) {
-    this->defer("flush_state_saves", [this]() { this->flush_pending_state_save(); });
+  if (!this->state_save_flush_pending_) {
+    this->state_save_flush_paced_ = false;
+    this->maybe_disable_startup_pacing();
   }
+  if (this->state_save_flush_pending_) {
+    this->schedule_state_save_flush(!has_unpaced_pending_state(this->pending_state_saves_, this->paced_state_saves_));
+  }
+  const uint32_t flush_end_ms = millis();
+  log_if_long_operation("Gateway::flush_pending_state_save", flush_start_ms, flush_end_ms);
 }
 
-void Gateway::queue_state_publish(const std::string &logical_key) {
+void Gateway::queue_state_publish(const std::string &logical_key, bool startup_work) {
+  const bool already_pending = this->pending_state_publishes_.find(logical_key) != this->pending_state_publishes_.end();
   this->pending_state_publishes_.insert(logical_key);
+  const bool pace_flush = timing::should_pace_startup_queue(this->startup_pacing_active_, startup_work);
+  if (pace_flush && !already_pending) {
+    this->paced_state_publishes_.insert(logical_key);
+  } else if (!pace_flush) {
+    this->paced_state_publishes_.erase(logical_key);
+  }
   if (this->state_publish_flush_pending_) {
+    if (!pace_flush && this->state_publish_flush_paced_) {
+      this->cancel_timeout("publish_states");
+      this->schedule_state_publish_flush(false);
+    }
     return;
   }
   this->state_publish_flush_pending_ = true;
-  this->defer("publish_states", [this]() { this->flush_pending_state_publish(); });
+  this->schedule_state_publish_flush(pace_flush);
 }
 
 void Gateway::flush_pending_state_publish() {
   if (!this->state_publish_flush_pending_) {
     return;
   }
+  const uint32_t flush_start_ms = millis();
   if (this->pending_state_publishes_.empty()) {
     this->state_publish_flush_pending_ = false;
+    this->state_publish_flush_paced_ = false;
+    this->paced_state_publishes_.clear();
+    const uint32_t flush_end_ms = millis();
+    log_if_long_operation("Gateway::flush_pending_state_publish", flush_start_ms, flush_end_ms);
+    this->maybe_disable_startup_pacing();
     return;
   }
 
-  const std::string logical_key = *this->pending_state_publishes_.begin();
+  const std::string logical_key =
+      next_pending_state_key(this->pending_state_publishes_, this->paced_state_publishes_);
   this->pending_state_publishes_.erase(logical_key);
+  this->paced_state_publishes_.erase(logical_key);
   this->publish_state(logical_key);
 
   this->state_publish_flush_pending_ = !this->pending_state_publishes_.empty();
-  if (this->state_publish_flush_pending_) {
-    this->defer("publish_states", [this]() { this->flush_pending_state_publish(); });
+  if (!this->state_publish_flush_pending_) {
+    this->state_publish_flush_paced_ = false;
+    this->maybe_disable_startup_pacing();
   }
+  if (this->state_publish_flush_pending_) {
+    this->schedule_state_publish_flush(
+        !has_unpaced_pending_state(this->pending_state_publishes_, this->paced_state_publishes_));
+  }
+  const uint32_t flush_end_ms = millis();
+  log_if_long_operation("Gateway::flush_pending_state_publish", flush_start_ms, flush_end_ms);
+}
+
+void Gateway::schedule_restore_saved_states() {
+  const uint32_t delay_ms = timing::startup_pacing_delay_ms(this->startup_pacing_active_, true);
+  if (delay_ms == 0) {
+    this->defer("restore_saved_states", [this]() { this->restore_next_saved_state(); });
+    return;
+  }
+  this->set_timeout("restore_saved_states", delay_ms, [this]() { this->restore_next_saved_state(); });
+}
+
+void Gateway::schedule_state_save_flush(bool startup_work) {
+  const uint32_t delay_ms = timing::startup_pacing_delay_ms(this->startup_pacing_active_, startup_work);
+  this->state_save_flush_paced_ = delay_ms != 0;
+  if (delay_ms == 0) {
+    this->defer("flush_state_saves", [this]() { this->flush_pending_state_save(); });
+    return;
+  }
+  this->set_timeout("flush_state_saves", delay_ms, [this]() { this->flush_pending_state_save(); });
+}
+
+void Gateway::schedule_state_publish_flush(bool startup_work) {
+  const uint32_t delay_ms = timing::startup_pacing_delay_ms(this->startup_pacing_active_, startup_work);
+  this->state_publish_flush_paced_ = delay_ms != 0;
+  if (delay_ms == 0) {
+    this->defer("publish_states", [this]() { this->flush_pending_state_publish(); });
+    return;
+  }
+  this->set_timeout("publish_states", delay_ms, [this]() { this->flush_pending_state_publish(); });
+}
+
+void Gateway::maybe_disable_startup_pacing() {
+  if (!this->startup_pacing_active_ || this->restore_saved_state_pending_ ||
+      this->startup_publish_restored_states_pending_ || this->state_save_flush_pending_ ||
+      !this->pending_state_saves_.empty() || this->state_publish_flush_pending_ ||
+      !this->pending_state_publishes_.empty()) {
+    return;
+  }
+  this->startup_pacing_active_ = false;
 }
 
 void Gateway::save_state(const std::string &logical_key) {
@@ -683,10 +826,13 @@ void Gateway::publish_candidates() {
 }
 
 void Gateway::publish_stale_states() {
+  const uint32_t publish_start_ms = millis();
   const uint32_t now = millis();
   for (auto &[logical_key, entities] : this->entities_) {
     this->publish_stale_state(logical_key, entities, now);
   }
+  const uint32_t publish_end_ms = millis();
+  log_if_long_operation("Gateway::publish_stale_states", publish_start_ms, publish_end_ms);
 }
 
 void Gateway::schedule_stale_state_publish() {
@@ -703,9 +849,16 @@ void Gateway::schedule_stale_state_publish() {
   }
   this->scheduled_stale_publish_at_ms_ = deadline_ms;
   this->set_timeout("publish_stale_states", *delay_ms, [this]() {
+    const uint32_t stale_callback_start_ms = millis();
     this->scheduled_stale_publish_at_ms_.reset();
+    const uint32_t stale_publish_start_ms = millis();
     this->publish_stale_states();
+    const uint32_t stale_publish_end_ms = millis();
     this->schedule_stale_state_publish();
+    const uint32_t stale_callback_end_ms = millis();
+    log_if_long_operation("Gateway::publish_stale_states callback", stale_callback_start_ms, stale_callback_end_ms);
+    log_if_long_operation("Gateway::publish_stale_states callback body", stale_publish_start_ms,
+                         stale_publish_end_ms);
   });
 }
 

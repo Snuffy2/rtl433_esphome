@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "../../components/rtl433_native/rtl433_timing.h"
 #include "../../components/rtl433_native/rtl433_state.h"
 
 namespace {
@@ -843,6 +844,32 @@ void test_restored_last_seen_falls_back_to_fresh_without_valid_clock_age() {
       "future saved timestamp should restore with previous fresh behavior");
 }
 
+void test_timing_threshold_helper_is_wrap_safe_and_configurable() {
+  const uint32_t start_ms = 0xFFFFFFF0;
+  const uint32_t end_ms = 0x00000020;
+  require(rtl433::timing::operation_duration_ms(start_ms, end_ms) == 0x30u,
+          "operation duration should be wrap-safe for uint32 timer values");
+  require(!rtl433::timing::is_operation_too_long(start_ms, end_ms, 0x30u),
+          "duration equal to threshold should stay unlogged");
+  require(rtl433::timing::is_operation_too_long(start_ms, end_ms, 0x2Fu),
+          "duration above threshold should be considered long");
+}
+
+void test_startup_pacing_delay_helper() {
+  require(!rtl433::timing::should_pace_startup_queue(false, true),
+          "startup queue pacing should be off when startup mode is inactive");
+  require(!rtl433::timing::should_pace_startup_queue(true, false),
+          "startup queue pacing should be off for live work during startup");
+  require(rtl433::timing::should_pace_startup_queue(true, true),
+          "startup queue pacing should be on for startup work when startup mode is active");
+  require(rtl433::timing::startup_pacing_delay_ms(false, true) == 0u,
+          "inactive startup queue should not schedule delay");
+  require(rtl433::timing::startup_pacing_delay_ms(true, false) == 0u,
+          "live queue work should not schedule delay during startup");
+  require(rtl433::timing::startup_pacing_delay_ms(true, true) == 25u,
+          "active startup queue should schedule the startup pacing delay");
+}
+
 }  // namespace
 
 int main() {
@@ -893,5 +920,7 @@ int main() {
   test_restored_last_seen_marks_old_saved_reading_stale();
   test_restored_last_seen_preserves_recent_saved_age();
   test_restored_last_seen_falls_back_to_fresh_without_valid_clock_age();
+  test_timing_threshold_helper_is_wrap_safe_and_configurable();
+  test_startup_pacing_delay_helper();
   return 0;
 }
