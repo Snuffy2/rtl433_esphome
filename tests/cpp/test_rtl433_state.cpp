@@ -866,6 +866,18 @@ void test_startup_pacing_delay_helper() {
           "active startup queue should schedule the startup pacing delay");
 }
 
+void test_reprojected_restore_work_treats_as_startup_pacing() {
+  require(!rtl433::timing::should_use_startup_pacing(false, false),
+          "no startup pacing for startup-empty reproject work");
+  require(rtl433::timing::should_use_startup_pacing(true, false),
+          "existing startup pacing should remain enabled for reproject work");
+  require(rtl433::timing::should_use_startup_pacing(false, true),
+          "reprojected restored-state work should force startup pacing");
+  require(rtl433::timing::startup_pacing_delay_ms(rtl433::timing::should_use_startup_pacing(false, true), true) ==
+              rtl433::timing::kStartupPacingDelayMs,
+          "forced startup pacing should schedule paced queue delay");
+}
+
 void test_paced_flush_preemption_helper() {
   require(rtl433::timing::should_preempt_paced_flush(true, true, false),
           "live work should preempt a pending paced startup flush");
@@ -993,6 +1005,7 @@ int main() {
   test_restored_last_seen_falls_back_to_fresh_without_valid_clock_age();
   test_timing_threshold_helper_is_wrap_safe_and_configurable();
   test_startup_pacing_delay_helper();
+  test_reprojected_restore_work_treats_as_startup_pacing();
   test_paced_flush_preemption_helper();
   test_pending_queue_prefers_unpaced_live_work();
   test_pending_queue_fairness_bounds_unpaced_preference();

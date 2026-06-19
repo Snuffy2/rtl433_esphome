@@ -475,6 +475,11 @@ void Gateway::sync_time_base() {
 
 void Gateway::reproject_pending_restored_states(uint32_t current_timestamp) {
   const uint32_t now_ms = millis();
+  const bool temporary_startup_pacing = timing::should_use_startup_pacing(
+      this->startup_pacing_active_, !this->pending_clock_age_restore_.empty());
+  if (temporary_startup_pacing) {
+    this->startup_pacing_active_ = true;
+  }
   auto item = this->pending_clock_age_restore_.begin();
   while (item != this->pending_clock_age_restore_.end()) {
     const std::string logical_key = *item;
@@ -490,7 +495,10 @@ void Gateway::reproject_pending_restored_states(uint32_t current_timestamp) {
     restored.last_seen_ms = resolve_restored_last_seen_ms(
         last_updated_item->second, current_timestamp, now_ms, this->state_.stale_after_ms());
     this->state_.restore_logical_state(logical_key, restored);
-    this->publish_state(logical_key);
+    this->queue_state_publish(logical_key, true);
+  }
+  if (temporary_startup_pacing) {
+    this->maybe_disable_startup_pacing();
   }
   this->schedule_stale_state_publish();
 }

@@ -29,6 +29,11 @@ inline bool should_preempt_paced_flush(bool flush_pending, bool flush_paced, boo
   return flush_pending && flush_paced && !new_work_paced;
 }
 
+inline bool should_use_startup_pacing(
+    bool startup_pacing_active, bool has_reprojected_startup_work) {
+  return startup_pacing_active || has_reprojected_startup_work;
+}
+
 inline bool pending_queue_has_unpaced_work(
     const std::unordered_set<std::string> &pending, const std::unordered_set<std::string> &paced) {
   for (const auto &logical_key : pending) {
