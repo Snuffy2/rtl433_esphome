@@ -592,6 +592,7 @@ void Gateway::flush_pending_state_save() {
   if (this->pending_state_saves_.empty()) {
     this->state_save_flush_pending_ = false;
     this->state_save_flush_paced_ = false;
+    this->state_save_unpaced_selection_streak_ = 0;
     this->paced_state_saves_.clear();
     const uint32_t flush_end_ms = millis();
     log_if_long_operation("Gateway::flush_pending_state_save", flush_start_ms, flush_end_ms);
@@ -599,11 +600,23 @@ void Gateway::flush_pending_state_save() {
     return;
   }
 
+  const bool select_paced = timing::should_select_paced_queue_item(
+      this->pending_state_saves_, this->paced_state_saves_, this->state_save_unpaced_selection_streak_);
   const std::string logical_key =
-      timing::next_pending_queue_key(this->pending_state_saves_, this->paced_state_saves_);
+      timing::next_pending_queue_key(this->pending_state_saves_, this->paced_state_saves_, select_paced);
+  const bool selected_was_paced =
+      this->paced_state_saves_.find(logical_key) != this->paced_state_saves_.end();
   this->pending_state_saves_.erase(logical_key);
   this->paced_state_saves_.erase(logical_key);
   this->save_state(logical_key);
+  if (selected_was_paced) {
+    this->state_save_unpaced_selection_streak_ = 0;
+  } else {
+    ++this->state_save_unpaced_selection_streak_;
+  }
+  if (this->paced_state_saves_.empty()) {
+    this->state_save_unpaced_selection_streak_ = 0;
+  }
 
   this->state_save_flush_pending_ = !this->pending_state_saves_.empty();
   if (!this->state_save_flush_pending_) {
@@ -648,6 +661,7 @@ void Gateway::flush_pending_state_publish() {
   if (this->pending_state_publishes_.empty()) {
     this->state_publish_flush_pending_ = false;
     this->state_publish_flush_paced_ = false;
+    this->state_publish_unpaced_selection_streak_ = 0;
     this->paced_state_publishes_.clear();
     const uint32_t flush_end_ms = millis();
     log_if_long_operation("Gateway::flush_pending_state_publish", flush_start_ms, flush_end_ms);
@@ -655,11 +669,25 @@ void Gateway::flush_pending_state_publish() {
     return;
   }
 
+  const bool select_paced = timing::should_select_paced_queue_item(
+      this->pending_state_publishes_, this->paced_state_publishes_,
+      this->state_publish_unpaced_selection_streak_);
   const std::string logical_key =
-      timing::next_pending_queue_key(this->pending_state_publishes_, this->paced_state_publishes_);
+      timing::next_pending_queue_key(this->pending_state_publishes_, this->paced_state_publishes_,
+                                     select_paced);
+  const bool selected_was_paced =
+      this->paced_state_publishes_.find(logical_key) != this->paced_state_publishes_.end();
   this->pending_state_publishes_.erase(logical_key);
   this->paced_state_publishes_.erase(logical_key);
   this->publish_state(logical_key);
+  if (selected_was_paced) {
+    this->state_publish_unpaced_selection_streak_ = 0;
+  } else {
+    ++this->state_publish_unpaced_selection_streak_;
+  }
+  if (this->paced_state_publishes_.empty()) {
+    this->state_publish_unpaced_selection_streak_ = 0;
+  }
 
   this->state_publish_flush_pending_ = !this->pending_state_publishes_.empty();
   if (!this->state_publish_flush_pending_) {

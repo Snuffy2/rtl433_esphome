@@ -130,6 +130,8 @@ class Gateway : public Component
   bool state_publish_flush_pending_{false};
   bool state_save_flush_paced_{false};
   bool state_publish_flush_paced_{false};
+  std::size_t state_save_unpaced_selection_streak_{0};
+  std::size_t state_publish_unpaced_selection_streak_{0};
   std::array<text_sensor::TextSensor *, 20> candidate_sensors_{};
   std::array<std::string, 20> last_candidate_values_{};
   std::string version_{"unknown"};
