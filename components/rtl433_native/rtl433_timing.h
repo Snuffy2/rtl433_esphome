@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <unordered_set>
 
 namespace esphome::rtl433_native {
 namespace timing {
@@ -18,6 +20,30 @@ inline bool is_operation_too_long(uint32_t start_ms, uint32_t end_ms, uint32_t t
 
 inline uint32_t startup_pacing_delay_ms(bool startup_pacing_active, bool startup_work) {
   return (startup_pacing_active && startup_work) ? kStartupPacingDelayMs : 0;
+}
+
+inline bool should_preempt_paced_flush(bool flush_pending, bool flush_paced, bool new_work_paced) {
+  return flush_pending && flush_paced && !new_work_paced;
+}
+
+inline bool pending_queue_has_unpaced_work(
+    const std::unordered_set<std::string> &pending, const std::unordered_set<std::string> &paced) {
+  for (const auto &logical_key : pending) {
+    if (paced.find(logical_key) == paced.end()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+inline std::string next_pending_queue_key(
+    const std::unordered_set<std::string> &pending, const std::unordered_set<std::string> &paced) {
+  for (const auto &logical_key : pending) {
+    if (paced.find(logical_key) == paced.end()) {
+      return logical_key;
+    }
+  }
+  return *pending.begin();
 }
 
 }  // namespace timing

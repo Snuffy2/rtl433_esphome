@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "../../components/rtl433_native/rtl433_timing.h"
@@ -865,6 +866,33 @@ void test_startup_pacing_delay_helper() {
           "active startup queue should schedule the startup pacing delay");
 }
 
+void test_paced_flush_preemption_helper() {
+  require(rtl433::timing::should_preempt_paced_flush(true, true, false),
+          "live work should preempt a pending paced startup flush");
+  require(!rtl433::timing::should_preempt_paced_flush(true, true, true),
+          "paced startup work should not preempt an existing paced flush");
+  require(!rtl433::timing::should_preempt_paced_flush(true, false, false),
+          "live work should not reschedule an already immediate flush");
+  require(!rtl433::timing::should_preempt_paced_flush(false, true, false),
+          "live work should not preempt when no flush is pending");
+}
+
+void test_pending_queue_prefers_unpaced_live_work() {
+  std::unordered_set<std::string> pending{"restored_fridge", "live_freezer"};
+  std::unordered_set<std::string> paced{"restored_fridge"};
+
+  require(rtl433::timing::pending_queue_has_unpaced_work(pending, paced),
+          "mixed queue should report unpaced live work");
+  require(rtl433::timing::next_pending_queue_key(pending, paced) == "live_freezer",
+          "mixed queue should publish live work before paced startup backlog");
+
+  pending.erase("live_freezer");
+  require(!rtl433::timing::pending_queue_has_unpaced_work(pending, paced),
+          "remaining startup backlog should be treated as fully paced");
+  require(rtl433::timing::next_pending_queue_key(pending, paced) == "restored_fridge",
+          "fully paced queue should still return the remaining startup item");
+}
+
 }  // namespace
 
 int main() {
@@ -917,5 +945,7 @@ int main() {
   test_restored_last_seen_falls_back_to_fresh_without_valid_clock_age();
   test_timing_threshold_helper_is_wrap_safe_and_configurable();
   test_startup_pacing_delay_helper();
+  test_paced_flush_preemption_helper();
+  test_pending_queue_prefers_unpaced_live_work();
   return 0;
 }

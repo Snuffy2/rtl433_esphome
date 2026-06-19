@@ -52,26 +52,6 @@ uint32_t saved_state_mapping_preference_key(const std::string &logical_key) {
   return preference_key("state_mapping:" + logical_key) ^ 0x5147B433UL;
 }
 
-bool has_unpaced_pending_state(const std::unordered_set<std::string> &pending,
-                               const std::unordered_set<std::string> &paced) {
-  for (const auto &logical_key : pending) {
-    if (paced.find(logical_key) == paced.end()) {
-      return true;
-    }
-  }
-  return false;
-}
-
-std::string next_pending_state_key(const std::unordered_set<std::string> &pending,
-                                   const std::unordered_set<std::string> &paced) {
-  for (const auto &logical_key : pending) {
-    if (paced.find(logical_key) == paced.end()) {
-      return logical_key;
-    }
-  }
-  return *pending.begin();
-}
-
 void log_if_long_operation(const char *operation_name, uint32_t start_ms, uint32_t end_ms) {
   if (!timing::is_operation_too_long(start_ms, end_ms, kOperationTimingThresholdMs)) {
     return;
@@ -593,7 +573,8 @@ void Gateway::queue_state_save(const std::string &logical_key, uint32_t seen_ms,
   }
   this->last_state_save_ms_[logical_key] = seen_ms;
   if (this->state_save_flush_pending_) {
-    if (!paced_work && this->state_save_flush_paced_) {
+    if (timing::should_preempt_paced_flush(
+            this->state_save_flush_pending_, this->state_save_flush_paced_, paced_work)) {
       this->cancel_timeout("flush_state_saves");
       this->schedule_state_save_flush(false);
     }
@@ -618,7 +599,8 @@ void Gateway::flush_pending_state_save() {
     return;
   }
 
-  const std::string logical_key = next_pending_state_key(this->pending_state_saves_, this->paced_state_saves_);
+  const std::string logical_key =
+      timing::next_pending_queue_key(this->pending_state_saves_, this->paced_state_saves_);
   this->pending_state_saves_.erase(logical_key);
   this->paced_state_saves_.erase(logical_key);
   this->save_state(logical_key);
@@ -629,7 +611,8 @@ void Gateway::flush_pending_state_save() {
     this->maybe_disable_startup_pacing();
   }
   if (this->state_save_flush_pending_) {
-    this->schedule_state_save_flush(!has_unpaced_pending_state(this->pending_state_saves_, this->paced_state_saves_));
+    this->schedule_state_save_flush(
+        !timing::pending_queue_has_unpaced_work(this->pending_state_saves_, this->paced_state_saves_));
   }
   const uint32_t flush_end_ms = millis();
   log_if_long_operation("Gateway::flush_pending_state_save", flush_start_ms, flush_end_ms);
@@ -646,7 +629,8 @@ void Gateway::queue_state_publish(const std::string &logical_key, bool startup_w
     this->paced_state_publishes_.erase(logical_key);
   }
   if (this->state_publish_flush_pending_) {
-    if (!paced_work && this->state_publish_flush_paced_) {
+    if (timing::should_preempt_paced_flush(
+            this->state_publish_flush_pending_, this->state_publish_flush_paced_, paced_work)) {
       this->cancel_timeout("publish_states");
       this->schedule_state_publish_flush(false);
     }
@@ -672,7 +656,7 @@ void Gateway::flush_pending_state_publish() {
   }
 
   const std::string logical_key =
-      next_pending_state_key(this->pending_state_publishes_, this->paced_state_publishes_);
+      timing::next_pending_queue_key(this->pending_state_publishes_, this->paced_state_publishes_);
   this->pending_state_publishes_.erase(logical_key);
   this->paced_state_publishes_.erase(logical_key);
   this->publish_state(logical_key);
@@ -684,7 +668,7 @@ void Gateway::flush_pending_state_publish() {
   }
   if (this->state_publish_flush_pending_) {
     this->schedule_state_publish_flush(
-        !has_unpaced_pending_state(this->pending_state_publishes_, this->paced_state_publishes_));
+        !timing::pending_queue_has_unpaced_work(this->pending_state_publishes_, this->paced_state_publishes_));
   }
   const uint32_t flush_end_ms = millis();
   log_if_long_operation("Gateway::flush_pending_state_publish", flush_start_ms, flush_end_ms);
