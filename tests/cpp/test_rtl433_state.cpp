@@ -953,6 +953,28 @@ void test_pending_queue_fairness_resets_when_paced_backlog_clears() {
           "no paced backlog should not force paced selection");
 }
 
+void test_disjoint_set_does_not_force_paced_selection() {
+  const std::unordered_set<std::string> pending{"live_freezer"};
+  const std::unordered_set<std::string> paced{"restored_fridge"};
+  require(!rtl433::timing::should_select_paced_queue_item(
+      pending, paced, rtl433::timing::kStartupPacingFairnessWindow),
+          "fairness window should not force selection when no paced key is pending");
+  const std::string next = rtl433::timing::next_pending_queue_key(
+      pending, paced,
+      rtl433::timing::should_select_paced_queue_item(pending, paced, rtl433::timing::kStartupPacingFairnessWindow));
+  require(next == "live_freezer", "disjoint paced set should not skip unpaced work");
+}
+
+void test_empty_queue_fails_safely_in_next_key_lookup() {
+  std::unordered_set<std::string> pending;
+  std::unordered_set<std::string> paced;
+
+  require(rtl433::timing::next_pending_queue_key(pending, paced).empty(),
+          "empty pending queue should return empty logical key");
+  require(rtl433::timing::next_pending_queue_key(pending, paced, true).empty(),
+          "empty paced preference should also remain empty");
+}
+
 }  // namespace
 
 int main() {
@@ -1011,5 +1033,7 @@ int main() {
   test_pending_queue_fairness_bounds_unpaced_preference();
   test_pending_queue_fairness_resets_after_paced_selection();
   test_pending_queue_fairness_resets_when_paced_backlog_clears();
+  test_disjoint_set_does_not_force_paced_selection();
+  test_empty_queue_fails_safely_in_next_key_lookup();
   return 0;
 }

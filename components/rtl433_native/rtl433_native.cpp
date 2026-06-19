@@ -873,14 +873,10 @@ void Gateway::schedule_stale_state_publish() {
   this->set_timeout("publish_stale_states", *delay_ms, [this]() {
     const uint32_t stale_callback_start_ms = millis();
     this->scheduled_stale_publish_at_ms_.reset();
-    const uint32_t stale_publish_start_ms = millis();
     this->publish_stale_states();
-    const uint32_t stale_publish_end_ms = millis();
     this->schedule_stale_state_publish();
     const uint32_t stale_callback_end_ms = millis();
     log_if_long_operation("Gateway::publish_stale_states callback", stale_callback_start_ms, stale_callback_end_ms);
-    log_if_long_operation("Gateway::publish_stale_states callback body", stale_publish_start_ms,
-                         stale_publish_end_ms);
   });
 }
 

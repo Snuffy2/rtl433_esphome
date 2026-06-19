@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstddef>
-#include <cassert>
 #include <cstdint>
 #include <string>
 #include <unordered_set>
@@ -44,17 +43,29 @@ inline bool pending_queue_has_unpaced_work(
   return false;
 }
 
+inline bool pending_queue_has_paced_work(
+    const std::unordered_set<std::string> &pending, const std::unordered_set<std::string> &paced) {
+  for (const auto &logical_key : pending) {
+    if (paced.find(logical_key) != paced.end()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 inline bool should_select_paced_queue_item(
     const std::unordered_set<std::string> &pending, const std::unordered_set<std::string> &paced,
     std::size_t consecutive_unpaced_selections, std::size_t fairness_window = kStartupPacingFairnessWindow) {
-  return consecutive_unpaced_selections >= fairness_window && pending_queue_has_unpaced_work(pending, paced) &&
-         !paced.empty();
+  return consecutive_unpaced_selections >= fairness_window &&
+         pending_queue_has_paced_work(pending, paced);
 }
 
 inline std::string next_pending_queue_key(
     const std::unordered_set<std::string> &pending, const std::unordered_set<std::string> &paced,
     bool prefer_paced = false) {
-  assert(!pending.empty());
+  if (pending.empty()) {
+    return "";
+  }
   if (prefer_paced) {
     for (const auto &logical_key : pending) {
       if (paced.find(logical_key) != paced.end()) {
