@@ -57,6 +57,7 @@ addopts = """
 """
 testpaths = ["tests"]
 asyncio_mode = "auto"
+pythonpath = ["."]
 
 [tool.coverage.report]
 show_missing = true
