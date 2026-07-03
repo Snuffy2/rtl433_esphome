@@ -722,6 +722,21 @@ def test_load_standalone_version_prefers_repo_local_file_over_sys_path_module(
     assert rtl433_native._load_standalone_version() == "v-local"
 
 
+def test_load_standalone_version_returns_unknown_for_malformed_version_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Resolve unknown when repo-local version metadata is malformed."""
+
+    repo_root = tmp_path / "repo"
+    repo_version_path = repo_root / "rtl433_esphome_version.py"
+    repo_components_path = repo_root / "components" / "rtl433_native"
+    repo_components_path.mkdir(parents=True)
+    repo_version_path.write_text("raise RuntimeError('do not execute')\n", encoding="utf-8")
+    monkeypatch.setattr(rtl433_native, "__file__", str(repo_components_path / "__init__.py"))
+
+    assert rtl433_native._load_standalone_version() == "unknown"
+
+
 async def test_to_code_sets_backend_project_metadata_from_package_version(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

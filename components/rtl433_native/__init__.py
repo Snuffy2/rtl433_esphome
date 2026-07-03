@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import logging
 import re
 from pathlib import Path
@@ -40,23 +39,15 @@ def _load_standalone_version() -> str:
     if not version_path.exists():
         return "unknown"
 
-    spec = importlib.util.spec_from_file_location(
-        "rtl433_esphome_version_local",
-        version_path,
-    )
-    if spec is None or spec.loader is None:
-        return "unknown"
-
-    version_module = importlib.util.module_from_spec(spec)
     try:
-        spec.loader.exec_module(version_module)
+        version_text = version_path.read_text(encoding="utf-8")
     except OSError:
         return "unknown"
-    try:
-        return str(version_module.VERSION)
-    except AttributeError:
+    match = re.search(r"(?m)^VERSION\s*=\s*['\"]([^'\"]+)['\"]", version_text)
+    if match is None:
         _LOGGER.debug("Version module %s does not define VERSION", version_path)
         return "unknown"
+    return match.group(1)
 
 
 VERSION = _load_standalone_version()
