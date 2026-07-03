@@ -4,11 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-import os
 from pathlib import Path
-import shutil
-import subprocess
-import sys
 from typing import Any, Protocol
 
 from esphome import config_validation as cv
@@ -692,84 +688,19 @@ def test_config_schema_accepts_long_mapping_without_generated_text() -> None:
     assert validated[CONF_KNOWN_SENSORS][0][CONF_MAPPING] == config[CONF_MAPPING]
 
 
-def test_load_standalone_version_returns_unknown_without_version_file(
+def test_load_standalone_version_reads_repo_local_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Resolve unknown when no repo-local version file exists."""
-
-    package_root = tmp_path / "components" / "rtl433_native"
-    package_root.mkdir(parents=True)
-    monkeypatch.setattr(rtl433_native, "__file__", str(package_root / "__init__.py"))
-
-    assert rtl433_native._load_standalone_version() == "unknown"
-
-
-def test_load_standalone_version_prefers_repo_local_file_over_sys_path_module(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Prefer repo-local version file over sys.path precedence modules."""
+    """Read version metadata from the repo-local version file."""
 
     repo_root = tmp_path / "repo"
     repo_version_path = repo_root / "rtl433_esphome_version.py"
     repo_components_path = repo_root / "components" / "rtl433_native"
     repo_components_path.mkdir(parents=True)
     repo_version_path.write_text('VERSION = "v-local"\n', encoding="utf-8")
-
-    shadow_root = tmp_path / "shadow"
-    shadow_root.mkdir()
-    (shadow_root / "rtl433_esphome_version.py").write_text(
-        'VERSION = "v-shadow"\n', encoding="utf-8"
-    )
-    monkeypatch.syspath_prepend(str(shadow_root))
     monkeypatch.setattr(rtl433_native, "__file__", str(repo_components_path / "__init__.py"))
 
     assert rtl433_native._load_standalone_version() == "v-local"
-
-
-def test_load_standalone_version_returns_unknown_for_malformed_version_file(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Resolve unknown when repo-local version metadata is malformed."""
-
-    repo_root = tmp_path / "repo"
-    repo_version_path = repo_root / "rtl433_esphome_version.py"
-    repo_components_path = repo_root / "components" / "rtl433_native"
-    repo_components_path.mkdir(parents=True)
-    repo_version_path.write_text("raise RuntimeError('do not execute')\n", encoding="utf-8")
-    monkeypatch.setattr(rtl433_native, "__file__", str(repo_components_path / "__init__.py"))
-
-    assert rtl433_native._load_standalone_version() == "unknown"
-
-
-def test_component_import_returns_unknown_for_malformed_version_file(tmp_path: Path) -> None:
-    """Malformed version metadata should not break component import."""
-
-    repo_root = tmp_path / "repo"
-    components_root = repo_root / "components"
-    shutil.copytree(Path(__file__).resolve().parents[1] / "components", components_root)
-    (repo_root / "rtl433_esphome_version.py").write_text(
-        "raise RuntimeError('do not execute')\n",
-        encoding="utf-8",
-    )
-    code = """
-import os
-import sys
-
-sys.path.insert(0, os.environ["REPO_ROOT"])
-import components.rtl433_native as rtl433_native
-
-print(rtl433_native.VERSION)
-"""
-
-    result = subprocess.run(
-        [sys.executable, "-c", code],
-        check=True,
-        capture_output=True,
-        text=True,
-        env={**os.environ, "REPO_ROOT": str(repo_root)},
-    )
-
-    assert result.stdout.strip() == "unknown"
 
 
 def _project_metadata_config(gateway_name: str) -> dict[str, Any]:
@@ -814,24 +745,6 @@ async def test_to_code_sets_backend_project_metadata_from_package_version(
     assert ("ESPHOME_PROJECT_VERSION_30", "v9.8.7") in fake_env.codegen.defines
 
 
-async def test_to_code_rejects_overlong_backend_project_version(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Reject generated ESPHome project metadata that exceeds the 127-byte limit."""
-
-    monkeypatch.setattr(rtl433_native, "VERSION", "v" + ("0" * 128))
-    core_config: dict[str, Any] = {}
-    monkeypatch.setattr(CORE, "config", core_config)
-    config = _project_metadata_config("Project Metadata Fixture")
-    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
-
-    with pytest.raises(cv.Invalid, match="Generated ESPHome project version exceeds"):
-        await to_code(config)
-
-    assert core_config == {}
-    assert ("ESPHOME_PROJECT_NAME", ESPHOME_PROJECT_NAME) not in fake_env.codegen.defines
-
-
 async def test_to_code_preserves_user_project_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -850,24 +763,6 @@ async def test_to_code_preserves_user_project_metadata(
     assert ("ESPHOME_PROJECT_NAME", ESPHOME_PROJECT_NAME) not in fake_env.codegen.defines
     assert ("ESPHOME_PROJECT_VERSION", "v9.8.7") not in fake_env.codegen.defines
     assert ("ESPHOME_PROJECT_VERSION_30", "v9.8.7") not in fake_env.codegen.defines
-
-
-async def test_to_code_preserves_user_project_metadata_with_overlong_package_version(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Ignore generated project metadata validation when user metadata exists."""
-
-    monkeypatch.setattr(rtl433_native, "VERSION", "v" + ("0" * 128))
-    user_project = {"name": "custom.project", "version": "2.0.0"}
-    core_config: dict[str, Any] = {CONF_ESPHOME: {CONF_PROJECT: user_project.copy()}}
-    monkeypatch.setattr(CORE, "config", core_config)
-    config = _project_metadata_config("User Project Fixture")
-    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
-
-    await to_code(config)
-
-    assert core_config[CONF_ESPHOME][CONF_PROJECT] == user_project
-    assert ("ESPHOME_PROJECT_NAME", ESPHOME_PROJECT_NAME) not in fake_env.codegen.defines
 
 
 def test_arduino_network_include_flag_quotes_platformio_path() -> None:

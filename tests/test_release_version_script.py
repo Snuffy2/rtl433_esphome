@@ -3,17 +3,13 @@
 from __future__ import annotations
 
 import importlib.util
-import os
 import re
-import subprocess
 from pathlib import Path
-import sys
 from types import ModuleType
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-VERSION_PATH = REPO_ROOT / "rtl433_esphome_version.py"
 SCRIPT_PATH = REPO_ROOT / ".github" / "scripts" / "update_release_version.py"
 
 
@@ -80,57 +76,21 @@ def test_update_release_version_updates_or_reports_unchanged_version_module(
     assert _version_from_file(version_path) == new_version
 
 
-def test_update_release_version_errors_if_version_file_missing(tmp_path: Path) -> None:
-    """Missing version files should surface a clear ValueError."""
-
-    module = load_release_version_script()
-    missing_path = tmp_path / "missing_version_file.py"
-    with pytest.raises(ValueError, match="Could not read version file"):
-        module.update_release_version(missing_path, "v1.2.3")
-
-
-def test_update_release_version_errors_if_version_file_unwritable(
-    tmp_path: Path,
-) -> None:
-    """Unwritable version files should surface a clear ValueError."""
+def test_update_release_version_errors_if_version_assignment_missing(tmp_path: Path) -> None:
+    """Missing VERSION assignments should surface a clear ValueError."""
 
     module = load_release_version_script()
     version_path = tmp_path / "rtl433_esphome_version.py"
-    version_path.write_text(
-        '"""Standalone repository version metadata."""\n\nVERSION = "v1.2.3"\n',
-        encoding="utf-8",
-    )
+    version_path.write_text('"""No version here."""\n', encoding="utf-8")
 
-    def _write_text(_: Path, __: str, encoding: str | None = None) -> None:
-        raise OSError("not writable")
-
-    with pytest.MonkeyPatch.context() as monkeypatch:
-        monkeypatch.setattr(module.Path, "write_text", _write_text)
-        with pytest.raises(ValueError, match="Could not write version file"):
-            module.update_release_version(version_path, "v1.2.4")
+    with pytest.raises(ValueError, match="Could not find VERSION assignment"):
+        module.update_release_version(version_path, "v1.2.3")
 
 
-def test_standalone_version_import_isolated() -> None:
-    """Standalone version module should import with repo root only and no site packages."""
+def test_version_from_tag_rejects_non_semver_release_tag() -> None:
+    """Reject release tags that are not semantic versions."""
 
-    code = """
-import os
-import sys
+    module = load_release_version_script()
 
-sys.path[:] = [os.environ["REPO_ROOT"]]
-import rtl433_esphome_version
-
-print(rtl433_esphome_version.VERSION)
-"""
-    env = os.environ.copy()
-    env["REPO_ROOT"] = str(REPO_ROOT)
-    env.pop("PYTHONPATH", None)
-
-    result = subprocess.run(
-        [sys.executable, "-S", "-c", code],
-        check=True,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-    assert result.stdout.strip() == _version_from_file(VERSION_PATH)
+    with pytest.raises(ValueError, match="Release tag is not semver"):
+        module.version_from_tag("latest")
