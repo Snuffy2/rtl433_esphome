@@ -71,7 +71,10 @@ def update_release_version(version_path: Path, version: str) -> bool:
         ValueError: If the VERSION assignment cannot be found.
     """
 
-    content = version_path.read_text(encoding="utf-8")
+    try:
+        content = version_path.read_text(encoding="utf-8")
+    except OSError as err:
+        raise ValueError(f"Could not read version file: {version_path}") from err
     match = VERSION_ASSIGNMENT_PATTERN.search(content)
     if match is None:
         raise ValueError(f"Could not find VERSION assignment in {version_path}")
@@ -83,7 +86,10 @@ def update_release_version(version_path: Path, version: str) -> bool:
         content,
         count=1,
     )
-    version_path.write_text(updated, encoding="utf-8")
+    try:
+        version_path.write_text(updated, encoding="utf-8")
+    except OSError as err:
+        raise ValueError(f"Could not write version file: {version_path}") from err
     return True
 
 

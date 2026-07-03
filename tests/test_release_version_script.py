@@ -10,6 +10,8 @@ from pathlib import Path
 import sys
 from types import ModuleType
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VERSION_PATH = REPO_ROOT / "rtl433_esphome_version.py"
 SCRIPT_PATH = REPO_ROOT / ".github" / "scripts" / "update_release_version.py"
@@ -20,6 +22,9 @@ def load_release_version_script() -> ModuleType:
 
     Returns:
         The loaded release version helper module.
+
+    Raises:
+        RuntimeError: If the helper module cannot be loaded from disk.
     """
 
     spec = importlib.util.spec_from_file_location("update_release_version", SCRIPT_PATH)
@@ -31,7 +36,17 @@ def load_release_version_script() -> ModuleType:
 
 
 def _version_from_file(path: Path) -> str:
-    """Extract the repository version string from a version module file."""
+    """Extract the repository version string from a version module file.
+
+    Args:
+        path: The path to a Python file containing a VERSION constant.
+
+    Returns:
+        The parsed repository version string.
+
+    Raises:
+        AssertionError: If the VERSION constant is missing.
+    """
 
     match = re.search(r"(?m)^VERSION\s*=\s*['\"]([^'\"]+)['\"]", path.read_text(encoding="utf-8"))
     if match is None:
@@ -39,24 +54,45 @@ def _version_from_file(path: Path) -> str:
     return match.group(1)
 
 
-def test_update_release_version_updates_version_module(tmp_path: Path) -> None:
-    """Release version updates should maintain the shared version module."""
+@pytest.mark.parametrize(
+    ("start_version", "new_version", "expected_changed"),
+    [
+        ("v0.1.9", "v1.2.3", True),
+        ("v1.2.3", "v1.2.3", False),
+    ],
+)
+def test_update_release_version_updates_or_reports_unchanged_version_module(
+    tmp_path: Path,
+    start_version: str,
+    new_version: str,
+    expected_changed: bool,
+) -> None:
+    """Release updates should apply changes or remain idempotent."""
 
     module = load_release_version_script()
     version_path = tmp_path / "rtl433_esphome_version.py"
     version_path.write_text(
-        '"""Standalone repository version metadata."""\n\nVERSION = "v0.1.9"\n',
+        f'"""Standalone repository version metadata."""\n\nVERSION = "{start_version}"\n',
         encoding="utf-8",
     )
 
-    changed = module.update_release_version(version_path, "v1.2.3")
-
-    assert changed
-    assert _version_from_file(version_path) == "v1.2.3"
+    assert module.update_release_version(version_path, new_version) is expected_changed
+    assert _version_from_file(version_path) == new_version
 
 
-def test_update_release_version_reports_unchanged_version_module(tmp_path: Path) -> None:
-    """Release version updates should be idempotent."""
+def test_update_release_version_errors_if_version_file_missing(tmp_path: Path) -> None:
+    """Missing version files should surface a clear ValueError."""
+
+    module = load_release_version_script()
+    missing_path = tmp_path / "missing_version_file.py"
+    with pytest.raises(ValueError, match="Could not read version file"):
+        module.update_release_version(missing_path, "v1.2.3")
+
+
+def test_update_release_version_errors_if_version_file_unwritable(
+    tmp_path: Path,
+) -> None:
+    """Unwritable version files should surface a clear ValueError."""
 
     module = load_release_version_script()
     version_path = tmp_path / "rtl433_esphome_version.py"
@@ -65,7 +101,13 @@ def test_update_release_version_reports_unchanged_version_module(tmp_path: Path)
         encoding="utf-8",
     )
 
-    assert not module.update_release_version(version_path, "v1.2.3")
+    def _write_text(_: Path, __: str, encoding: str | None = None) -> None:
+        raise OSError("not writable")
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(module.Path, "write_text", _write_text)
+        with pytest.raises(ValueError, match="Could not write version file"):
+            module.update_release_version(version_path, "v1.2.4")
 
 
 def test_standalone_version_import_isolated() -> None:

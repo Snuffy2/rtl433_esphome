@@ -50,6 +50,14 @@ def test_release_workflow_cache_key_tracks_version_source() -> None:
     ) in workflow_text
 
 
+def test_release_workflow_update_release_version_uses_release_tag_env() -> None:
+    """Release version updater should read the tag from an environment variable."""
+
+    step = _release_workflow_step("Update release version")
+    assert step.get("env", {}).get("RELEASE_TAG") == "${{ github.event.release.tag_name }}"
+    assert step.get("run") == 'python .github/scripts/update_release_version.py "$RELEASE_TAG"'
+
+
 def test_release_workflow_skips_version_commit_and_retag_for_prerelease() -> None:
     """Prereleases should not publish version commits or retarget release tags."""
 

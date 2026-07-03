@@ -35,6 +35,9 @@ def _load_standalone_version() -> str:
 
     Prefer a repo-local module path and never fail component import if version
     metadata is unavailable.
+
+    Returns:
+        str: The parsed ``VERSION`` value, or ``"unknown"`` when unavailable.
     """
 
     version_path = Path(__file__).resolve().parents[2] / "rtl433_esphome_version.py"
@@ -43,7 +46,8 @@ def _load_standalone_version() -> str:
 
     try:
         version_text = version_path.read_text(encoding="utf-8")
-    except OSError:
+    except OSError as err:
+        _LOGGER.debug("Failed to read version file %s: %s", version_path, err)
         return "unknown"
     match = re.search(r"(?m)^VERSION\s*=\s*['\"]([^'\"]+)['\"]", version_text)
     if match is None:
