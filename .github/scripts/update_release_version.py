@@ -6,11 +6,25 @@ import argparse
 from pathlib import Path
 import re
 
+PEP440_PRERELEASE_ALIASES = {
+    "a": "a",
+    "alpha": "a",
+    "b": "b",
+    "beta": "b",
+    "rc": "rc",
+    "pre": "rc",
+}
+
 SEMVER_TAG_PATTERN = re.compile(
-    r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
-    r"(?:-(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*)"
-    r"(?:\.(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*))*)?"
-    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
+    r"^v?"
+    r"(?P<major>0|[1-9]\d*)\."
+    r"(?P<minor>0|[1-9]\d*)\."
+    r"(?P<patch>0|[1-9]\d*)"
+    r"(?:-(?P<prerelease>(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*)"
+    r"(?:\.(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*))*)"
+    r")?"
+    r"(?:\+(?P<build_metadata>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)"
+    r")?$"
 )
 VERSION_ASSIGNMENT_PATTERN = re.compile(
     r"(?P<prefix>^VERSION\s*=\s*)"
@@ -40,21 +54,60 @@ def parse_args() -> argparse.Namespace:
 
 
 def version_from_tag(tag: str) -> str:
-    """Return a project version string from a semver release tag.
+    """Return a package-safe project version string from a release tag.
 
     Args:
         tag: Release tag to validate and use as the version.
 
     Returns:
-        The unchanged release tag.
+        The normalized release tag in PEP 440 format.
 
     Raises:
-        ValueError: If the tag is not a semver tag with an optional v prefix.
+        ValueError: If the tag is not a semver tag with an optional v prefix
+            or contains unsupported build metadata.
     """
 
-    if SEMVER_TAG_PATTERN.fullmatch(tag) is None:
+    match = SEMVER_TAG_PATTERN.fullmatch(tag)
+    if match is None:
         raise ValueError(f"Release tag is not semver with optional v prefix: {tag}")
-    return tag
+    if match.group("build_metadata") is not None:
+        raise ValueError(f"Release tag build metadata is not supported: {tag}")
+
+    normalized_prerelease = _normalize_prerelease(match.group("prerelease"))
+    return (
+        f"{match.group('major')}.{match.group('minor')}.{match.group('patch')}"
+        f"{normalized_prerelease}"
+    )
+
+
+def _normalize_prerelease(prerelease: str | None) -> str:
+    """Convert a semver prerelease token to a PEP 440-compatible suffix."""
+
+    if prerelease is None:
+        return ""
+
+    parts = prerelease.split(".")
+    if len(parts) > 2:
+        raise ValueError(f"Release tag prerelease format is not supported: {prerelease}")
+
+    label = parts[0].replace("-", "")
+    number = None
+    if len(parts) == 2:
+        if not parts[1].isdigit():
+            raise ValueError(f"Release tag prerelease format is not supported: {prerelease}")
+        number = parts[1]
+    else:
+        match = re.fullmatch(r"([A-Za-z-]+)(\d+)", parts[0])
+        if match is None:
+            raise ValueError(f"Release tag prerelease format is not supported: {prerelease}")
+        label = match.group(1)
+        number = match.group(2)
+
+    label_normalized = PEP440_PRERELEASE_ALIASES.get(label.lower())
+    if label_normalized is None:
+        raise ValueError(f"Release prerelease label is not supported: {prerelease}")
+
+    return f"{label_normalized}{int(number)}"
 
 
 def update_release_version(version_path: Path, version: str) -> bool:
