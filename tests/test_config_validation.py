@@ -19,6 +19,7 @@ from esphome.const import (
     CONF_NAME,
     CONF_OTA,
     CONF_PLATFORMIO_OPTIONS,
+    CONF_PROJECT,
 )
 from esphome.core import CORE
 import esphome.final_validate as fv
@@ -64,8 +65,8 @@ from components.rtl433_native import (
     CONF_UNKNOWN_PACKET_COUNT,
     CONFIG_SCHEMA,
     DEFAULT_RADIO_CONFIG,
+    ESPHOME_PROJECT_NAME,
     RTL433_ESP_PREBUILD_SCRIPT,
-    _project_version,
     _validate_gateway_entity_names,
     _validate_known_sensor_keys,
     _validate_mapping,
@@ -237,7 +238,7 @@ class FakeCodegen:
     gateway: FakeGateway
     added: list[Any] = field(default_factory=list)
     build_flags: list[str] = field(default_factory=list)
-    defines: list[str] = field(default_factory=list)
+    defines: list[str | tuple[str, Any]] = field(default_factory=list)
     libraries: list[tuple[str, str | None, str | None]] = field(default_factory=list)
     platformio_options: list[tuple[str, str | list[str]]] = field(default_factory=list)
     new_pvariable_calls: list[tuple[Any, ...]] = field(default_factory=list)
@@ -270,10 +271,13 @@ class FakeCodegen:
 
         self.build_flags.append(flag)
 
-    def add_define(self, define: str) -> None:
+    def add_define(self, define: str, value: Any | None = None) -> None:
         """Record a generated preprocessor define."""
 
-        self.defines.append(define)
+        if value is None:
+            self.defines.append(define)
+        else:
+            self.defines.append((define, value))
 
     def add_library(self, name: str, version: str | None, repository: str | None = None) -> None:
         """Record a PlatformIO library dependency."""
@@ -556,18 +560,6 @@ def test_esphome_empty_and_omitted_entity_names_are_not_equivalent(
     assert CONF_INTERNAL not in empty_name_config
 
 
-def install_project_version_fixture(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, pyproject_text: str
-) -> None:
-    """Install a temporary component tree for project version tests."""
-
-    component_file = tmp_path / "components" / "rtl433_native" / "__init__.py"
-    component_file.parent.mkdir(parents=True)
-    component_file.write_text("", encoding="utf-8")
-    (tmp_path / "pyproject.toml").write_text(pyproject_text, encoding="utf-8")
-    monkeypatch.setattr(rtl433_native, "__file__", str(component_file))
-
-
 def install_codegen_fakes_for_config(
     monkeypatch: pytest.MonkeyPatch, config: dict[str, Any]
 ) -> FakeCodegenEnvironment:
@@ -696,35 +688,81 @@ def test_config_schema_accepts_long_mapping_without_generated_text() -> None:
     assert validated[CONF_KNOWN_SENSORS][0][CONF_MAPPING] == config[CONF_MAPPING]
 
 
-@pytest.mark.parametrize(
-    ("pyproject_text", "expected_version"),
-    [
-        pytest.param(
-            '[project]\nname = "rtl433-esphome"\nversion = "v9.8.7"\n',
-            "v9.8.7",
-            id="matching-package",
-        ),
-        pytest.param(
-            '[project]\nname = "other-project"\nversion = "v9.8.7"\n',
-            "unknown",
-            id="foreign-package",
-        ),
-        pytest.param(
-            '[project]\nname = "rtl433-esphome"\n',
-            "unknown",
-            id="missing-version",
-        ),
-        pytest.param("[project\n", "unknown", id="malformed-metadata"),
-    ],
-)
-def test_project_version_reads_owned_package_metadata_or_falls_back(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, pyproject_text: str, expected_version: str
+def test_load_standalone_version_reads_repo_local_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Read owned package metadata and fall back safely for unusable metadata."""
+    """Read version metadata from the repo-local version file."""
 
-    install_project_version_fixture(monkeypatch, tmp_path, pyproject_text)
+    repo_root = tmp_path / "repo"
+    repo_version_path = repo_root / "rtl433_esphome_version.py"
+    repo_components_path = repo_root / "components" / "rtl433_native"
+    repo_components_path.mkdir(parents=True)
+    repo_version_path.write_text('VERSION = "v-local"\n', encoding="utf-8")
+    monkeypatch.setattr(rtl433_native, "__file__", str(repo_components_path / "__init__.py"))
 
-    assert _project_version() == expected_version
+    assert rtl433_native._load_standalone_version() == "v-local"
+
+
+def _project_metadata_config(gateway_name: str) -> dict[str, Any]:
+    """Build a minimal config used by backend project metadata tests."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
+            CONF_CANDIDATE_LIMIT: 1,
+            CONF_CANDIDATES: [],
+            CONF_STALE_AFTER: "1min",
+            **gateway_diagnostic_overrides(gateway_name),
+            **gateway_control_overrides(gateway_name),
+            CONF_KNOWN_SENSORS: [known_sensor_config(gateway_name, ["temperature"])],
+        }
+    )
+    if not isinstance(config, dict):
+        raise AssertionError("Project metadata fixture should validate to a config dict")
+    return config
+
+
+async def test_to_code_sets_backend_project_metadata_from_package_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Add ESPHome project metadata without requiring user YAML edits."""
+
+    monkeypatch.setattr(rtl433_native, "VERSION", "v9.8.7")
+    core_config: dict[str, Any] = {CONF_ESPHOME: {}}
+    monkeypatch.setattr(CORE, "config", core_config)
+    config = _project_metadata_config("Overlong Project Metadata Fixture")
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
+
+    await to_code(config)
+
+    assert core_config[CONF_ESPHOME][CONF_PROJECT] == {
+        "name": ESPHOME_PROJECT_NAME,
+        "version": "v9.8.7",
+    }
+    assert ("ESPHOME_PROJECT_NAME", ESPHOME_PROJECT_NAME) in fake_env.codegen.defines
+    assert ("ESPHOME_PROJECT_VERSION", "v9.8.7") in fake_env.codegen.defines
+    assert ("ESPHOME_PROJECT_VERSION_30", "v9.8.7") in fake_env.codegen.defines
+
+
+async def test_to_code_preserves_user_project_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Do not overwrite explicit user project metadata."""
+
+    monkeypatch.setattr(rtl433_native, "VERSION", "v9.8.7")
+    user_project = {"name": "custom.project", "version": "2.0.0"}
+    core_config: dict[str, Any] = {CONF_ESPHOME: {CONF_PROJECT: user_project.copy()}}
+    monkeypatch.setattr(CORE, "config", core_config)
+    config = _project_metadata_config("Overlong User Project Fixture")
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
+
+    await to_code(config)
+
+    assert core_config[CONF_ESPHOME][CONF_PROJECT] == user_project
+    assert ("ESPHOME_PROJECT_NAME", ESPHOME_PROJECT_NAME) not in fake_env.codegen.defines
+    assert ("ESPHOME_PROJECT_VERSION", "v9.8.7") not in fake_env.codegen.defines
+    assert ("ESPHOME_PROJECT_VERSION_30", "v9.8.7") not in fake_env.codegen.defines
 
 
 def test_arduino_network_include_flag_quotes_platformio_path() -> None:
@@ -901,9 +939,8 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
         ("set_logical_key", ("garage_freezer_1",)),
         ("set_initial_value", ("Acurite-986/1R/11932",)),
     ]
-    expected_version = _project_version()
     assert fake_env.gateway.calls == [
-        ("set_version", (expected_version,)),
+        ("set_version", (rtl433_native.VERSION,)),
         ("set_candidate_limit", (2,)),
         ("set_stale_after_ms", (3_600_000,)),
         ("set_led_pin", (25,)),
@@ -982,9 +1019,8 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
         ("set_logical_key", ("garage_freezer_1",)),
         ("set_initial_value", ("Acurite-986/1R/11932",)),
     ]
-    expected_version = _project_version()
     assert fake_env.gateway.calls == [
-        ("set_version", (expected_version,)),
+        ("set_version", (rtl433_native.VERSION,)),
         ("set_candidate_limit", (1,)),
         ("set_stale_after_ms", (60_000,)),
         ("set_led_pin", (25,)),

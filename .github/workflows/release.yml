@@ -40,12 +40,14 @@ jobs:
             ~/.platformio/.cache
             ~/.platformio/packages
             .esphome/external_components
-          key: ${{ runner.os }}-release-esphome-pio-${{ hashFiles('pyproject.toml', 'rtl433-esphome-heltec-lora-32-v2.yaml', 'components/rtl433_native/__init__.py') }}
+          key: ${{ runner.os }}-release-esphome-pio-${{ github.event.release.tag_name }}-${{ hashFiles('pyproject.toml', 'rtl433-esphome-heltec-lora-32-v2.yaml', 'components/rtl433_native/__init__.py', 'rtl433_esphome_version.py') }}
           restore-keys: |
             ${{ runner.os }}-release-esphome-pio-
 
-      - name: Update pyproject version
-        run: python .github/scripts/update_pyproject_version.py "${{ github.event.release.tag_name }}"
+      - name: Update release version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: python .github/scripts/update_release_version.py "$RELEASE_TAG"
 
       - name: Commit and push version changes
         if: ${{ !github.event.release.prerelease }}
