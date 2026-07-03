@@ -40,7 +40,7 @@ jobs:
             ~/.platformio/.cache
             ~/.platformio/packages
             .esphome/external_components
-          key: ${{ runner.os }}-release-esphome-pio-${{ hashFiles('pyproject.toml', 'rtl433-esphome-heltec-lora-32-v2.yaml', 'components/rtl433_native/__init__.py') }}
+          key: ${{ runner.os }}-release-esphome-pio-${{ hashFiles('pyproject.toml', 'rtl433-esphome-heltec-lora-32-v2.yaml', 'components/rtl433_native/__init__.py', 'components/rtl433_native/version.py') }}
           restore-keys: |
             ${{ runner.os }}-release-esphome-pio-
 
