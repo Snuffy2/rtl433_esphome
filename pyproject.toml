@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rtl433-esphome"
-version = "v0.1.9"
+dynamic = ["version"]
 description = "ESPHome rtl_433 native gateway for temperature sensors"
 requires-python = ">=3.12"
 dependencies = []
@@ -12,6 +12,9 @@ license = "MIT"
 authors = [
     { name = "Snuffy2" },
 ]
+
+[tool.setuptools.dynamic]
+version = { attr = "components.rtl433_native.version.VERSION" }
 
 [dependency-groups]
 dev = [

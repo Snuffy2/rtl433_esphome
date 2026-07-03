@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-import tomllib
 from typing import Any
 
 from esphome import automation
@@ -23,8 +22,11 @@ from esphome.const import (
     CONF_NAME,
     CONF_OTA,
     CONF_PLATFORMIO_OPTIONS,
+    CONF_PROJECT,
 )
 from esphome.core import CORE, Define, ID
+
+from .version import VERSION as VERSION
 
 AUTO_LOAD = [
     "binary_sensor",
@@ -39,6 +41,8 @@ AUTO_LOAD = [
 CODEOWNERS = ["@Snuffy2"]
 
 _LOGGER = logging.getLogger(__name__)
+
+ESPHOME_PROJECT_NAME = "snuffy2.rtl433_esphome"
 
 CONF_CANDIDATE_LIMIT = "candidate_limit"
 CONF_CANDIDATES = "candidates"
@@ -108,33 +112,6 @@ RTL433_NATIVE_LIBRARIES = (
     ("SPI", None, None),
     ("EEPROM", None, None),
 )
-
-
-def _project_version() -> str:
-    """Return the package version configured for startup logging."""
-
-    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
-    try:
-        with pyproject_path.open("rb") as pyproject_file:
-            pyproject = tomllib.load(pyproject_file)
-        project = pyproject["project"]
-        if project["name"] != "rtl433-esphome":
-            _LOGGER.debug(
-                "Ignoring version metadata for foreign project %r in %s",
-                project["name"],
-                pyproject_path,
-            )
-            return "unknown"
-        return str(project["version"])
-    except FileNotFoundError:
-        _LOGGER.debug("No pyproject.toml found at %s; using version 'unknown'", pyproject_path)
-        return "unknown"
-    except KeyError:
-        _LOGGER.debug("Missing [project].version in %s; using version 'unknown'", pyproject_path)
-        return "unknown"
-    except tomllib.TOMLDecodeError:
-        _LOGGER.debug("Invalid TOML in %s; using version 'unknown'", pyproject_path)
-        return "unknown"
 
 
 CONF_EXTRA_SCRIPTS = "extra_scripts"
@@ -748,6 +725,7 @@ async def to_code(config: dict[str, Any]) -> None:
     """Generate C++ for the rtl433_native component."""
 
     _refresh_known_sensor_device_names(config)
+    _set_backend_project_metadata()
     _normalize_extra_scripts_platformio_option()
 
     cg.add_build_flag(ARDUINO_NETWORK_INCLUDE_FLAG)
@@ -770,7 +748,7 @@ async def to_code(config: dict[str, Any]) -> None:
 
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
-    cg.add(var.set_version(_project_version()))
+    cg.add(var.set_version(VERSION))
     cg.add(var.set_candidate_limit(config[CONF_CANDIDATE_LIMIT]))
     cg.add(var.set_stale_after_ms(config[CONF_STALE_AFTER].total_milliseconds))
     cg.add(var.set_led_pin(config[CONF_LED_PIN]))
@@ -869,6 +847,23 @@ def _normalize_extra_scripts_platformio_option() -> None:
     extra_scripts = platformio_options.get(CONF_EXTRA_SCRIPTS)
     if isinstance(extra_scripts, str):
         platformio_options[CONF_EXTRA_SCRIPTS] = [extra_scripts]
+
+
+def _set_backend_project_metadata() -> None:
+    """Set generated ESPHome project metadata when user YAML omits it."""
+
+    core_config = CORE.config
+    if not isinstance(core_config, dict):
+        return
+
+    esphome_config = core_config.setdefault(CONF_ESPHOME, {})
+    if not isinstance(esphome_config, dict) or CONF_PROJECT in esphome_config:
+        return
+
+    esphome_config[CONF_PROJECT] = {
+        "name": ESPHOME_PROJECT_NAME,
+        "version": VERSION,
+    }
 
 
 def _entry_has_mapping_text(entry: dict[str, Any]) -> bool:

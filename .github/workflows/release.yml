@@ -44,8 +44,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-release-esphome-pio-
 
-      - name: Update pyproject version
-        run: python .github/scripts/update_pyproject_version.py "${{ github.event.release.tag_name }}"
+      - name: Update release version
+        run: python .github/scripts/update_release_version.py "${{ github.event.release.tag_name }}"
 
       - name: Commit and push version changes
         if: ${{ !github.event.release.prerelease }}
