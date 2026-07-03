@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
+import shutil
+import subprocess
+import sys
 from typing import Any, Protocol
 
 from esphome import config_validation as cv
@@ -735,6 +739,37 @@ def test_load_standalone_version_returns_unknown_for_malformed_version_file(
     monkeypatch.setattr(rtl433_native, "__file__", str(repo_components_path / "__init__.py"))
 
     assert rtl433_native._load_standalone_version() == "unknown"
+
+
+def test_component_import_returns_unknown_for_malformed_version_file(tmp_path: Path) -> None:
+    """Malformed version metadata should not break component import."""
+
+    repo_root = tmp_path / "repo"
+    components_root = repo_root / "components"
+    shutil.copytree(Path(__file__).resolve().parents[1] / "components", components_root)
+    (repo_root / "rtl433_esphome_version.py").write_text(
+        "raise RuntimeError('do not execute')\n",
+        encoding="utf-8",
+    )
+    code = """
+import os
+import sys
+
+sys.path.insert(0, os.environ["REPO_ROOT"])
+import components.rtl433_native as rtl433_native
+
+print(rtl433_native.VERSION)
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "REPO_ROOT": str(repo_root)},
+    )
+
+    assert result.stdout.strip() == "unknown"
 
 
 async def test_to_code_sets_backend_project_metadata_from_package_version(

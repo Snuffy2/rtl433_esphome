@@ -27,6 +27,8 @@ from esphome.const import (
 )
 from esphome.core import CORE, Define, ID
 
+_LOGGER = logging.getLogger(__name__)
+
 
 def _load_standalone_version() -> str:
     """Load project version from the top-level version module.
@@ -63,8 +65,6 @@ AUTO_LOAD = [
     "time",
 ]
 CODEOWNERS = ["@Snuffy2"]
-
-_LOGGER = logging.getLogger(__name__)
 
 ESPHOME_PROJECT_NAME = "snuffy2.rtl433_esphome"
 

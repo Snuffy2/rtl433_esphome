@@ -90,6 +90,9 @@ def _normalize_prerelease(prerelease: str | None) -> str:
     if len(parts) > 2:
         raise ValueError(f"Release tag prerelease format is not supported: {prerelease}")
 
+    if len(parts) == 1 and parts[0].isdigit():
+        return f".dev{int(parts[0])}"
+
     label = parts[0].replace("-", "")
     number = None
     if len(parts) == 2:
@@ -98,14 +101,16 @@ def _normalize_prerelease(prerelease: str | None) -> str:
         number = parts[1]
     else:
         match = re.fullmatch(r"([A-Za-z-]+)(\d+)", parts[0])
-        if match is None:
-            raise ValueError(f"Release tag prerelease format is not supported: {prerelease}")
-        label = match.group(1)
-        number = match.group(2)
+        if match is not None:
+            label = match.group(1)
+            number = match.group(2)
 
     label_normalized = PEP440_PRERELEASE_ALIASES.get(label.lower())
     if label_normalized is None:
         raise ValueError(f"Release prerelease label is not supported: {prerelease}")
+
+    if number is None:
+        number = "0"
 
     return f"{label_normalized}{int(number)}"
 

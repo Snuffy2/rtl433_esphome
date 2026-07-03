@@ -64,6 +64,9 @@ def test_version_from_tag_normalizes_version() -> None:
 
     assert module.version_from_tag("v1.2.3") == "1.2.3"
     assert module.version_from_tag("v1.2.3-rc.1") == "1.2.3rc1"
+    assert module.version_from_tag("v1.2.3-rc") == "1.2.3rc0"
+    assert module.version_from_tag("v1.2.3-beta") == "1.2.3b0"
+    assert module.version_from_tag("v1.2.3-1") == "1.2.3.dev1"
 
 
 def test_version_from_tag_rejects_build_metadata() -> None:
