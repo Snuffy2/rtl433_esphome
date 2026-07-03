@@ -10,8 +10,6 @@ from pathlib import Path
 import sys
 from types import ModuleType
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VERSION_PATH = REPO_ROOT / "rtl433_esphome_version.py"
 SCRIPT_PATH = REPO_ROOT / ".github" / "scripts" / "update_release_version.py"
@@ -51,31 +49,10 @@ def test_update_release_version_updates_version_module(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    changed = module.update_release_version(version_path, module.version_from_tag("v1.2.3"))
+    changed = module.update_release_version(version_path, "v1.2.3")
 
     assert changed
-    assert _version_from_file(version_path) == "1.2.3"
-
-
-def test_version_from_tag_normalizes_version() -> None:
-    """Semver tags should be normalized to valid PEP 440 versions."""
-
-    module = load_release_version_script()
-
-    assert module.version_from_tag("v1.2.3") == "1.2.3"
-    assert module.version_from_tag("v1.2.3-rc.1") == "1.2.3rc1"
-    assert module.version_from_tag("v1.2.3-rc") == "1.2.3rc0"
-    assert module.version_from_tag("v1.2.3-beta") == "1.2.3b0"
-    assert module.version_from_tag("v1.2.3-1") == "1.2.3.dev1"
-
-
-def test_version_from_tag_rejects_build_metadata() -> None:
-    """Build metadata should not generate invalid package versions."""
-
-    module = load_release_version_script()
-
-    with pytest.raises(ValueError, match="build metadata"):
-        module.version_from_tag("v1.2.3+abc.1")
+    assert _version_from_file(version_path) == "v1.2.3"
 
 
 def test_update_release_version_reports_unchanged_version_module(tmp_path: Path) -> None:
@@ -84,11 +61,11 @@ def test_update_release_version_reports_unchanged_version_module(tmp_path: Path)
     module = load_release_version_script()
     version_path = tmp_path / "rtl433_esphome_version.py"
     version_path.write_text(
-        '"""Standalone repository version metadata."""\n\nVERSION = "1.2.3"\n',
+        '"""Standalone repository version metadata."""\n\nVERSION = "v1.2.3"\n',
         encoding="utf-8",
     )
 
-    assert not module.update_release_version(version_path, module.version_from_tag("v1.2.3"))
+    assert not module.update_release_version(version_path, "v1.2.3")
 
 
 def test_standalone_version_import_isolated() -> None:
