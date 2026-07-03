@@ -67,6 +67,7 @@ AUTO_LOAD = [
 CODEOWNERS = ["@Snuffy2"]
 
 ESPHOME_PROJECT_NAME = "snuffy2.rtl433_esphome"
+ESPHOME_PROJECT_VERSION_MAX_BYTES = 127
 
 CONF_CANDIDATE_LIMIT = "candidate_limit"
 CONF_CANDIDATES = "candidates"
@@ -880,12 +881,19 @@ def _set_backend_project_metadata() -> None:
     if not isinstance(core_config, dict):
         return
 
-    esphome_config = core_config.setdefault(CONF_ESPHOME, {})
-    if not isinstance(esphome_config, dict) or CONF_PROJECT in esphome_config:
+    esphome_config = core_config.get(CONF_ESPHOME)
+    if esphome_config is not None and not isinstance(esphome_config, dict):
+        return
+    if esphome_config is not None and CONF_PROJECT in esphome_config:
         return
 
     project_name = ESPHOME_PROJECT_NAME
     project_version = str(VERSION)
+    if len(project_version.encode("utf-8")) > ESPHOME_PROJECT_VERSION_MAX_BYTES:
+        raise cv.Invalid("Generated ESPHome project version exceeds 127-byte limit")
+
+    if esphome_config is None:
+        esphome_config = core_config[CONF_ESPHOME] = {}
     esphome_config[CONF_PROJECT] = {
         CONF_NAME: project_name,
         CONF_VERSION: project_version,

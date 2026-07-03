@@ -787,9 +787,11 @@ async def test_to_code_sets_backend_project_metadata_from_package_version(
             CONF_CANDIDATE_LIMIT: 1,
             CONF_CANDIDATES: [],
             CONF_STALE_AFTER: "1min",
-            **gateway_diagnostic_overrides("Project Metadata Fixture"),
-            **gateway_control_overrides("Project Metadata Fixture"),
-            CONF_KNOWN_SENSORS: [known_sensor_config("Project Metadata Fixture", ["temperature"])],
+            **gateway_diagnostic_overrides("Overlong Project Metadata Fixture"),
+            **gateway_control_overrides("Overlong Project Metadata Fixture"),
+            CONF_KNOWN_SENSORS: [
+                known_sensor_config("Overlong Project Metadata Fixture", ["temperature"])
+            ],
         }
     )
     fake_env = install_codegen_fakes_for_config(monkeypatch, config)
@@ -805,12 +807,74 @@ async def test_to_code_sets_backend_project_metadata_from_package_version(
     assert ("ESPHOME_PROJECT_VERSION_30", "v9.8.7") in fake_env.codegen.defines
 
 
+async def test_to_code_rejects_overlong_backend_project_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reject generated ESPHome project metadata that exceeds the 127-byte limit."""
+
+    monkeypatch.setattr(rtl433_native, "VERSION", "v" + ("0" * 128))
+    core_config: dict[str, Any] = {}
+    monkeypatch.setattr(CORE, "config", core_config)
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
+            CONF_CANDIDATE_LIMIT: 1,
+            CONF_CANDIDATES: [],
+            CONF_STALE_AFTER: "1min",
+            **gateway_diagnostic_overrides("Project Metadata Fixture"),
+            **gateway_control_overrides("Project Metadata Fixture"),
+            CONF_KNOWN_SENSORS: [known_sensor_config("Project Metadata Fixture", ["temperature"])],
+        }
+    )
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
+
+    with pytest.raises(cv.Invalid, match="Generated ESPHome project version exceeds"):
+        await to_code(config)
+
+    assert core_config == {}
+    assert ("ESPHOME_PROJECT_NAME", ESPHOME_PROJECT_NAME) not in fake_env.codegen.defines
+
+
 async def test_to_code_preserves_user_project_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Do not overwrite explicit user project metadata."""
 
     monkeypatch.setattr(rtl433_native, "VERSION", "v9.8.7")
+    user_project = {"name": "custom.project", "version": "2.0.0"}
+    core_config: dict[str, Any] = {CONF_ESPHOME: {CONF_PROJECT: user_project.copy()}}
+    monkeypatch.setattr(CORE, "config", core_config)
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
+            CONF_CANDIDATE_LIMIT: 1,
+            CONF_CANDIDATES: [],
+            CONF_STALE_AFTER: "1min",
+            **gateway_diagnostic_overrides("Overlong User Project Fixture"),
+            **gateway_control_overrides("Overlong User Project Fixture"),
+            CONF_KNOWN_SENSORS: [
+                known_sensor_config("Overlong User Project Fixture", ["temperature"])
+            ],
+        }
+    )
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
+
+    await to_code(config)
+
+    assert core_config[CONF_ESPHOME][CONF_PROJECT] == user_project
+    assert ("ESPHOME_PROJECT_NAME", ESPHOME_PROJECT_NAME) not in fake_env.codegen.defines
+    assert ("ESPHOME_PROJECT_VERSION", "v9.8.7") not in fake_env.codegen.defines
+    assert ("ESPHOME_PROJECT_VERSION_30", "v9.8.7") not in fake_env.codegen.defines
+
+
+async def test_to_code_preserves_user_project_metadata_with_overlong_package_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ignore generated project metadata validation when user metadata exists."""
+
+    monkeypatch.setattr(rtl433_native, "VERSION", "v" + ("0" * 128))
     user_project = {"name": "custom.project", "version": "2.0.0"}
     core_config: dict[str, Any] = {CONF_ESPHOME: {CONF_PROJECT: user_project.copy()}}
     monkeypatch.setattr(CORE, "config", core_config)
@@ -832,8 +896,6 @@ async def test_to_code_preserves_user_project_metadata(
 
     assert core_config[CONF_ESPHOME][CONF_PROJECT] == user_project
     assert ("ESPHOME_PROJECT_NAME", ESPHOME_PROJECT_NAME) not in fake_env.codegen.defines
-    assert ("ESPHOME_PROJECT_VERSION", "v9.8.7") not in fake_env.codegen.defines
-    assert ("ESPHOME_PROJECT_VERSION_30", "v9.8.7") not in fake_env.codegen.defines
 
 
 def test_arduino_network_include_flag_quotes_platformio_path() -> None:
