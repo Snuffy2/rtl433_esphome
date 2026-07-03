@@ -12,6 +12,7 @@ def test_release_workflow_cache_key_tracks_version_source() -> None:
 
     workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
     assert (
+        "${{ runner.os }}-release-esphome-pio-${{ github.event.release.tag_name }}-${{ "
         "hashFiles('pyproject.toml', 'rtl433-esphome-heltec-lora-32-v2.yaml', "
-        "'components/rtl433_native/__init__.py', 'rtl433_esphome_version.py')"
+        "'components/rtl433_native/__init__.py', 'rtl433_esphome_version.py') }}"
     ) in workflow_text

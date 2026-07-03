@@ -238,7 +238,7 @@ class FakeCodegen:
     gateway: FakeGateway
     added: list[Any] = field(default_factory=list)
     build_flags: list[str] = field(default_factory=list)
-    defines: list[str] = field(default_factory=list)
+    defines: list[str | tuple[str, Any]] = field(default_factory=list)
     libraries: list[tuple[str, str | None, str | None]] = field(default_factory=list)
     platformio_options: list[tuple[str, str | list[str]]] = field(default_factory=list)
     new_pvariable_calls: list[tuple[Any, ...]] = field(default_factory=list)
@@ -271,10 +271,13 @@ class FakeCodegen:
 
         self.build_flags.append(flag)
 
-    def add_define(self, define: str) -> None:
+    def add_define(self, define: str, value: Any | None = None) -> None:
         """Record a generated preprocessor define."""
 
-        self.defines.append(define)
+        if value is None:
+            self.defines.append(define)
+        else:
+            self.defines.append((define, value))
 
     def add_library(self, name: str, version: str | None, repository: str | None = None) -> None:
         """Record a PlatformIO library dependency."""
@@ -705,7 +708,7 @@ async def test_to_code_sets_backend_project_metadata_from_package_version(
             CONF_KNOWN_SENSORS: [known_sensor_config("Project Metadata Fixture", ["temperature"])],
         }
     )
-    install_codegen_fakes_for_config(monkeypatch, config)
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     await to_code(config)
 
@@ -713,6 +716,9 @@ async def test_to_code_sets_backend_project_metadata_from_package_version(
         "name": ESPHOME_PROJECT_NAME,
         "version": "v9.8.7",
     }
+    assert ("ESPHOME_PROJECT_NAME", ESPHOME_PROJECT_NAME) in fake_env.codegen.defines
+    assert ("ESPHOME_PROJECT_VERSION", "v9.8.7") in fake_env.codegen.defines
+    assert ("ESPHOME_PROJECT_VERSION_30", "v9.8.7") in fake_env.codegen.defines
 
 
 async def test_to_code_preserves_user_project_metadata(
@@ -736,11 +742,14 @@ async def test_to_code_preserves_user_project_metadata(
             CONF_KNOWN_SENSORS: [known_sensor_config("User Project Fixture", ["temperature"])],
         }
     )
-    install_codegen_fakes_for_config(monkeypatch, config)
+    fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     await to_code(config)
 
     assert core_config[CONF_ESPHOME][CONF_PROJECT] == user_project
+    assert ("ESPHOME_PROJECT_NAME", ESPHOME_PROJECT_NAME) not in fake_env.codegen.defines
+    assert ("ESPHOME_PROJECT_VERSION", "v9.8.7") not in fake_env.codegen.defines
+    assert ("ESPHOME_PROJECT_VERSION_30", "v9.8.7") not in fake_env.codegen.defines
 
 
 def test_arduino_network_include_flag_quotes_platformio_path() -> None:

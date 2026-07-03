@@ -21,6 +21,7 @@ from esphome.const import (
     CONF_ESPHOME,
     CONF_ID,
     CONF_NAME,
+    CONF_VERSION,
     CONF_OTA,
     CONF_PLATFORMIO_OPTIONS,
     CONF_PROJECT,
@@ -888,10 +889,15 @@ def _set_backend_project_metadata() -> None:
     if not isinstance(esphome_config, dict) or CONF_PROJECT in esphome_config:
         return
 
+    project_name = ESPHOME_PROJECT_NAME
+    project_version = str(VERSION)
     esphome_config[CONF_PROJECT] = {
-        "name": ESPHOME_PROJECT_NAME,
-        "version": VERSION,
+        CONF_NAME: project_name,
+        CONF_VERSION: project_version,
     }
+    cg.add_define("ESPHOME_PROJECT_NAME", project_name)
+    cg.add_define("ESPHOME_PROJECT_VERSION", project_version)
+    cg.add_define("ESPHOME_PROJECT_VERSION_30", project_version[:29])
 
 
 def _entry_has_mapping_text(entry: dict[str, Any]) -> bool:
