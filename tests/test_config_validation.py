@@ -688,6 +688,40 @@ def test_config_schema_accepts_long_mapping_without_generated_text() -> None:
     assert validated[CONF_KNOWN_SENSORS][0][CONF_MAPPING] == config[CONF_MAPPING]
 
 
+def test_load_standalone_version_returns_unknown_without_version_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Resolve unknown when no repo-local version file exists."""
+
+    package_root = tmp_path / "components" / "rtl433_native"
+    package_root.mkdir(parents=True)
+    monkeypatch.setattr(rtl433_native, "__file__", str(package_root / "__init__.py"))
+
+    assert rtl433_native._load_standalone_version() == "unknown"
+
+
+def test_load_standalone_version_prefers_repo_local_file_over_sys_path_module(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Prefer repo-local version file over sys.path precedence modules."""
+
+    repo_root = tmp_path / "repo"
+    repo_version_path = repo_root / "rtl433_esphome_version.py"
+    repo_components_path = repo_root / "components" / "rtl433_native"
+    repo_components_path.mkdir(parents=True)
+    repo_version_path.write_text('VERSION = "v-local"\n', encoding="utf-8")
+
+    shadow_root = tmp_path / "shadow"
+    shadow_root.mkdir()
+    (shadow_root / "rtl433_esphome_version.py").write_text(
+        'VERSION = "v-shadow"\n', encoding="utf-8"
+    )
+    monkeypatch.syspath_prepend(str(shadow_root))
+    monkeypatch.setattr(rtl433_native, "__file__", str(repo_components_path / "__init__.py"))
+
+    assert rtl433_native._load_standalone_version() == "v-local"
+
+
 async def test_to_code_sets_backend_project_metadata_from_package_version(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
