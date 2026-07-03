@@ -34,7 +34,7 @@ jobs:
           cache-dependency-glob: pyproject.toml
 
       - name: Cache ESPHome and PlatformIO
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.platformio/.cache
