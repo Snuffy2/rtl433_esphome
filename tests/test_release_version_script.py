@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import os
+import re
 import importlib.util
+import subprocess
 from pathlib import Path
+import sys
 from types import ModuleType
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+VERSION_PATH = REPO_ROOT / "rtl433_esphome_version.py"
 SCRIPT_PATH = REPO_ROOT / ".github" / "scripts" / "update_release_version.py"
 
 
@@ -25,34 +30,65 @@ def load_release_version_script() -> ModuleType:
     return module
 
 
+def _version_from_file(path: Path) -> str:
+    """Extract the repository version string from a version module file."""
+
+    match = re.search(r"(?m)^VERSION\s*=\s*['\"]([^'\"]+)['\"]", path.read_text(encoding="utf-8"))
+    if match is None:
+        raise AssertionError(f"Could not parse VERSION from {path}")
+    return match.group(1)
+
+
 def test_update_release_version_updates_version_module(tmp_path: Path) -> None:
     """Release version updates should maintain the shared version module."""
 
     module = load_release_version_script()
-    version_path = tmp_path / "components" / "rtl433_native" / "version.py"
-    version_path.parent.mkdir(parents=True)
+    version_path = tmp_path / "rtl433_esphome_version.py"
     version_path.write_text(
-        '"""Shared project version metadata."""\n\nVERSION = "v0.1.9"\n',
+        '"""Standalone repository version metadata."""\n\nVERSION = "v0.1.9"\n',
         encoding="utf-8",
     )
 
     changed = module.update_release_version(version_path, "v1.2.3")
 
     assert changed
-    assert version_path.read_text(encoding="utf-8") == (
-        '"""Shared project version metadata."""\n\nVERSION = "v1.2.3"\n'
-    )
+    assert _version_from_file(version_path) == "v1.2.3"
 
 
 def test_update_release_version_reports_unchanged_version_module(tmp_path: Path) -> None:
     """Release version updates should be idempotent."""
 
     module = load_release_version_script()
-    version_path = tmp_path / "components" / "rtl433_native" / "version.py"
-    version_path.parent.mkdir(parents=True)
+    version_path = tmp_path / "rtl433_esphome_version.py"
     version_path.write_text(
-        '"""Shared project version metadata."""\n\nVERSION = "v1.2.3"\n',
+        '"""Standalone repository version metadata."""\n\nVERSION = "v1.2.3"\n',
         encoding="utf-8",
     )
 
     assert not module.update_release_version(version_path, "v1.2.3")
+
+
+def test_standalone_version_import_isolated() -> None:
+    """Standalone version module should import with repo root only and no site packages."""
+
+    code = """
+import os
+import sys
+
+sys.path[:] = [os.environ["REPO_ROOT"]]
+import rtl433_esphome_version
+
+print(rtl433_esphome_version.VERSION)
+"""
+    env = os.environ.copy()
+    env["REPO_ROOT"] = str(REPO_ROOT)
+    env.pop("PYTHONPATH", None)
+
+    result = subprocess.run(
+        [sys.executable, "-S", "-c", code],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert result.stdout.strip() == _version_from_file(VERSION_PATH)

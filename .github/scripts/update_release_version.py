@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--version-file",
         type=Path,
-        default=Path("components/rtl433_native/version.py"),
+        default=Path("rtl433_esphome_version.py"),
         help="Path to the shared version module.",
     )
     return parser.parse_args()

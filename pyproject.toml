@@ -13,8 +13,11 @@ authors = [
     { name = "Snuffy2" },
 ]
 
+[tool.setuptools]
+py-modules = ["rtl433_esphome_version"]
+
 [tool.setuptools.dynamic]
-version = { attr = "components.rtl433_native.version.VERSION" }
+version = { attr = "rtl433_esphome_version.VERSION" }
 
 [dependency-groups]
 dev = [

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import re
 from pathlib import Path
@@ -26,7 +27,34 @@ from esphome.const import (
 )
 from esphome.core import CORE, Define, ID
 
-from .version import VERSION as VERSION
+
+def _load_standalone_version() -> str:
+    """Load project version from the top-level version module.
+
+    This avoids importing the component package when the component is loaded outside
+    the normal ESPHome package context and avoids the top-level ``version`` import
+    chain that can trigger side-effecty package imports.
+    """
+
+    version_path = Path(__file__).resolve().parents[2] / "rtl433_esphome_version.py"
+    spec = importlib.util.spec_from_file_location(
+        "rtl433_esphome_version",
+        version_path,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load version module spec from {version_path}")
+    version_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(version_module)
+    try:
+        return str(version_module.VERSION)
+    except AttributeError as err:
+        raise RuntimeError(f"Version module missing VERSION in {version_path}") from err
+
+
+try:
+    from rtl433_esphome_version import VERSION as VERSION
+except ModuleNotFoundError:
+    VERSION = _load_standalone_version()
 
 AUTO_LOAD = [
     "binary_sensor",
