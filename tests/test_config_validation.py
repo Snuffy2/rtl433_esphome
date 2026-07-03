@@ -772,6 +772,26 @@ print(rtl433_native.VERSION)
     assert result.stdout.strip() == "unknown"
 
 
+def _project_metadata_config(gateway_name: str) -> dict[str, Any]:
+    """Build a minimal config used by backend project metadata tests."""
+
+    config = CONFIG_SCHEMA(
+        {
+            CONF_ID: "gateway_id",
+            **REQUIRED_TIME_CONFIG,
+            CONF_CANDIDATE_LIMIT: 1,
+            CONF_CANDIDATES: [],
+            CONF_STALE_AFTER: "1min",
+            **gateway_diagnostic_overrides(gateway_name),
+            **gateway_control_overrides(gateway_name),
+            CONF_KNOWN_SENSORS: [known_sensor_config(gateway_name, ["temperature"])],
+        }
+    )
+    if not isinstance(config, dict):
+        raise AssertionError("Project metadata fixture should validate to a config dict")
+    return config
+
+
 async def test_to_code_sets_backend_project_metadata_from_package_version(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -780,20 +800,7 @@ async def test_to_code_sets_backend_project_metadata_from_package_version(
     monkeypatch.setattr(rtl433_native, "VERSION", "v9.8.7")
     core_config: dict[str, Any] = {CONF_ESPHOME: {}}
     monkeypatch.setattr(CORE, "config", core_config)
-    config = CONFIG_SCHEMA(
-        {
-            CONF_ID: "gateway_id",
-            **REQUIRED_TIME_CONFIG,
-            CONF_CANDIDATE_LIMIT: 1,
-            CONF_CANDIDATES: [],
-            CONF_STALE_AFTER: "1min",
-            **gateway_diagnostic_overrides("Overlong Project Metadata Fixture"),
-            **gateway_control_overrides("Overlong Project Metadata Fixture"),
-            CONF_KNOWN_SENSORS: [
-                known_sensor_config("Overlong Project Metadata Fixture", ["temperature"])
-            ],
-        }
-    )
+    config = _project_metadata_config("Overlong Project Metadata Fixture")
     fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     await to_code(config)
@@ -815,18 +822,7 @@ async def test_to_code_rejects_overlong_backend_project_version(
     monkeypatch.setattr(rtl433_native, "VERSION", "v" + ("0" * 128))
     core_config: dict[str, Any] = {}
     monkeypatch.setattr(CORE, "config", core_config)
-    config = CONFIG_SCHEMA(
-        {
-            CONF_ID: "gateway_id",
-            **REQUIRED_TIME_CONFIG,
-            CONF_CANDIDATE_LIMIT: 1,
-            CONF_CANDIDATES: [],
-            CONF_STALE_AFTER: "1min",
-            **gateway_diagnostic_overrides("Project Metadata Fixture"),
-            **gateway_control_overrides("Project Metadata Fixture"),
-            CONF_KNOWN_SENSORS: [known_sensor_config("Project Metadata Fixture", ["temperature"])],
-        }
-    )
+    config = _project_metadata_config("Project Metadata Fixture")
     fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     with pytest.raises(cv.Invalid, match="Generated ESPHome project version exceeds"):
@@ -845,20 +841,7 @@ async def test_to_code_preserves_user_project_metadata(
     user_project = {"name": "custom.project", "version": "2.0.0"}
     core_config: dict[str, Any] = {CONF_ESPHOME: {CONF_PROJECT: user_project.copy()}}
     monkeypatch.setattr(CORE, "config", core_config)
-    config = CONFIG_SCHEMA(
-        {
-            CONF_ID: "gateway_id",
-            **REQUIRED_TIME_CONFIG,
-            CONF_CANDIDATE_LIMIT: 1,
-            CONF_CANDIDATES: [],
-            CONF_STALE_AFTER: "1min",
-            **gateway_diagnostic_overrides("Overlong User Project Fixture"),
-            **gateway_control_overrides("Overlong User Project Fixture"),
-            CONF_KNOWN_SENSORS: [
-                known_sensor_config("Overlong User Project Fixture", ["temperature"])
-            ],
-        }
-    )
+    config = _project_metadata_config("Overlong User Project Fixture")
     fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     await to_code(config)
@@ -878,18 +861,7 @@ async def test_to_code_preserves_user_project_metadata_with_overlong_package_ver
     user_project = {"name": "custom.project", "version": "2.0.0"}
     core_config: dict[str, Any] = {CONF_ESPHOME: {CONF_PROJECT: user_project.copy()}}
     monkeypatch.setattr(CORE, "config", core_config)
-    config = CONFIG_SCHEMA(
-        {
-            CONF_ID: "gateway_id",
-            **REQUIRED_TIME_CONFIG,
-            CONF_CANDIDATE_LIMIT: 1,
-            CONF_CANDIDATES: [],
-            CONF_STALE_AFTER: "1min",
-            **gateway_diagnostic_overrides("User Project Fixture"),
-            **gateway_control_overrides("User Project Fixture"),
-            CONF_KNOWN_SENSORS: [known_sensor_config("User Project Fixture", ["temperature"])],
-        }
-    )
+    config = _project_metadata_config("User Project Fixture")
     fake_env = install_codegen_fakes_for_config(monkeypatch, config)
 
     await to_code(config)
