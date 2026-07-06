@@ -2,7 +2,7 @@ name: prek Autoupdate
 
 on:
   schedule:
-    - cron: '29 5 * * 2'
+    - cron: '29 5 * * *'
   workflow_dispatch:
 
 jobs:
@@ -12,3 +12,8 @@ jobs:
       contents: write
       pull-requests: write
       actions: write
+    with:
+      update-day: "2"
+      dispatch-workflows: |
+        linters.yml
+        validation.yml
