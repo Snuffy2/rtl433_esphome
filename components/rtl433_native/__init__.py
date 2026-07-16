@@ -135,7 +135,7 @@ RTL433_ESP_PREBUILD_SCRIPT = (
     f"pre:{Path(__file__).resolve().parents[2] / 'scripts/platformio/rtl433_esp_prebuild.py'}"
 )
 RTL433_NATIVE_LIBRARIES = (
-    ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.5.0"),
+    ("rtl_433_ESP", None, "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.5.1"),
     ("RadioLib", "^7.2.1", None),
     ("Networking", None, None),
     ("SPI", None, None),

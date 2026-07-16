@@ -102,7 +102,17 @@ EXPECTED_PLATFORMIO_OPTIONS = [
     ("lib_ldf_mode", "chain+"),
     (CONF_EXTRA_SCRIPTS, [RTL433_ESP_PREBUILD_SCRIPT]),
 ]
-EXPECTED_LIBRARY_NAMES = ["rtl_433_ESP", "RadioLib", "Networking", "SPI", "EEPROM"]
+EXPECTED_LIBRARIES = [
+    (
+        "rtl_433_ESP",
+        None,
+        "https://github.com/NorthernMan54/rtl_433_ESP.git#v0.5.1",
+    ),
+    ("RadioLib", "^7.2.1", None),
+    ("Networking", None, None),
+    ("SPI", None, None),
+    ("EEPROM", None, None),
+]
 
 GENERATED_GATEWAY_METHODS = frozenset(
     {
@@ -576,7 +586,7 @@ def assert_codegen_dependencies(
     assert "ota" not in rtl433_native.AUTO_LOAD
     assert fake_env.codegen.build_flags == EXPECTED_BUILD_FLAGS
     assert fake_env.codegen.platformio_options == EXPECTED_PLATFORMIO_OPTIONS
-    assert [library[0] for library in fake_env.codegen.libraries] == EXPECTED_LIBRARY_NAMES
+    assert fake_env.codegen.libraries == EXPECTED_LIBRARIES
     if expect_ota_listener:
         assert "USE_OTA_STATE_LISTENER" in fake_env.codegen.defines
     else:
