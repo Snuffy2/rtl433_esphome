@@ -178,7 +178,7 @@ def load_platformio_prebuild_script(
 
 
 def test_rtl433_esp_prebuild_skips_duplicate_decoder_source() -> None:
-    """rtl_433_ESP v0.5.0 should not compile its duplicate decoder utility file."""
+    """rtl_433_ESP v0.5.1 should not compile its duplicate decoder utility file."""
     namespace, fake_env = load_platformio_prebuild_script("rtl433_esp_prebuild.py")
     is_duplicate_decoder_util_source = cast(
         Callable[[str], bool], namespace["is_duplicate_decoder_util_source"]

@@ -6,6 +6,8 @@ Use an ESPHome device as a local `rtl_433` receiver and expose selected temperat
 
 Start from the included `rtl433-esphome-heltec-lora-32-v2.yaml` file. It is the only profile in the repository today, and it targets a Heltec WiFi LoRa 32 V2-style ESP32 with an SX1278 radio at 433.92 MHz.
 
+The profile explicitly selects ESPHome's `platformio` toolchain because the component uses PlatformIO build hooks. Keep this setting when copying the profile; ESPHome 2026.7 and newer otherwise default ESP32 builds to the native ESP-IDF toolchain.
+
 Firmware binaries are not published because the YAML contains deployment-specific device names, Home Assistant names, and sensor mappings. Review those values before installing it on your own device.
 
 See [YAML Configuration](#yaml-configuration) below for details on the options.

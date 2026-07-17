@@ -42,7 +42,7 @@ def is_duplicate_decoder_util_source(source_path: str | Path) -> bool:
 
 
 def skip_duplicate_decoder_util_source(node: SourceNode) -> SourceNode | None:
-    """Skip the duplicate decoder utility source shipped in rtl_433_ESP v0.5.0.
+    """Skip the duplicate decoder utility source shipped in rtl_433_ESP v0.5.1.
 
     Args:
         node: PlatformIO source node.
