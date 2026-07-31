@@ -3,17 +3,30 @@ name: prek Autoupdate
 on:
   schedule:
     - cron: '29 5 * * *'
+  push:
+    branches:
+      - main
   workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: prek-autoupdate-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
   prek-autoupdate:
-    uses: Snuffy2/prek-autoupdate/.github/workflows/prek_autoupdate.yml@v1
-    permissions:
-      contents: write
-      pull-requests: write
-      actions: write
-    with:
-      update-day: "2"
-      dispatch-workflows: |
-        linters.yml
-        validation.yml
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Update prek hooks
+        id: prek-autoupdate
+        uses: Snuffy2/prek-autoupdate@v2
+        with:
+          update-day: "1"
