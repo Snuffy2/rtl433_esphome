@@ -31,7 +31,6 @@ dev = [
     "pytest-cov",
     "pytest-timeout",
     "types-PyYAML",
-    "uv",
 ]
 
 [tool.ruff]
