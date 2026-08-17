@@ -33,7 +33,7 @@ jobs:
         uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
-          cache-dependency-glob: pyproject.toml
+          cache-dependency-glob: uv.lock
 
       - name: Cache ESPHome and PlatformIO
         uses: actions/cache@v6
@@ -42,12 +42,12 @@ jobs:
             ~/.platformio/.cache
             ~/.platformio/packages
             .esphome/external_components
-          key: ${{ runner.os }}-validation-${{ github.event.pull_request.head.repo.full_name || github.repository }}-esphome-pio-${{ hashFiles('pyproject.toml', 'rtl433-esphome-heltec-lora-32-v2.yaml', 'components/rtl433_native/__init__.py') }}
+          key: ${{ runner.os }}-validation-${{ github.event.pull_request.head.repo.full_name || github.repository }}-esphome-pio-${{ hashFiles('pyproject.toml', 'uv.lock', 'rtl433-esphome-heltec-lora-32-v2.yaml', 'components/rtl433_native/__init__.py') }}
           restore-keys: |
             ${{ runner.os }}-validation-${{ github.event.pull_request.head.repo.full_name || github.repository }}-esphome-pio-
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --locked --dev
 
       - name: Run tests
         run: ./.venv/bin/pytest

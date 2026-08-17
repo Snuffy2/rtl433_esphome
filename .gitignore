@@ -12,5 +12,4 @@ htmlcov/
 .esphome/
 secrets.yaml
 .esphome_build_cache_tmp
-uv.lock
 MEMORY.md
