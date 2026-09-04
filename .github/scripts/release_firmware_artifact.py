@@ -223,7 +223,11 @@ def validate_archive(path: Path, expected: dict[str, str | bool]) -> None:
         with zipfile.ZipFile(path) as archive:
             infos = archive.infolist()
             names = [info.filename for info in infos]
-            if len(infos) != 2 or len(names) != len(set(names)) or set(names) != {FIRMWARE_NAME, MANIFEST_NAME}:
+            if (
+                len(infos) != 2
+                or len(names) != len(set(names))
+                or set(names) != {FIRMWARE_NAME, MANIFEST_NAME}
+            ):
                 raise ValueError("Firmware archive has missing or unexpected members")
             expanded = 0
             for info in infos:
