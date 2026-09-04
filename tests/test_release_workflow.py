@@ -33,3 +33,15 @@ def test_release_workflow_delays_latest_until_attested_asset_upload() -> None:
         "Compare-and-swap the stable latest alias"
     )
     assert "validation.yml" not in workflow
+
+
+def test_prerelease_upload_allows_only_forward_default_history_and_original_tag() -> None:
+    """A later main commit cannot replace the prerelease source or release tag."""
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    upload = workflow[workflow.index("Verify release identity and upload the attested firmware") :]
+    upload = upload[: upload.find("\n      - name:", 1)]
+
+    assert (
+        'git merge-base --is-ancestor "$SOURCE_SHA" "refs/remotes/origin/$DEFAULT_BRANCH"' in upload
+    )
+    assert '"refs/tags/$RELEASE_TAG")" == "$TAG_OID"' in upload
