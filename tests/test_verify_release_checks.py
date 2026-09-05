@@ -221,19 +221,28 @@ def test_wait_for_workflow_rejects_non_authoritative_identity(
         )
 
 
-def test_wait_for_workflow_retries_a_transient_run_not_found(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    "error_message",
+    [
+        "HTTP 404 Not Found",
+        "HTTP 429 Too Many Requests",
+        "HTTP/2 503 Service Unavailable",
+    ],
+)
+def test_wait_for_workflow_retries_explicit_transient_run_lookup_errors(
+    monkeypatch: pytest.MonkeyPatch, error_message: str
 ) -> None:
-    """Retry a transient run lookup failure before verifying completed checks.
+    """Retry explicit transient run lookup failures before verifying completed checks.
 
     Args:
         monkeypatch: Fixture for replacing API and time helpers.
+        error_message: Explicit transient HTTP diagnostic returned by the CLI.
     """
     run_attempts = 0
     sleeps: list[int] = []
 
     def fake_api(arguments: Sequence[str]) -> dict[str, Any]:
-        """Return a transient missing run followed by valid endpoint responses.
+        """Return a transient run error followed by valid endpoint responses.
 
         Args:
             arguments: GitHub CLI API arguments.
@@ -252,7 +261,7 @@ def test_wait_for_workflow_retries_a_transient_run_not_found(
         if endpoint.endswith("/actions/runs/42"):
             run_attempts += 1
             if run_attempts == 1:
-                raise verify.GitHubCommandError("HTTP 404 Not Found")
+                raise verify.GitHubCommandError(error_message)
             return _successful_run()
         if endpoint.endswith("/check-suites/99"):
             return {"head_sha": WORKFLOW_SHA, "app": {"slug": "github-actions"}}
@@ -281,6 +290,70 @@ def test_wait_for_workflow_retries_a_transient_run_not_found(
         == 42
     )
     assert any(delay > 0 for delay in sleeps)
+
+
+@pytest.mark.parametrize(
+    "error_message",
+    [
+        "HTTP 401 Unauthorized",
+        "HTTP 403 Forbidden",
+        "HTTP 418 I'm a teapot",
+        "GitHub CLI exited after 503 retries",
+    ],
+)
+def test_wait_for_workflow_rejects_nonretryable_run_lookup_errors(
+    monkeypatch: pytest.MonkeyPatch, error_message: str
+) -> None:
+    """Fail immediately for non-transient or non-HTTP run lookup failures.
+
+    Args:
+        monkeypatch: Fixture for replacing API and time helpers.
+        error_message: GitHub CLI diagnostic that must not be retried.
+    """
+    run_attempts = 0
+    sleeps: list[int] = []
+
+    def fake_api(arguments: Sequence[str]) -> dict[str, Any]:
+        """Return workflow metadata and fail the exact dispatched-run lookup.
+
+        Args:
+            arguments: GitHub API arguments.
+
+        Returns:
+            Workflow metadata for the expected endpoint.
+
+        Raises:
+            verify.GitHubCommandError: For the exact workflow-run lookup.
+            AssertionError: If the verifier requests an unexpected endpoint.
+        """
+        nonlocal run_attempts
+        endpoint = arguments[0]
+        if endpoint.endswith("/actions/workflows/validation.yml"):
+            return {"id": 7}
+        if endpoint.endswith("/actions/runs/42"):
+            run_attempts += 1
+            raise verify.GitHubCommandError(error_message)
+        raise AssertionError(f"Unexpected GitHub API endpoint: {endpoint}")
+
+    monkeypatch.setattr(verify, "github_api", fake_api)
+    monkeypatch.setattr(verify.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(verify.time, "sleep", sleeps.append)
+
+    with pytest.raises(verify.GitHubCommandError) as raised:
+        verify.wait_for_workflow(
+            REPOSITORY,
+            "validation.yml",
+            WORKFLOW_REF,
+            WORKFLOW_SHA,
+            SHA,
+            set(),
+            deadline=1.0,
+            expected_run_id=42,
+        )
+
+    assert str(raised.value) == error_message
+    assert run_attempts == 1
+    assert not sleeps
 
 
 @pytest.mark.parametrize(
