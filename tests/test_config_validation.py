@@ -25,7 +25,7 @@ from esphome.core import CORE
 import esphome.final_validate as fv
 import pytest
 
-import components.rtl433_native as rtl433_native
+from components import rtl433_native
 from components.rtl433_native import (
     ARDUINO_NETWORK_INCLUDE_FLAG,
     CONF_BATTERY,
@@ -257,7 +257,7 @@ class FakeCodegen:
     variables: dict[Any, Any] = field(default_factory=dict)
 
     @property
-    def App(self) -> Any:  # noqa: N802
+    def App(self) -> Any:
         """Return a small fake Application codegen object."""
 
         class FakeApp:
@@ -299,7 +299,7 @@ class FakeCodegen:
 
         self.platformio_options.append((name, value))
 
-    def new_Pvariable(self, *args: Any) -> Any:  # noqa: N802
+    def new_Pvariable(self, *args: Any) -> Any:
         """Create a fake Pvariable value."""
 
         self.new_pvariable_calls.append(args)
@@ -729,7 +729,7 @@ def _project_metadata_config(gateway_name: str) -> dict[str, Any]:
         }
     )
     if not isinstance(config, dict):
-        raise AssertionError("Project metadata fixture should validate to a config dict")
+        raise TypeError("Project metadata fixture should validate to a config dict")
     return config
 
 
@@ -910,9 +910,7 @@ async def test_to_code_wires_all_configured_entities(monkeypatch: pytest.MonkeyP
     await to_code(config)
 
     assert_codegen_dependencies(fake_env, expect_ota_listener=True)
-    assert [getattr(call[0], "id") for call in fake_env.codegen.new_pvariable_calls] == [
-        "gateway_id"
-    ]
+    assert [call[0].id for call in fake_env.codegen.new_pvariable_calls] == ["gateway_id"]
     assert fake_env.codegen.registered_components[0] == (fake_env.gateway, config)
     assert [sensor_config[CONF_NAME] for sensor_config in fake_env.sensor.created] == [
         "Temperature",
@@ -1007,9 +1005,7 @@ async def test_to_code_wires_required_entities_only(monkeypatch: pytest.MonkeyPa
     await to_code(config)
 
     assert_codegen_dependencies(fake_env, expect_ota_listener=False)
-    assert [getattr(call[0], "id") for call in fake_env.codegen.new_pvariable_calls] == [
-        "gateway_id"
-    ]
+    assert [call[0].id for call in fake_env.codegen.new_pvariable_calls] == ["gateway_id"]
     assert fake_env.codegen.registered_components[0] == (fake_env.gateway, config)
     assert [sensor_config[CONF_NAME] for sensor_config in fake_env.sensor.created] == [
         "Temperature",
@@ -1121,7 +1117,7 @@ async def test_to_code_sanitizes_generated_mapping_text_id_only(
     await to_code(config)
 
     mapping_text_id = fake_env.text.created[0][CONF_ID]
-    assert getattr(mapping_text_id, "id") == "garage_freezer_1_mapping"
+    assert mapping_text_id.id == "garage_freezer_1_mapping"
     assert fake_env.text.created[0][CONF_NAME] == "Sanitized ID Fixture Mapping"
     assert fake_env.text.texts[0].calls == [
         ("set_parent", (fake_env.gateway,)),
