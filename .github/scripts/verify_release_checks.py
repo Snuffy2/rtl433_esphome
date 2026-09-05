@@ -14,10 +14,27 @@ import time
 from typing import Any
 
 GIT_OID_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+HTTP_STATUS_PATTERN = re.compile(r"\bHTTP(?:/\d+(?:\.\d+)?)?\s+(?P<status>\d{3})\b", re.IGNORECASE)
 
 
 class GitHubCommandError(RuntimeError):
     """Raised when a GitHub CLI request fails."""
+
+
+def is_retryable_run_lookup_error(error: GitHubCommandError) -> bool:
+    """Return whether a run-lookup failure is an explicit transient HTTP response.
+
+    Args:
+        error: GitHub CLI failure raised while reading the dispatched workflow run.
+
+    Returns:
+        Whether the diagnostic explicitly reports HTTP 404, 429, or a 5xx status.
+    """
+    match = HTTP_STATUS_PATTERN.search(str(error))
+    if match is None:
+        return False
+    status = int(match.group("status"))
+    return status in {404, 429} or 500 <= status <= 599
 
 
 def github_api(arguments: Sequence[str], expected_status: int | None = None) -> dict[str, Any]:
@@ -201,7 +218,7 @@ def wait_for_workflow(
         try:
             run = github_api([f"repos/{repository}/actions/runs/{expected_run_id}"])
         except GitHubCommandError as error:
-            if "404" not in str(error):
+            if not is_retryable_run_lookup_error(error):
                 raise
             time.sleep(5)
             continue

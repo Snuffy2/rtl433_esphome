@@ -439,6 +439,9 @@ jobs:
             main_oid="$(awk -v ref="refs/heads/$DEFAULT_BRANCH" '$2 == ref { print $1 }' <<< "$refs")"
             tag_oid="$(awk -v ref="refs/tags/$RELEASE_TAG" '$2 == ref { print $1 }' <<< "$refs")"
             tag_sha="$(awk -v ref="refs/tags/$RELEASE_TAG^{}" '$2 == ref { print $1 }' <<< "$refs")"
+            if [[ -z "$tag_sha" ]]; then
+              tag_sha="$tag_oid"
+            fi
             [[ "$main_oid" == "$CANDIDATE_SHA" && "$tag_oid" == "$PROMOTED_TAG_OID" && "$tag_sha" == "$CANDIDATE_SHA" ]]
           }
           verify_original_stable_refs() {
@@ -468,28 +471,45 @@ jobs:
             restore_latest=":refs/tags/latest"
           fi
           gh auth setup-git --hostname github.com
-          verify_release_identity
-          git tag -f latest "$CANDIDATE_SHA"
-          git push --force-with-lease="refs/tags/latest:$LATEST_OID" origin refs/tags/latest:refs/tags/latest
           release_identity_valid=true
           if ! verify_release_identity; then
             release_identity_valid=false
+          fi
+          latest_mutated=false
+          if [[ "$release_identity_valid" == true ]]; then
+            git tag -f latest "$CANDIDATE_SHA"
+            git push --force-with-lease="refs/tags/latest:$LATEST_OID" origin refs/tags/latest:refs/tags/latest
+            latest_mutated=true
+            if ! verify_release_identity; then
+              release_identity_valid=false
+            fi
           fi
           stable_refs_owned=true
           if ! verify_stable_refs; then
             stable_refs_owned=false
           fi
           latest_owned=true
-          if [[ "$(git ls-remote origin "refs/tags/latest" | awk '{ print $1 }')" != "$CANDIDATE_SHA" ]]; then
+          if [[ "$latest_mutated" == true ]]; then
+            if [[ "$(git ls-remote origin "refs/tags/latest" | awk '{ print $1 }')" != "$CANDIDATE_SHA" ]]; then
+              latest_owned=false
+            fi
+          elif ! verify_original_latest; then
             latest_owned=false
           fi
           if [[ "$release_identity_valid" == true && "$stable_refs_owned" == true && "$latest_owned" == true ]]; then
             exit 0
           fi
           if [[ "$release_identity_valid" == false && "$STABLE_REFS_MUTATED" == true && "$stable_refs_owned" == true && "$latest_owned" == true ]]; then
-            if ! git push --atomic --force-with-lease="refs/heads/$DEFAULT_BRANCH:$CANDIDATE_SHA" --force-with-lease="refs/tags/$RELEASE_TAG:$PROMOTED_TAG_OID" --force-with-lease="refs/tags/latest:$CANDIDATE_SHA" origin "$SOURCE_SHA:refs/heads/$DEFAULT_BRANCH" "$TAG_OID:refs/tags/$RELEASE_TAG" "$restore_latest"; then
-              echo "::error::Could not atomically compensate refs after release identity changed." >&2
-              exit 1
+            if [[ "$latest_mutated" == true ]]; then
+              if ! git push --atomic --force-with-lease="refs/heads/$DEFAULT_BRANCH:$CANDIDATE_SHA" --force-with-lease="refs/tags/$RELEASE_TAG:$PROMOTED_TAG_OID" --force-with-lease="refs/tags/latest:$CANDIDATE_SHA" origin "$SOURCE_SHA:refs/heads/$DEFAULT_BRANCH" "$TAG_OID:refs/tags/$RELEASE_TAG" "$restore_latest"; then
+                echo "::error::Could not atomically compensate refs after release identity changed." >&2
+                exit 1
+              fi
+            else
+              if ! git push --atomic --force-with-lease="refs/heads/$DEFAULT_BRANCH:$CANDIDATE_SHA" --force-with-lease="refs/tags/$RELEASE_TAG:$PROMOTED_TAG_OID" origin "$SOURCE_SHA:refs/heads/$DEFAULT_BRANCH" "$TAG_OID:refs/tags/$RELEASE_TAG"; then
+                echo "::error::Could not atomically compensate refs after release identity changed." >&2
+                exit 1
+              fi
             fi
             if ! verify_original_stable_refs || ! verify_original_latest; then
               echo "::error::Could not confirm compensated stable refs and latest alias." >&2
@@ -508,7 +528,7 @@ jobs:
               exit 1
             fi
           fi
-          if [[ "$latest_owned" == true ]]; then
+          if [[ "$latest_mutated" == true && "$latest_owned" == true ]]; then
             if ! git push --force-with-lease="refs/tags/latest:$CANDIDATE_SHA" origin "$restore_latest"; then
               echo "::error::Could not safely restore latest after final verification failed." >&2
               exit 1

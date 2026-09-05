@@ -775,6 +775,33 @@ def test_stable_latest_update_supports_create_and_compare_and_swap(
     assert source_sha != candidate_sha
 
 
+def test_stable_latest_update_accepts_preserved_lightweight_release_tag(tmp_path: Path) -> None:
+    """A stable release already at its version may retain a lightweight tag."""
+
+    worktree, remote, source_sha, _latest_oid = initialize_release_remote(
+        tmp_path, "v1.2.3", latest=False, initial_version="v1.2.3"
+    )
+    runner_temp = tmp_path / "runner-temp"
+    bin_dir = install_release_identity_stub(runner_temp)
+
+    result = run_latest_step(
+        worktree,
+        source_sha,
+        source_sha,
+        source_sha,
+        source_sha,
+        "",
+        runner_temp,
+        latest_exists=False,
+        stable_refs_mutated=False,
+        extra_env={"PATH": f"{bin_dir}:{os.environ['PATH']}"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert git(remote, "rev-parse", "refs/tags/v1.2.3") == source_sha
+    assert git(remote, "rev-parse", "refs/tags/latest") == source_sha
+
+
 def test_stable_latest_update_rolls_back_when_release_refs_drift(tmp_path: Path) -> None:
     """A post-upload stable-ref race must not leave latest pointing at the candidate."""
 
@@ -845,6 +872,45 @@ def test_stable_latest_compensates_when_final_release_identity_changes(
     assert git(remote, "rev-parse", "refs/heads/main") == source_sha
     assert git(remote, "rev-parse", "refs/tags/v1.2.3") == source_sha
     assert git(remote, "rev-parse", "refs/tags/v1.2.3^{}") == source_sha
+    if latest:
+        assert git(remote, "rev-parse", "refs/tags/latest") == latest_oid
+    else:
+        assert git(remote, "for-each-ref", "--format=%(objectname)", "refs/tags/latest") == ""
+
+
+@pytest.mark.parametrize("latest", [False, True])
+def test_stable_latest_compensates_when_initial_release_identity_check_fails(
+    tmp_path: Path, latest: bool
+) -> None:
+    """A pre-latest release-object failure should restore freshly promoted stable refs."""
+
+    worktree, remote, source_sha, candidate_sha, tag_oid, latest_oid = prepare_promoted_release(
+        tmp_path, latest=latest
+    )
+    runner_temp = tmp_path / "runner-temp"
+    bin_dir = install_release_identity_stub(runner_temp)
+
+    result = run_latest_step(
+        worktree,
+        source_sha,
+        candidate_sha,
+        tag_oid,
+        source_sha,
+        latest_oid,
+        runner_temp,
+        latest_exists=latest,
+        stable_refs_mutated=True,
+        extra_env={
+            "FAIL_RELEASE_IDENTITY_AT": "1",
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        },
+    )
+
+    assert result.returncode != 0
+    assert "Stable refs and latest were restored because release identity changed" in result.stderr
+    assert (runner_temp / "release-identity-calls").read_text(encoding="utf-8") == "1"
+    assert git(remote, "rev-parse", "refs/heads/main") == source_sha
+    assert git(remote, "rev-parse", "refs/tags/v1.2.3") == source_sha
     if latest:
         assert git(remote, "rev-parse", "refs/tags/latest") == latest_oid
     else:
