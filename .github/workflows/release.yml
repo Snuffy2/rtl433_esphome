@@ -350,7 +350,35 @@ jobs:
             git tag -fa "$RELEASE_TAG" -m "Release $RELEASE_TAG" "$CANDIDATE_SHA"
             promoted_tag_oid="$(git rev-parse "refs/tags/$RELEASE_TAG")"
             gh auth setup-git --hostname github.com
+            python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
+              --repository "$GITHUB_REPOSITORY" \
+              --release-id "$RELEASE_ID" \
+              --expected-tag "$RELEASE_TAG" \
+              --expected-prerelease false \
+              --verify-only
             git push --atomic --force-with-lease="refs/heads/$DEFAULT_BRANCH:$SOURCE_SHA" --force-with-lease="refs/tags/$RELEASE_TAG:$TAG_OID" origin "$CANDIDATE_SHA:refs/heads/$DEFAULT_BRANCH" "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            if ! python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
+              --repository "$GITHUB_REPOSITORY" \
+              --release-id "$RELEASE_ID" \
+              --expected-tag "$RELEASE_TAG" \
+              --expected-prerelease false \
+              --verify-only; then
+              echo "::error::Release identity changed after stable ref promotion; compensating." >&2
+              if ! git push --atomic --force-with-lease="refs/heads/$DEFAULT_BRANCH:$CANDIDATE_SHA" --force-with-lease="refs/tags/$RELEASE_TAG:$promoted_tag_oid" origin "$SOURCE_SHA:refs/heads/$DEFAULT_BRANCH" "$TAG_OID:refs/tags/$RELEASE_TAG"; then
+                echo "::error::Could not atomically compensate stable refs; they may have changed concurrently." >&2
+                exit 1
+              fi
+              if ! git fetch --force --no-tags origin "refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"; then
+                echo "::error::Could not confirm compensated stable refs." >&2
+                exit 1
+              fi
+              if [[ "$(git rev-parse "refs/remotes/origin/$DEFAULT_BRANCH")" != "$SOURCE_SHA" || "$(git rev-parse "refs/tags/$RELEASE_TAG")" != "$TAG_OID" || "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" != "$SOURCE_SHA" ]]; then
+                echo "::error::Compensated stable refs do not match their original identities." >&2
+                exit 1
+              fi
+              echo "::error::Stable refs were restored because release identity changed after promotion." >&2
+              exit 1
+            fi
           fi
           echo "PROMOTED_TAG_OID=$promoted_tag_oid" >> "$GITHUB_ENV"
 
