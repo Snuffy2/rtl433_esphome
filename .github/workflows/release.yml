@@ -427,7 +427,7 @@ jobs:
           [[ "$(git ls-remote origin "refs/tags/latest" | awk '{ print $1 }')" == "$CANDIDATE_SHA" ]]
 
       - name: Delete validated temporary branch
-        if: success()
+        if: ${{ always() && steps.validation_ref.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
           TEMP_REF: ${{ steps.validation_ref.outputs.name }}
