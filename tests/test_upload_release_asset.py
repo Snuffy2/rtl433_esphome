@@ -3,40 +3,22 @@
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 from pathlib import Path
-import sys
+import socket
+import ssl
 from types import ModuleType
 from typing import Any
+from unittest.mock import MagicMock
+from urllib.error import URLError
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_PATH = REPO_ROOT / ".github" / "scripts" / "upload_release_asset.py"
 REPOSITORY = "owner/repository"
 RELEASE_ID = 17
 TAG = "v1.2.3"
 ASSET_NAME = "rtl433_esphome-v1.2.3.zip"
 TOKEN = "test-token"
 ASSET_CONTENT = b"firmware archive"
-
-
-def load_script() -> ModuleType:
-    """Load the release uploader without adding its directory to ``sys.path``.
-
-    Returns:
-        Imported release uploader module.
-
-    Raises:
-        RuntimeError: If the helper cannot be imported from its assigned path.
-    """
-    spec = importlib.util.spec_from_file_location("upload_release_asset", SCRIPT_PATH)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load {SCRIPT_PATH}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def release(assets: list[dict[str, Any]] | None = None, **overrides: Any) -> dict[str, Any]:
@@ -129,6 +111,73 @@ def install_transport(
     return calls
 
 
+@pytest.mark.parametrize(
+    ("target", "expected_authorization"),
+    [
+        ("https://api.github.com:443/other", f"Bearer {TOKEN}"),
+        ("https://api.github.com/other", f"Bearer {TOKEN}"),
+        ("http://api.github.com/other", None),
+        ("https://api.github.com:8443/other", None),
+        ("https://api.github.com:invalid/other", None),
+        ("https://evil.example/collect", None),
+    ],
+)
+def test_redirect_handler_scopes_bearer_tokens_to_the_source_host(
+    uploader: ModuleType, target: str, expected_authorization: str | None
+) -> None:
+    """Strip bearer authentication only when a redirect changes hosts.
+
+    Args:
+        uploader: Imported release uploader module.
+        target: Redirect destination URL.
+        expected_authorization: Authorization value expected after redirect.
+    """
+    request = uploader.Request(
+        "https://api.github.com/repos/owner/repository/releases/17",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+        method="GET",
+    )
+    redirected = uploader._GitHubRedirectHandler().redirect_request(
+        request, None, 302, "Found", {}, target
+    )
+
+    assert redirected is not None
+    assert redirected.get_header("Authorization") == expected_authorization
+
+
+def test_http_request_uses_the_scoped_redirect_handler(
+    monkeypatch: pytest.MonkeyPatch, uploader: ModuleType
+) -> None:
+    """Use the token-scoping handler for real HTTP request setup.
+
+    Args:
+        monkeypatch: Fixture for replacing the opener.
+        uploader: Imported release uploader module.
+    """
+    response = MagicMock()
+    response.status = 200
+    response.read.return_value = b"{}"
+    response.__enter__.return_value = response
+    opener = MagicMock()
+    opener.open.return_value = response
+    handlers: list[Any] = []
+
+    def fake_build_opener(handler: Any) -> MagicMock:
+        """Record the configured redirect handler and return a fake opener."""
+        handlers.append(handler)
+        return opener
+
+    monkeypatch.setattr(uploader, "build_opener", fake_build_opener)
+
+    result = uploader.http_request(
+        "GET", "https://api.github.com/repos/owner/repository/releases/17", {}
+    )
+
+    assert result == uploader.HttpResponse(200, b"{}")
+    assert len(handlers) == 1
+    assert isinstance(handlers[0], uploader._GitHubRedirectHandler)
+
+
 def assert_release_reads_only(calls: list[tuple[str, str, dict[str, str], bytes | None]]) -> None:
     """Require a failure path to avoid mutating release assets.
 
@@ -177,14 +226,14 @@ def write_asset(tmp_path: Path) -> Path:
 
 
 def test_verify_only_requires_the_exact_published_release(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, uploader: ModuleType
 ) -> None:
     """Validate live release identity without making an asset mutation.
 
     Args:
         monkeypatch: Fixture for replacing the HTTP transport.
+        uploader: Imported release uploader module.
     """
-    uploader = load_script()
     calls = install_transport(
         monkeypatch,
         uploader,
@@ -197,14 +246,13 @@ def test_verify_only_requires_the_exact_published_release(
 
 
 def test_verify_only_rejects_an_invalidated_release(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, uploader: ModuleType
 ) -> None:
     """Reject a release changed to draft before stable Git ref promotion.
 
     Args:
         monkeypatch: Fixture for replacing the HTTP transport.
     """
-    uploader = load_script()
     calls = install_transport(
         monkeypatch,
         uploader,
@@ -218,15 +266,15 @@ def test_verify_only_rejects_an_invalidated_release(
 
 
 def test_uploads_raw_zip_and_refetches_exact_release_asset(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, uploader: ModuleType
 ) -> None:
     """Upload only after identity validation and retain the exact returned asset.
 
     Args:
         tmp_path: Test workspace.
         monkeypatch: Fixture for replacing the HTTP transport.
+        uploader: Imported release uploader module.
     """
-    uploader = load_script()
     calls = install_transport(
         monkeypatch,
         uploader,
@@ -258,128 +306,47 @@ def test_uploads_raw_zip_and_refetches_exact_release_asset(
     assert upload[3] == ASSET_CONTENT
 
 
-def test_rejects_mismatched_release_identity_before_asset_mutation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("overrides", "assets", "expected_match"),
+    [
+        pytest.param({"id": RELEASE_ID + 1}, None, "expected published identity", id="release-id"),
+        pytest.param({"prerelease": True}, None, "expected published identity", id="prerelease"),
+        pytest.param(
+            {}, [uploaded_asset(31), uploaded_asset(32)], "duplicate assets", id="duplicate-assets"
+        ),
+        pytest.param(
+            {},
+            [uploaded_asset(31, digest="sha256:" + "0" * 64)],
+            "preserve it and recover manually",
+            id="digest-mismatch",
+        ),
+    ],
+)
+def test_rejects_invalid_release_state_without_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    uploader: ModuleType,
+    overrides: dict[str, Any],
+    assets: list[dict[str, Any]] | None,
+    expected_match: str,
 ) -> None:
-    """Reject a release ID mismatch before any asset mutation can occur.
+    """Reject invalid release or asset state before any mutation.
 
     Args:
         tmp_path: Test workspace.
         monkeypatch: Fixture for replacing the HTTP transport.
+        uploader: Imported release uploader module.
+        overrides: Release fields to replace for the negative case.
+        assets: Assets returned by the release endpoint.
+        expected_match: Expected error text.
     """
-    uploader = load_script()
     calls = install_transport(
         monkeypatch,
         uploader,
-        [uploader.HttpResponse(200, uploader.json.dumps(release(id=RELEASE_ID + 1)).encode())],
+        [uploader.HttpResponse(200, uploader.json.dumps(release(assets, **overrides)).encode())],
     )
 
-    with pytest.raises(uploader.GitHubRequestError, match="expected published identity"):
-        uploader.upload_release_asset(
-            REPOSITORY,
-            RELEASE_ID,
-            TAG,
-            False,
-            write_asset(tmp_path),
-            ASSET_NAME,
-            "application/zip",
-            TOKEN,
-        )
-
-    assert_release_reads_only(calls)
-
-
-def test_rejects_prerelease_state_mismatch_before_asset_mutation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Reject a release whose prerelease state differs from candidate metadata.
-
-    Args:
-        tmp_path: Test workspace.
-        monkeypatch: Fixture for replacing the HTTP transport.
-    """
-    uploader = load_script()
-    calls = install_transport(
-        monkeypatch,
-        uploader,
-        [uploader.HttpResponse(200, uploader.json.dumps(release(prerelease=True)).encode())],
-    )
-
-    with pytest.raises(uploader.GitHubRequestError, match="expected published identity"):
-        uploader.upload_release_asset(
-            REPOSITORY,
-            RELEASE_ID,
-            TAG,
-            False,
-            write_asset(tmp_path),
-            ASSET_NAME,
-            "application/zip",
-            TOKEN,
-        )
-
-    assert_release_reads_only(calls)
-
-
-def test_rejects_duplicate_existing_assets_without_mutation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Reject same-name duplicates instead of selecting an ambiguous asset.
-
-    Args:
-        tmp_path: Test workspace.
-        monkeypatch: Fixture for replacing the HTTP transport.
-    """
-    uploader = load_script()
-    calls = install_transport(
-        monkeypatch,
-        uploader,
-        [
-            uploader.HttpResponse(
-                200,
-                uploader.json.dumps(release([uploaded_asset(31), uploaded_asset(32)])).encode(),
-            )
-        ],
-    )
-
-    with pytest.raises(uploader.GitHubRequestError, match="duplicate assets"):
-        uploader.upload_release_asset(
-            REPOSITORY,
-            RELEASE_ID,
-            TAG,
-            False,
-            write_asset(tmp_path),
-            ASSET_NAME,
-            "application/zip",
-            TOKEN,
-        )
-
-    assert_release_reads_only(calls)
-
-
-def test_preserves_mismatched_existing_asset_without_mutation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Fail closed when a same-name asset does not match the candidate digest.
-
-    Args:
-        tmp_path: Test workspace.
-        monkeypatch: Fixture for replacing the HTTP transport.
-    """
-    uploader = load_script()
-    calls = install_transport(
-        monkeypatch,
-        uploader,
-        [
-            uploader.HttpResponse(
-                200,
-                uploader.json.dumps(
-                    release([uploaded_asset(31, digest="sha256:" + "0" * 64)])
-                ).encode(),
-            )
-        ],
-    )
-
-    with pytest.raises(uploader.GitHubRequestError, match="preserve it and recover manually"):
+    with pytest.raises(uploader.GitHubRequestError, match=expected_match):
         uploader.upload_release_asset(
             REPOSITORY,
             RELEASE_ID,
@@ -395,15 +362,15 @@ def test_preserves_mismatched_existing_asset_without_mutation(
 
 
 def test_retains_identical_existing_asset_without_mutation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, uploader: ModuleType
 ) -> None:
     """Treat an already-correct uploaded asset as an idempotent success.
 
     Args:
         tmp_path: Test workspace.
         monkeypatch: Fixture for replacing the HTTP transport.
+        uploader: Imported release uploader module.
     """
-    uploader = load_script()
     calls = install_transport(
         monkeypatch,
         uploader,
@@ -434,16 +401,19 @@ def test_retains_identical_existing_asset_without_mutation(
     ],
 )
 def test_rejects_mismatched_upload_response(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, invalid_asset: dict[str, Any]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    uploader: ModuleType,
+    invalid_asset: dict[str, Any],
 ) -> None:
     """Reject an upload response that cannot prove the local archive identity.
 
     Args:
         tmp_path: Test workspace.
         monkeypatch: Fixture for replacing the HTTP transport.
+        uploader: Imported release uploader module.
         invalid_asset: Upload response with one invalid immutable property.
     """
-    uploader = load_script()
     calls = install_transport(
         monkeypatch,
         uploader,
@@ -470,15 +440,15 @@ def test_rejects_mismatched_upload_response(
 
 
 def test_rejects_refetched_asset_that_does_not_belong_to_uploaded_release_asset(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, uploader: ModuleType
 ) -> None:
     """Require the final exact-release response to retain the uploaded asset ID.
 
     Args:
         tmp_path: Test workspace.
         monkeypatch: Fixture for replacing the HTTP transport.
+        uploader: Imported release uploader module.
     """
-    uploader = load_script()
     calls = install_transport(
         monkeypatch,
         uploader,
@@ -510,26 +480,28 @@ def test_rejects_refetched_asset_that_does_not_belong_to_uploaded_release_asset(
 @pytest.mark.parametrize(
     "responses",
     [
-        [
-            lambda uploader: uploader.HttpResponse(500, b"{}"),
-        ],
+        [lambda uploader: uploader.HttpResponse(500, b"{}") for _ in range(4)],
         [
             lambda uploader: uploader.HttpResponse(200, uploader.json.dumps(release()).encode()),
-            lambda uploader: uploader.HttpResponse(503, b"{}"),
+            *[lambda uploader: uploader.HttpResponse(503, b"{}") for _ in range(4)],
         ],
     ],
 )
 def test_rejects_http_failures(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, responses: list[Any]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    uploader: ModuleType,
+    responses: list[Any],
 ) -> None:
     """Reject GitHub HTTP failures before upload confirmation.
 
     Args:
         tmp_path: Test workspace.
         monkeypatch: Fixture for replacing the HTTP transport.
+        uploader: Imported release uploader module.
         responses: Factories for scripted HTTP responses.
     """
-    uploader = load_script()
+    monkeypatch.setattr(uploader.time, "sleep", lambda _seconds: None)
     calls = install_transport(
         monkeypatch,
         uploader,
@@ -548,4 +520,183 @@ def test_rejects_http_failures(
             TOKEN,
         )
 
-    assert calls
+    assert_release_reads_only(calls)
+
+
+def test_retries_transient_get_until_success(
+    monkeypatch: pytest.MonkeyPatch, uploader: ModuleType
+) -> None:
+    """Retry a transient GET response before accepting a valid release.
+
+    Args:
+        monkeypatch: Fixture for replacing transport and sleep.
+        uploader: Imported release uploader module.
+    """
+    delays: list[int] = []
+    monkeypatch.setattr(uploader.time, "sleep", delays.append)
+    calls = install_transport(
+        monkeypatch,
+        uploader,
+        [
+            uploader.HttpResponse(503, b"{}"),
+            uploader.HttpResponse(200, uploader.json.dumps(release()).encode()),
+        ],
+    )
+
+    uploader.verify_release(REPOSITORY, RELEASE_ID, TAG, False, TOKEN)
+
+    assert [method for method, _url, _headers, _body in calls] == ["GET", "GET"]
+    assert delays == [1]
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        pytest.param(TimeoutError("timed out"), id="timeout"),
+        pytest.param(ConnectionResetError("connection reset"), id="connection-reset"),
+        pytest.param(ConnectionAbortedError("connection aborted"), id="connection-aborted"),
+        pytest.param(ConnectionRefusedError("connection refused"), id="connection-refused"),
+        pytest.param(
+            socket.gaierror(socket.EAI_AGAIN, "temporary DNS failure"), id="temporary-dns"
+        ),
+    ],
+)
+def test_retries_selected_transient_url_errors(
+    monkeypatch: pytest.MonkeyPatch, uploader: ModuleType, reason: BaseException
+) -> None:
+    """Retry selected transient URL errors before accepting a valid release.
+
+    Args:
+        monkeypatch: Fixture for replacing transport and sleep.
+        uploader: Imported release uploader module.
+        reason: Transient transport cause wrapped by ``URLError``.
+    """
+    delays: list[int] = []
+    monkeypatch.setattr(uploader.time, "sleep", delays.append)
+    calls = install_transport(
+        monkeypatch,
+        uploader,
+        [
+            URLError(reason),
+            uploader.HttpResponse(200, uploader.json.dumps(release()).encode()),
+        ],
+    )
+
+    uploader.verify_release(REPOSITORY, RELEASE_ID, TAG, False, TOKEN)
+
+    assert [method for method, _url, _headers, _body in calls] == ["GET", "GET"]
+    assert delays == [1]
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        pytest.param(ssl.SSLCertVerificationError("certificate verify failed"), id="tls"),
+        pytest.param(socket.gaierror(socket.EAI_NONAME, "name not known"), id="permanent-dns"),
+        pytest.param("invalid URL configuration", id="configuration-string"),
+        pytest.param(ValueError("malformed URL"), id="malformed-url"),
+    ],
+)
+def test_does_not_retry_permanent_url_errors(
+    monkeypatch: pytest.MonkeyPatch, uploader: ModuleType, reason: BaseException
+) -> None:
+    """Fail immediately for URL errors that cannot recover by retrying.
+
+    Args:
+        monkeypatch: Fixture for replacing transport and sleep.
+        uploader: Imported release uploader module.
+        reason: Permanent transport cause wrapped by ``URLError``.
+    """
+    delays: list[int] = []
+    monkeypatch.setattr(uploader.time, "sleep", delays.append)
+    calls = install_transport(
+        monkeypatch,
+        uploader,
+        [URLError(reason), uploader.HttpResponse(200, uploader.json.dumps(release()).encode())],
+    )
+
+    with pytest.raises(uploader.GitHubRequestError, match="could not be completed"):
+        uploader.verify_release(REPOSITORY, RELEASE_ID, TAG, False, TOKEN)
+
+    assert len(calls) == 1
+    assert delays == []
+
+
+def test_get_retry_exhaustion_preserves_github_request_error(
+    monkeypatch: pytest.MonkeyPatch, uploader: ModuleType
+) -> None:
+    """Bound transient GET retries and retain the final status error.
+
+    Args:
+        monkeypatch: Fixture for replacing transport and sleep.
+        uploader: Imported release uploader module.
+    """
+    delays: list[int] = []
+    monkeypatch.setattr(uploader.time, "sleep", delays.append)
+    calls = install_transport(
+        monkeypatch,
+        uploader,
+        [uploader.HttpResponse(503, b"{}") for _ in range(uploader.MAX_GET_ATTEMPTS)],
+    )
+
+    with pytest.raises(uploader.GitHubRequestError, match="unexpected HTTP status 503"):
+        uploader.request_json(
+            "GET", uploader.release_endpoint(REPOSITORY, RELEASE_ID), TOKEN, expected_status=200
+        )
+
+    assert len(calls) == uploader.MAX_GET_ATTEMPTS
+    assert delays == [1, 2, 4]
+
+
+def test_post_does_not_retry_transient_status(
+    monkeypatch: pytest.MonkeyPatch, uploader: ModuleType
+) -> None:
+    """Issue a POST once even when GitHub reports a transient status.
+
+    Args:
+        monkeypatch: Fixture for replacing the HTTP transport.
+        uploader: Imported release uploader module.
+    """
+    delays: list[int] = []
+    monkeypatch.setattr(uploader.time, "sleep", delays.append)
+    calls = install_transport(monkeypatch, uploader, [uploader.HttpResponse(503, b"{}")])
+
+    with pytest.raises(uploader.GitHubRequestError, match="unexpected HTTP status 503"):
+        uploader.request_json(
+            "POST",
+            "https://uploads.github.com/asset",
+            TOKEN,
+            expected_status=201,
+            body=b"asset",
+        )
+
+    assert len(calls) == 1
+    assert delays == []
+
+
+def test_post_does_not_retry_transport_failure(
+    monkeypatch: pytest.MonkeyPatch, uploader: ModuleType
+) -> None:
+    """Issue a POST once when the transport reports a transient URL error.
+
+    Args:
+        monkeypatch: Fixture for replacing the opener and sleep.
+        uploader: Imported release uploader module.
+    """
+    delays: list[int] = []
+    monkeypatch.setattr(uploader.time, "sleep", delays.append)
+    opener = MagicMock()
+    opener.open.side_effect = URLError(ConnectionResetError("connection reset"))
+    monkeypatch.setattr(uploader, "build_opener", lambda _handler: opener)
+
+    with pytest.raises(uploader.GitHubRequestError, match="could not be completed"):
+        uploader.request_json(
+            "POST",
+            "https://uploads.github.com/asset",
+            TOKEN,
+            expected_status=201,
+            body=b"asset",
+        )
+
+    opener.open.assert_called_once()
+    assert delays == []

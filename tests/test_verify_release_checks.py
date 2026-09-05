@@ -367,6 +367,46 @@ def test_github_api_rejects_malformed_or_non_authoritative_http_response(
         verify.github_api([])
 
 
+def test_github_api_converts_timeout_to_github_command_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Convert a timed-out GitHub CLI request into the script error type.
+
+    Args:
+        monkeypatch: Fixture for replacing CLI discovery and execution.
+    """
+    monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/gh")
+
+    def raise_timeout(*_args: Any, **_kwargs: Any) -> None:
+        """Raise the subprocess timeout reported by a stalled CLI request."""
+        raise subprocess.TimeoutExpired("gh api", 30)
+
+    monkeypatch.setattr(subprocess, "run", raise_timeout)
+
+    with pytest.raises(verify.GitHubCommandError, match="timed out"):
+        verify.github_api([])
+
+
+def test_github_api_rejects_valid_json_non_object_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reject valid JSON responses that cannot provide API object fields.
+
+    Args:
+        monkeypatch: Fixture for replacing CLI discovery and execution.
+    """
+    monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/gh")
+
+    def return_scalar(*_args: Any, **_kwargs: Any) -> SimpleNamespace:
+        """Return a successful CLI response containing a JSON scalar."""
+        return SimpleNamespace(returncode=0, stdout="[]", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", return_scalar)
+
+    with pytest.raises(verify.GitHubCommandError, match="not an object"):
+        verify.github_api([])
+
+
 def test_publish_verified_status_attests_exact_check_and_run(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
