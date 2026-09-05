@@ -28,10 +28,10 @@ jobs:
           python-version: "3.14"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
-          cache-dependency-glob: pyproject.toml
+          cache-dependency-glob: uv.lock
 
       - name: Cache ESPHome and PlatformIO
         uses: actions/cache@v6
@@ -40,7 +40,7 @@ jobs:
             ~/.platformio/.cache
             ~/.platformio/packages
             .esphome/external_components
-          key: ${{ runner.os }}-release-esphome-pio-${{ github.event.release.tag_name }}-${{ hashFiles('pyproject.toml', 'rtl433-esphome-heltec-lora-32-v2.yaml', 'components/rtl433_native/__init__.py', 'rtl433_esphome_version.py') }}
+          key: ${{ runner.os }}-release-esphome-pio-${{ github.event.release.tag_name }}-${{ hashFiles('pyproject.toml', 'uv.lock', 'rtl433-esphome-heltec-lora-32-v2.yaml', 'components/rtl433_native/__init__.py', 'rtl433_esphome_version.py') }}
           restore-keys: |
             ${{ runner.os }}-release-esphome-pio-
 
@@ -63,7 +63,7 @@ jobs:
           git push -f origin "${{ github.event.release.tag_name }}"
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --locked --dev
 
       - name: Prepare ESPHome config secrets
         run: cp secrets.yaml.example secrets.yaml
