@@ -729,7 +729,7 @@ def _project_metadata_config(gateway_name: str) -> dict[str, Any]:
         }
     )
     if not isinstance(config, dict):
-        raise AssertionError("Project metadata fixture should validate to a config dict")
+        raise TypeError("Project metadata fixture should validate to a config dict")
     return config
 
 

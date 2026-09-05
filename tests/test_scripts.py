@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import runpy
 import shlex
 import shutil
 import subprocess
@@ -168,12 +169,11 @@ def load_platformio_prebuild_script(
     """
 
     fake_env = FakePlatformIOEnv()
-    namespace: dict[str, object] = {
-        "Import": lambda *_args: None,
-        "env": fake_env,
-    }
     script = PLATFORMIO_SCRIPT_ROOT / script_name
-    exec(script.read_text(encoding="utf-8"), namespace)
+    namespace = runpy.run_path(
+        str(script),
+        init_globals={"Import": lambda *_args: None, "env": fake_env},
+    )
     return namespace, fake_env
 
 
