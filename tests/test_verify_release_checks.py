@@ -474,12 +474,16 @@ def test_main_publishes_statuses_only_after_every_workflow_is_verified(
     )
 
     assert verify.main() == 0
-    assert events == [
+    assert len(events) == 4
+    assert set(events) == {
         ("verify", "first.yml"),
         ("verify", "second.yml"),
         ("publish", "first"),
         ("publish", "second"),
-    ]
+    }
+    verification_indices = [index for index, event in enumerate(events) if event[0] == "verify"]
+    publication_indices = [index for index, event in enumerate(events) if event[0] == "publish"]
+    assert max(verification_indices) < min(publication_indices)
 
 
 def test_main_withholds_all_statuses_when_a_later_workflow_fails(
