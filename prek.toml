@@ -18,7 +18,7 @@ id = "check-toml"
 
 [[repos.hooks]]
 id = "check-added-large-files"
-exclude = "^docs/_build/"
+exclude = "^(uv\\.lock$|docs/_build/)"
 
 [[repos]]
 repo = "https://github.com/rhysd/actionlint"
@@ -40,19 +40,15 @@ args = ["--ignore-words-list=hass,IST"]
 exclude = "^docs/_build/"
 
 [[repos]]
-repo = "https://github.com/pre-commit/mirrors-mypy"
-rev = "v2.3.0"
+repo = "local"
 
 [[repos.hooks]]
 id = "mypy"
-language_version = "python3.12"
-args = ["--config-file=pyproject.toml"]
-additional_dependencies = [
-    "esphome>=2026.5.3,<2027.0.0",
-    "pytest",
-    "PyYAML",
-    "types-PyYAML",
-]
+name = "mypy"
+language = "system"
+entry = "uv run --exact --group dev mypy --config-file=pyproject.toml"
+types = ["python"]
+require_serial = true
 
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
