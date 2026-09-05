@@ -129,6 +129,39 @@ def install_transport(
     return calls
 
 
+def assert_release_reads_only(calls: list[tuple[str, str, dict[str, str], bytes | None]]) -> None:
+    """Require a failure path to avoid mutating release assets.
+
+    Args:
+        calls: Recorded HTTP requests.
+    """
+    assert calls
+    assert all(method == "GET" for method, _url, _headers, _body in calls)
+
+
+def assert_upload_sequence(
+    calls: list[tuple[str, str, dict[str, str], bytes | None]], *, final_fetch: bool
+) -> None:
+    """Require reads around one upload without snapshotting incidental read count.
+
+    Args:
+        calls: Recorded HTTP requests.
+        final_fetch: Whether a release read must follow the upload response.
+    """
+    methods = [method for method, _url, _headers, _body in calls]
+    assert methods
+    assert methods.count("POST") == 1
+    upload_index = methods.index("POST")
+    assert upload_index > 0
+    assert all(method == "GET" for method in methods[:upload_index])
+    trailing_methods = methods[upload_index + 1 :]
+    if final_fetch:
+        assert trailing_methods
+        assert all(method == "GET" for method in trailing_methods)
+    else:
+        assert not trailing_methods
+
+
 def write_asset(tmp_path: Path) -> Path:
     """Write the deterministic test firmware archive.
 
@@ -160,7 +193,7 @@ def test_verify_only_requires_the_exact_published_release(
 
     uploader.verify_release(REPOSITORY, RELEASE_ID, TAG, False, TOKEN)
 
-    assert [call[0] for call in calls] == ["GET"]
+    assert_release_reads_only(calls)
 
 
 def test_verify_only_rejects_an_invalidated_release(
@@ -181,7 +214,7 @@ def test_verify_only_rejects_an_invalidated_release(
     with pytest.raises(uploader.GitHubRequestError, match="expected published identity"):
         uploader.verify_release(REPOSITORY, RELEASE_ID, TAG, False, TOKEN)
 
-    assert [call[0] for call in calls] == ["GET"]
+    assert_release_reads_only(calls)
 
 
 def test_uploads_raw_zip_and_refetches_exact_release_asset(
@@ -216,8 +249,8 @@ def test_uploads_raw_zip_and_refetches_exact_release_asset(
         TOKEN,
     )
 
-    assert [call[0] for call in calls] == ["GET", "GET", "POST", "GET"]
-    upload = calls[2]
+    assert_upload_sequence(calls, final_fetch=True)
+    upload = next(call for call in calls if call[0] == "POST")
     assert upload[1].startswith(
         f"https://uploads.github.com/repos/{REPOSITORY}/releases/{RELEASE_ID}/assets?name="
     )
@@ -253,7 +286,7 @@ def test_rejects_mismatched_release_identity_before_asset_mutation(
             TOKEN,
         )
 
-    assert [call[0] for call in calls] == ["GET"]
+    assert_release_reads_only(calls)
 
 
 def test_rejects_prerelease_state_mismatch_before_asset_mutation(
@@ -284,7 +317,7 @@ def test_rejects_prerelease_state_mismatch_before_asset_mutation(
             TOKEN,
         )
 
-    assert [call[0] for call in calls] == ["GET"]
+    assert_release_reads_only(calls)
 
 
 def test_rejects_duplicate_existing_assets_without_mutation(
@@ -320,7 +353,7 @@ def test_rejects_duplicate_existing_assets_without_mutation(
             TOKEN,
         )
 
-    assert [call[0] for call in calls] == ["GET"]
+    assert_release_reads_only(calls)
 
 
 def test_preserves_mismatched_existing_asset_without_mutation(
@@ -358,7 +391,7 @@ def test_preserves_mismatched_existing_asset_without_mutation(
             TOKEN,
         )
 
-    assert [call[0] for call in calls] == ["GET"]
+    assert_release_reads_only(calls)
 
 
 def test_retains_identical_existing_asset_without_mutation(
@@ -388,7 +421,7 @@ def test_retains_identical_existing_asset_without_mutation(
         TOKEN,
     )
 
-    assert [call[0] for call in calls] == ["GET"]
+    assert_release_reads_only(calls)
 
 
 @pytest.mark.parametrize(
@@ -433,7 +466,7 @@ def test_rejects_mismatched_upload_response(
             TOKEN,
         )
 
-    assert [call[0] for call in calls] == ["GET", "GET", "POST"]
+    assert_upload_sequence(calls, final_fetch=False)
 
 
 def test_rejects_refetched_asset_that_does_not_belong_to_uploaded_release_asset(
@@ -471,7 +504,7 @@ def test_rejects_refetched_asset_that_does_not_belong_to_uploaded_release_asset(
             TOKEN,
         )
 
-    assert [call[0] for call in calls] == ["GET", "GET", "POST", "GET"]
+    assert_upload_sequence(calls, final_fetch=True)
 
 
 @pytest.mark.parametrize(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 import os
 from pathlib import Path
@@ -137,6 +137,64 @@ def run_script(
     )
 
 
+def read_logged_arguments(log_path: Path) -> list[list[str]]:
+    """Parse shell-escaped command arguments recorded by a test stub.
+
+    Args:
+        log_path: Invocation log written by a fake executable.
+
+    Returns:
+        One parsed argument list per invocation.
+    """
+    return [shlex.split(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+
+
+def has_option(command: list[str], option: str, value: str) -> bool:
+    """Return whether a command contains one option/value pair.
+
+    Args:
+        command: Parsed command arguments.
+        option: Option name to find.
+        value: Required option value.
+
+    Returns:
+        Whether the pair appears as adjacent command arguments.
+    """
+    return any(command[index : index + 2] == [option, value] for index in range(len(command) - 1))
+
+
+def assert_esphome_invocations(
+    log_path: Path,
+    source_options: Mapping[str, str],
+    expected_actions: Mapping[str, int],
+) -> list[list[str]]:
+    """Assert semantic ESPHome actions without snapshotting the whole command line.
+
+    Args:
+        log_path: Invocation log written by the fake ESPHome executable.
+        source_options: Component source options that must reach ESPHome.
+        expected_actions: Action names and expected invocation counts.
+
+    Returns:
+        Parsed ESPHome command arguments for any follow-up assertions.
+    """
+    commands = read_logged_arguments(log_path)
+    assert len(commands) == sum(expected_actions.values())
+    for command in commands:
+        assert has_option(command, "-m", "esphome")
+        assert FIRMWARE_CONFIG in command
+        for option, value in source_options.items():
+            assert has_option(command, "-s", option)
+            option_index = command.index(option)
+            assert command[option_index + 1] == value
+        if "rtl433_esphome_url" not in source_options:
+            assert not has_option(command, "-s", "rtl433_esphome_url")
+        assert any(action in command for action in expected_actions)
+    for action, count in expected_actions.items():
+        assert sum(action in command for command in commands) == count
+    return commands
+
+
 class FakePlatformIOEnv:
     """Test double for PlatformIO's SCons environment."""
 
@@ -217,22 +275,20 @@ def test_build_defaults_to_compile_without_preflight(tmp_path: Path) -> None:
     result = run_script(script)
 
     assert result.returncode == 0, result.stderr
-    assert python_log.read_text(encoding="utf-8").splitlines() == [
-        f"-m esphome -s rtl433_esphome_ref latest config {FIRMWARE_CONFIG}",
-        f"-m esphome -s rtl433_esphome_ref latest compile {FIRMWARE_CONFIG}",
-    ]
+    assert_esphome_invocations(
+        python_log,
+        {"rtl433_esphome_ref": "latest"},
+        {"config": 1, "compile": 1},
+    )
     assert not preflight_log.exists()
 
 
 @pytest.mark.parametrize(
-    ("env", "expected_invocations"),
+    ("env", "source_options"),
     [
         pytest.param(
             {"RTL433_ESPHOME_REF": "v1.2.3"},
-            [
-                f"-m esphome -s rtl433_esphome_ref v1.2.3 config {FIRMWARE_CONFIG}",
-                f"-m esphome -s rtl433_esphome_ref v1.2.3 compile {FIRMWARE_CONFIG}",
-            ],
+            {"rtl433_esphome_ref": "v1.2.3"},
             id="component-ref",
         ),
         pytest.param(
@@ -240,24 +296,16 @@ def test_build_defaults_to_compile_without_preflight(tmp_path: Path) -> None:
                 "RTL433_ESPHOME_URL": "https://github.com/example/rtl433_esphome.git",
                 "RTL433_ESPHOME_REF": "abc123",
             },
-            [
-                (
-                    "-m esphome "
-                    "-s rtl433_esphome_url https://github.com/example/rtl433_esphome.git "
-                    f"-s rtl433_esphome_ref abc123 config {FIRMWARE_CONFIG}"
-                ),
-                (
-                    "-m esphome "
-                    "-s rtl433_esphome_url https://github.com/example/rtl433_esphome.git "
-                    f"-s rtl433_esphome_ref abc123 compile {FIRMWARE_CONFIG}"
-                ),
-            ],
+            {
+                "rtl433_esphome_url": "https://github.com/example/rtl433_esphome.git",
+                "rtl433_esphome_ref": "abc123",
+            },
             id="component-url",
         ),
     ],
 )
 def test_build_accepts_explicit_component_source(
-    tmp_path: Path, env: dict[str, str], expected_invocations: list[str]
+    tmp_path: Path, env: dict[str, str], source_options: dict[str, str]
 ) -> None:
     """Explicit component source settings should be passed through to ESPHome."""
     script = copy_script(tmp_path, "build")
@@ -266,7 +314,7 @@ def test_build_accepts_explicit_component_source(
     result = run_script(script, env=env)
 
     assert result.returncode == 0, result.stderr
-    assert python_log.read_text(encoding="utf-8").splitlines() == expected_invocations
+    assert_esphome_invocations(python_log, source_options, {"config": 1, "compile": 1})
 
 
 def test_build_exports_firmware_from_external_config_root(tmp_path: Path) -> None:
@@ -347,15 +395,17 @@ def test_build_preflight_modes(
     result = run_script(script, "--preflight", *extra_args)
 
     assert result.returncode == 0, result.stderr
-    assert (tmp_path / "python.log").read_text(encoding="utf-8").splitlines() == [
-        f"-m esphome -s rtl433_esphome_ref latest config {FIRMWARE_CONFIG}",
-        (f"-m esphome -s rtl433_esphome_ref latest compile --only-generate {FIRMWARE_CONFIG}"),
-        f"-m esphome -s rtl433_esphome_ref latest compile {FIRMWARE_CONFIG}",
-    ]
-    expected_preflight_args = str(generated_platformio_ini)
-    if update_global:
-        expected_preflight_args = f"--update-global {expected_preflight_args}"
-    assert preflight_log.read_text(encoding="utf-8").splitlines() == [expected_preflight_args]
+    esphome_commands = assert_esphome_invocations(
+        tmp_path / "python.log",
+        {"rtl433_esphome_ref": "latest"},
+        {"config": 1, "compile": 2},
+    )
+    assert sum("--only-generate" in command for command in esphome_commands) == 1
+    assert sum("--only-generate" not in command for command in esphome_commands) == 2
+    preflight_commands = read_logged_arguments(preflight_log)
+    assert len(preflight_commands) == 1
+    assert str(generated_platformio_ini) in preflight_commands[0]
+    assert ("--update-global" in preflight_commands[0]) is update_global
 
 
 def test_esphome_preflight_discovers_generated_platformio_ini(tmp_path: Path) -> None:
@@ -372,6 +422,11 @@ def test_esphome_preflight_discovers_generated_platformio_ini(tmp_path: Path) ->
     result = run_script(script)
 
     assert result.returncode == 0, result.stderr
-    assert python_log.read_text(encoding="utf-8").splitlines() == [
-        "-m platformio pkg install -g -f -p https://example.invalid/platform-espressif32.zip"
-    ]
+    commands = read_logged_arguments(python_log)
+    assert len(commands) == 1
+    assert has_option(commands[0], "-m", "platformio")
+    assert "pkg" in commands[0]
+    assert "install" in commands[0]
+    assert "-g" in commands[0]
+    assert "-f" in commands[0]
+    assert has_option(commands[0], "-p", "https://example.invalid/platform-espressif32.zip")
