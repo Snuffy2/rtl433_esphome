@@ -77,6 +77,8 @@ def git(cwd: Path, *arguments: str, env: Mapping[str, str] | None = None) -> str
         text=True,
         env={
             **os.environ,
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_AUTHOR_NAME": "Release Test",
             "GIT_AUTHOR_EMAIL": "release@example.invalid",
             "GIT_COMMITTER_NAME": "Release Test",
@@ -582,8 +584,6 @@ def test_stable_promotion_exports_ref_ownership_after_a_fresh_atomic_push(tmp_pa
         runner_temp,
         resume=False,
         extra_env={
-            "GIT_CONFIG_GLOBAL": "/dev/null",
-            "GIT_CONFIG_NOSYSTEM": "1",
             "PATH": f"{bin_dir}:{os.environ['PATH']}",
         },
     )

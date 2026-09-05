@@ -8,20 +8,41 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import socket
 import stat
 import sys
+import time
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
-from urllib.request import Request, urlopen
+from urllib.parse import quote, urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 API_URL = "https://api.github.com"
 UPLOADS_URL = "https://uploads.github.com"
 API_VERSION = "2026-03-10"
+DEFAULT_PORTS = {"http": 80, "https": 443}
+TRANSIENT_URLERROR_TYPES = (
+    TimeoutError,
+    ConnectionResetError,
+    ConnectionAbortedError,
+    ConnectionRefusedError,
+)
 
 
 class GitHubRequestError(RuntimeError):
     """Raised when GitHub cannot confirm a release-asset operation."""
+
+    def __init__(self, message: str, *, status: int | None = None, retryable: bool = False) -> None:
+        """Store optional transport metadata used by bounded GET retries.
+
+        Args:
+            message: Human-readable request failure.
+            status: HTTP status returned by GitHub, when available.
+            retryable: Whether the underlying transport failure is transient.
+        """
+        super().__init__(message)
+        self.status = status
+        self.retryable = retryable
 
 
 @dataclass(frozen=True)
@@ -35,6 +56,79 @@ class HttpResponse:
 
     status: int
     body: bytes
+
+
+def normalized_origin(url: str) -> tuple[str, str, int | None] | None:
+    """Return a URL origin with its effective port normalized.
+
+    Args:
+        url: URL whose origin should be normalized.
+
+    Returns:
+        Scheme, lowercase hostname, and effective port, or ``None`` for an
+        invalid URL.
+    """
+    try:
+        parsed = urlsplit(url)
+        scheme = parsed.scheme.casefold()
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        return None
+    if not scheme or not hostname:
+        return None
+    effective_port = port if port is not None else DEFAULT_PORTS.get(scheme)
+    return scheme, hostname.casefold(), effective_port
+
+
+def is_transient_url_error(error: URLError) -> bool:
+    """Classify URL errors that are safe to retry for idempotent GETs.
+
+    Args:
+        error: URL error raised by the HTTP transport.
+
+    Returns:
+        Whether the underlying cause is a transient network or DNS failure.
+    """
+    reason = error.reason
+    if isinstance(reason, TRANSIENT_URLERROR_TYPES):
+        return True
+    return isinstance(reason, socket.gaierror) and reason.errno == socket.EAI_AGAIN
+
+
+class _GitHubRedirectHandler(HTTPRedirectHandler):
+    """Follow redirects while withholding bearer tokens from other origins."""
+
+    def redirect_request(
+        self,
+        req: Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> Request | None:
+        """Build a redirect request and strip authorization across origins.
+
+        Args:
+            req: Original authenticated request.
+            fp: Response file object supplied by urllib.
+            code: HTTP redirect status code.
+            msg: HTTP redirect message.
+            headers: Response headers supplied by urllib.
+            newurl: Redirect target URL.
+
+        Returns:
+            Redirect request, or ``None`` when urllib declines the redirect.
+        """
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected is None:
+            return None
+        source_origin = normalized_origin(req.full_url)
+        target_origin = normalized_origin(redirected.full_url)
+        if source_origin is None or target_origin is None or source_origin != target_origin:
+            redirected.remove_header("Authorization")
+        return redirected
 
 
 def parse_args() -> argparse.Namespace:
@@ -77,14 +171,17 @@ def http_request(
     """
     request = Request(url, data=body, headers=headers, method=method)
     try:
-        with urlopen(request, timeout=30) as response:
+        with build_opener(_GitHubRedirectHandler()).open(request, timeout=30) as response:
             return HttpResponse(status=response.status, body=response.read())
     except HTTPError as error:
         raise GitHubRequestError(
-            f"GitHub API request returned HTTP status {error.code}."
+            f"GitHub API request returned HTTP status {error.code}.", status=error.code
         ) from error
     except URLError as error:
-        raise GitHubRequestError("GitHub API request could not be completed.") from error
+        raise GitHubRequestError(
+            "GitHub API request could not be completed.",
+            retryable=is_transient_url_error(error),
+        ) from error
 
 
 def repository_path(repository: str) -> str:
@@ -148,7 +245,10 @@ def request_json(
         "Content-Type": content_type,
         "X-GitHub-Api-Version": API_VERSION,
     }
-    response = http_request(method, url, headers, body)
+    if method == "GET":
+        response = http_request_with_retry(method, url, headers, body)
+    else:
+        response = http_request(method, url, headers, body)
     if response.status != expected_status:
         raise GitHubRequestError(
             f"GitHub API request returned unexpected HTTP status {response.status}."
@@ -160,6 +260,92 @@ def request_json(
     if not isinstance(payload, dict):
         raise GitHubRequestError("GitHub API response was not an object.")
     return payload
+
+
+RETRYABLE_HTTP_STATUSES = frozenset({500, 502, 503, 504})
+MAX_GET_ATTEMPTS = 4
+
+
+def http_request_with_retry(
+    method: str, url: str, headers: dict[str, str], body: bytes | None = None
+) -> HttpResponse:
+    """Issue a GET request with bounded retries for transient failures.
+
+    Args:
+        method: HTTP method, expected to be ``GET``.
+        url: Fully qualified GitHub endpoint URL.
+        headers: Request headers including the in-memory bearer token.
+        body: Optional raw request body.
+
+    Returns:
+        HTTP status and raw response bytes.
+
+    Raises:
+        GitHubRequestError: If a transport failure persists or is not retryable.
+    """
+    if method != "GET":
+        return http_request(method, url, headers, body)
+    last_error: GitHubRequestError | None = None
+    for attempt in range(MAX_GET_ATTEMPTS):
+        try:
+            response = http_request(method, url, headers, body)
+        except HTTPError as error:
+            if error.code not in RETRYABLE_HTTP_STATUSES:
+                raise GitHubRequestError(
+                    f"GitHub API request returned HTTP status {error.code}.", status=error.code
+                ) from error
+            last_error = GitHubRequestError(
+                f"GitHub API request returned HTTP status {error.code}.", status=error.code
+            )
+        except URLError as error:
+            if not is_transient_url_error(error):
+                raise GitHubRequestError("GitHub API request could not be completed.") from error
+            last_error = GitHubRequestError(
+                "GitHub API request could not be completed.", retryable=True
+            )
+        except GitHubRequestError as error:
+            if not (
+                error.retryable
+                or (error.status is not None and error.status in RETRYABLE_HTTP_STATUSES)
+            ):
+                raise
+            last_error = error
+        else:
+            if response.status not in RETRYABLE_HTTP_STATUSES:
+                return response
+            if attempt == MAX_GET_ATTEMPTS - 1:
+                return response
+            last_error = GitHubRequestError(
+                f"GitHub API request returned HTTP status {response.status}.",
+                status=response.status,
+            )
+        if attempt == MAX_GET_ATTEMPTS - 1:
+            if last_error is not None:
+                raise last_error
+            raise GitHubRequestError("GitHub API request could not be completed.")
+        time.sleep(2**attempt)
+    raise GitHubRequestError("GitHub API request could not be completed.")
+
+
+def require_valid_release_inputs(
+    release_id: int, expected_tag: str, expected_prerelease: bool
+) -> None:
+    """Validate release identity arguments shared by both command flows.
+
+    Args:
+        release_id: Positive immutable GitHub release ID.
+        expected_tag: Expected release tag name.
+        expected_prerelease: Expected prerelease state.
+
+    Raises:
+        ValueError: If a release identity argument is invalid.
+    """
+    if type(release_id) is not int or release_id <= 0:
+        raise ValueError("Release ID must be a positive integer.")
+    if not expected_tag:
+        raise ValueError("Expected release tag must not be empty.")
+    if type(expected_prerelease) is not bool:
+        raise ValueError("Expected prerelease state must be a boolean.")
 
 
 def require_release_identity(
@@ -298,12 +484,7 @@ def upload_release_asset(
         ValueError: If command inputs or the local asset are unsafe.
         GitHubRequestError: If GitHub cannot prove release or asset identity.
     """
-    if type(release_id) is not int or release_id <= 0:
-        raise ValueError("Release ID must be a positive integer.")
-    if not expected_tag:
-        raise ValueError("Expected release tag must not be empty.")
-    if type(expected_prerelease) is not bool:
-        raise ValueError("Expected prerelease state must be a boolean.")
+    require_valid_release_inputs(release_id, expected_tag, expected_prerelease)
     if not asset_name or "/" in asset_name or "\\" in asset_name:
         raise ValueError("Asset name must be a non-empty filename.")
     if content_type not in {"application/octet-stream", "application/zip"}:
@@ -380,12 +561,7 @@ def verify_release(
         ValueError: If command inputs are invalid.
         GitHubRequestError: If GitHub cannot prove the exact published release identity.
     """
-    if type(release_id) is not int or release_id <= 0:
-        raise ValueError("Release ID must be a positive integer.")
-    if not expected_tag:
-        raise ValueError("Expected release tag must not be empty.")
-    if type(expected_prerelease) is not bool:
-        raise ValueError("Expected prerelease state must be a boolean.")
+    require_valid_release_inputs(release_id, expected_tag, expected_prerelease)
     if not token:
         raise ValueError("GITHUB_TOKEN is required.")
     release = request_json(
