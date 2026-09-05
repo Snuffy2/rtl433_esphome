@@ -328,6 +328,7 @@ def test_release_workflow_uses_real_artifact_and_protected_gate_contracts() -> N
     gates = required_step(promote, "--required-check")
     promotion = required_step(promote, "git push --atomic")
     upload = required_step(promote, "--asset-name")
+    cleanup = required_step(promote, 'origin ":refs/heads/$TEMP_REF"')
 
     assert "contents: write" not in candidate["permissions"]
     assert "$RUNNER_TEMP/firmware-path" in str(build["run"])
@@ -359,6 +360,11 @@ def test_release_workflow_uses_real_artifact_and_protected_gate_contracts() -> N
     assert promotion_run.index("--verify-only") < promotion_run.index("git push --atomic")
     assert '"refs/tags/$RELEASE_TAG")" == "$TAG_OID"' in str(promotion["run"])
     assert "PROMOTED_TAG_OID=" in str(promotion["run"])
+    cleanup_condition = str(cleanup["if"])
+    assert "success()" not in cleanup_condition
+    assert "always()" in cleanup_condition
+    assert "steps.validation_ref.outcome == 'success'" in cleanup_condition
+    assert '--force-with-lease="refs/heads/$TEMP_REF:$CANDIDATE_SHA"' in str(cleanup["run"])
 
 
 @pytest.mark.parametrize("workflow_name", ["validation.yml", "prek-autofix-review.yml"])
