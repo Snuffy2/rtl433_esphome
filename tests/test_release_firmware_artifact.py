@@ -113,6 +113,17 @@ def test_release_candidate_rejects_non_oid_metadata_before_reading_bundle(tmp_pa
         artifact.validate_candidate(candidate_dir)
 
 
+def test_release_candidate_rejects_non_boolean_resume_state(tmp_path: Path) -> None:
+    """Candidate resume metadata must retain its boolean JSON type."""
+
+    artifact, candidate_dir, manifest = create_candidate(tmp_path)
+    manifest["resume"] = "false"
+    (candidate_dir / "candidate.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(TypeError, match="resume state must be a boolean"):
+        artifact.validate_candidate(candidate_dir)
+
+
 def test_prepare_release_profile_selects_checked_out_components(tmp_path: Path) -> None:
     """The release build profile must use local candidate sources, not a moving tag."""
 

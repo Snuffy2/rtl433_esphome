@@ -152,6 +152,7 @@ def read_candidate_manifest(path: Path) -> dict[str, str | bool]:
         Parsed candidate metadata.
 
     Raises:
+        TypeError: If the resume field is not a boolean.
         ValueError: If the JSON is malformed or has unexpected fields.
     """
 
@@ -172,7 +173,7 @@ def read_candidate_manifest(path: Path) -> dict[str, str | bool]:
     if not isinstance(content, dict) or set(content) != expected:
         raise ValueError("Candidate metadata fields do not match the release contract")
     if not isinstance(content["resume"], bool):
-        raise ValueError("Candidate resume state must be a boolean")
+        raise TypeError("Candidate resume state must be a boolean")
     for key in expected - {"resume"}:
         if not isinstance(content[key], str) or not content[key]:
             raise ValueError(f"Candidate metadata field {key} must be a non-empty string")
@@ -282,7 +283,7 @@ def main() -> None:
             result = create_archive(args)
         else:
             result = validate_candidate(args.candidate_dir)
-    except ValueError as err:
+    except (TypeError, ValueError) as err:
         raise SystemExit(str(err)) from err
     print(json.dumps(result, sort_keys=True, separators=(",", ":")))
 
