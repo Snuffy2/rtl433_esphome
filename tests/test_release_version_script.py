@@ -87,10 +87,32 @@ def test_update_release_version_errors_if_version_assignment_missing(tmp_path: P
         module.update_release_version(version_path, "v1.2.3")
 
 
-def test_version_from_tag_rejects_non_semver_release_tag() -> None:
-    """Reject release tags that are not semantic versions."""
+@pytest.mark.parametrize(
+    "tag",
+    [
+        "v1.2.3",
+        "1.2.3",
+        "v1.2.3-rc.1",
+        "v1.2.3-rc.1+build-7",
+        "v1.2.3+build-7",
+    ],
+)
+def test_version_from_tag_accepts_semver_boundaries(tag: str) -> None:
+    """Accept stable, prerelease, and build-metadata semantic versions."""
+
+    module = load_release_version_script()
+
+    assert module.version_from_tag(tag) == tag
+
+
+@pytest.mark.parametrize(
+    "tag",
+    ["latest", "v1.2", "v01.2.3", "v1.02.3", "v1.2.03", "v1.2.3-rc.01", "v1.2.3+"],
+)
+def test_version_from_tag_rejects_non_semver_release_tag(tag: str) -> None:
+    """Reject malformed tags and numeric identifiers with leading zeroes."""
 
     module = load_release_version_script()
 
     with pytest.raises(ValueError, match="Release tag is not semver"):
-        module.version_from_tag("latest")
+        module.version_from_tag(tag)

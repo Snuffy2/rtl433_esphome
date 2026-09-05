@@ -56,9 +56,12 @@ def create_candidate(tmp_path: Path) -> tuple[ModuleType, Path, dict[str, str | 
         archive=candidate_dir / "firmware.zip",
         candidate_sha=OID,
         source_sha=OID,
+        release_id="12345",
         release_tag="v1.2.3-rc.1",
+        prerelease="true",
         tag_oid=OID,
         latest_oid=OID,
+        latest_exists="true",
         resume="false",
     )
     manifest = artifact.create_archive(args)
@@ -121,6 +124,53 @@ def test_release_candidate_rejects_non_boolean_resume_state(tmp_path: Path) -> N
     (candidate_dir / "candidate.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     with pytest.raises(TypeError, match="resume state must be a boolean"):
+        artifact.validate_candidate(candidate_dir)
+
+
+def test_release_candidate_supports_an_absent_latest_alias(tmp_path: Path) -> None:
+    """The first stable release should represent a missing latest tag without a fake OID."""
+    artifact, candidate_dir, manifest = create_candidate(tmp_path)
+    manifest["latest_exists"] = False
+    manifest["latest_oid"] = ""
+    firmware = tmp_path / "firmware.bin"
+    firmware.write_bytes(b"firmware bytes")
+    args = argparse.Namespace(
+        firmware=firmware,
+        archive=candidate_dir / "firmware.zip",
+        candidate_sha=OID,
+        source_sha=OID,
+        release_id="12345",
+        release_tag="v1.2.3",
+        prerelease="false",
+        tag_oid=OID,
+        latest_oid="",
+        latest_exists="false",
+        resume="false",
+    )
+    manifest = artifact.create_archive(args)
+    (candidate_dir / "candidate.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert artifact.validate_candidate(candidate_dir) == manifest
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("release_id", "0", "release ID"),
+        ("release_id", "not-an-id", "release ID"),
+        ("prerelease", "false", "prerelease state"),
+        ("latest_exists", "false", "latest exists state"),
+    ],
+)
+def test_release_candidate_rejects_invalid_release_identity_metadata(
+    tmp_path: Path, field: str, value: str, message: str
+) -> None:
+    """Release-object and ref-existence metadata must retain strict JSON types."""
+    artifact, candidate_dir, manifest = create_candidate(tmp_path)
+    manifest[field] = value
+    (candidate_dir / "candidate.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises((TypeError, ValueError), match=message):
         artifact.validate_candidate(candidate_dir)
 
 
