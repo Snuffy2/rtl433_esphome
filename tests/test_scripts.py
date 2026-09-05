@@ -132,7 +132,7 @@ class FakePlatformIOEnv:
 
         self.build_middlewares: list[Callable[[object], object | None]] = []
 
-    def AddBuildMiddleware(self, callback: Callable[[object], object | None]) -> None:  # noqa: N802
+    def AddBuildMiddleware(self, callback: Callable[[object], object | None]) -> None:
         """Record a PlatformIO build middleware callback."""
 
         self.build_middlewares.append(callback)

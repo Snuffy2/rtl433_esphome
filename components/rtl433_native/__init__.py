@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
+import re
 from typing import Any
 
 from esphome import automation
 import esphome.codegen as cg
 from esphome.components import binary_sensor, button, sensor, switch, text, text_sensor, time
 import esphome.config_validation as cv
-import esphome.final_validate as fv
 from esphome.const import (
     CONF_DEVICE_ID,
     CONF_DEVICES,
@@ -20,12 +19,13 @@ from esphome.const import (
     CONF_ESPHOME,
     CONF_ID,
     CONF_NAME,
-    CONF_VERSION,
     CONF_OTA,
     CONF_PLATFORMIO_OPTIONS,
     CONF_PROJECT,
+    CONF_VERSION,
 )
-from esphome.core import CORE, Define, ID
+from esphome.core import CORE, ID, Define
+import esphome.final_validate as fv
 
 _LOGGER = logging.getLogger(__name__)
 
