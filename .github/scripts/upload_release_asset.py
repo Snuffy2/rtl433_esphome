@@ -162,28 +162,6 @@ def request_json(
     return payload
 
 
-def delete_asset(url: str, token: str) -> None:
-    """Delete one existing release asset after its release identity is proven.
-
-    Args:
-        url: Exact asset deletion endpoint.
-        token: GitHub bearer token held only in memory.
-
-    Raises:
-        GitHubRequestError: If GitHub does not confirm the deletion.
-    """
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "Authorization": f"Bearer {token}",
-        "X-GitHub-Api-Version": API_VERSION,
-    }
-    response = http_request("DELETE", url, headers)
-    if response.status != 204:
-        raise GitHubRequestError(
-            f"GitHub API asset deletion returned unexpected HTTP status {response.status}."
-        )
-
-
 def require_release_identity(
     release: dict[str, Any], release_id: int, expected_tag: str, expected_prerelease: bool
 ) -> list[dict[str, Any]]:
@@ -304,7 +282,7 @@ def upload_release_asset(
     content_type: str,
     token: str,
 ) -> None:
-    """Replace one named asset only on the exact published GitHub release.
+    """Upload a missing named asset only on the exact published GitHub release.
 
     Args:
         repository: Repository in ``owner/repository`` form.
@@ -342,23 +320,18 @@ def upload_release_asset(
     if existing_assets:
         try:
             require_uploaded_asset(existing_assets[0], asset_name, size, digest)
-        except GitHubRequestError:
-            pass
+        except GitHubRequestError as error:
+            raise GitHubRequestError(
+                "Existing GitHub release asset conflicts with the candidate; preserve it and recover manually."
+            ) from error
         else:
             return
-        existing_id = existing_assets[0].get("id")
-        if type(existing_id) is not int or existing_id <= 0:
-            raise GitHubRequestError("Existing GitHub release asset has no valid ID.")
-        delete_asset(
-            f"{API_URL}/repos/{repository_path(repository)}/releases/assets/{existing_id}", token
-        )
 
     release = request_json("GET", endpoint, token, expected_status=200)
-    remaining = named_assets(
+    if named_assets(
         require_release_identity(release, release_id, expected_tag, expected_prerelease), asset_name
-    )
-    if remaining:
-        raise GitHubRequestError("Expected release asset still exists after replacement deletion.")
+    ):
+        raise GitHubRequestError("A same-name release asset appeared before upload.")
 
     upload_url = (
         f"{UPLOADS_URL}/repos/{repository_path(repository)}/releases/{release_id}/assets"
