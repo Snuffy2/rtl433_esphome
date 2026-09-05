@@ -42,8 +42,11 @@ def parse_args() -> argparse.Namespace:
     create.add_argument("--candidate-sha", required=True)
     create.add_argument("--source-sha", required=True)
     create.add_argument("--release-tag", required=True)
+    create.add_argument("--release-id", required=True)
+    create.add_argument("--prerelease", choices=("true", "false"), required=True)
     create.add_argument("--tag-oid", required=True)
     create.add_argument("--latest-oid", required=True)
+    create.add_argument("--latest-exists", choices=("true", "false"), required=True)
     create.add_argument("--resume", choices=("true", "false"), required=True)
     validate = subparsers.add_parser("validate")
     validate.add_argument("--candidate-dir", type=Path, required=True)
@@ -106,7 +109,10 @@ def candidate_manifest(args: argparse.Namespace, firmware_digest: str) -> dict[s
     return {
         "candidate_sha": args.candidate_sha,
         "firmware_sha256": firmware_digest,
+        "latest_exists": args.latest_exists == "true",
         "latest_oid": args.latest_oid,
+        "prerelease": args.prerelease == "true",
+        "release_id": args.release_id,
         "release_tag": args.release_tag,
         "resume": args.resume == "true",
         "source_sha": args.source_sha,
@@ -164,7 +170,10 @@ def read_candidate_manifest(path: Path) -> dict[str, str | bool]:
     expected = {
         "candidate_sha",
         "firmware_sha256",
+        "latest_exists",
         "latest_oid",
+        "prerelease",
+        "release_id",
         "release_tag",
         "resume",
         "source_sha",
@@ -172,14 +181,24 @@ def read_candidate_manifest(path: Path) -> dict[str, str | bool]:
     }
     if not isinstance(content, dict) or set(content) != expected:
         raise ValueError("Candidate metadata fields do not match the release contract")
-    if not isinstance(content["resume"], bool):
-        raise TypeError("Candidate resume state must be a boolean")
-    for key in expected - {"resume"}:
+    for key in ("latest_exists", "prerelease", "resume"):
+        if not isinstance(content[key], bool):
+            raise TypeError(f"Candidate {key.replace('_', ' ')} state must be a boolean")
+    for key in expected - {"latest_exists", "prerelease", "resume", "latest_oid"}:
         if not isinstance(content[key], str) or not content[key]:
             raise ValueError(f"Candidate metadata field {key} must be a non-empty string")
-    for key in ("candidate_sha", "source_sha", "tag_oid", "latest_oid"):
+    if not isinstance(content["latest_oid"], str):
+        raise TypeError("Candidate metadata field latest_oid must be a string")
+    for key in ("candidate_sha", "source_sha", "tag_oid"):
         if GIT_OID_PATTERN.fullmatch(content[key]) is None:
             raise ValueError(f"Candidate metadata field {key} must be a Git object ID")
+    if content["latest_exists"]:
+        if GIT_OID_PATTERN.fullmatch(content["latest_oid"]) is None:
+            raise ValueError("Candidate metadata field latest_oid must be a Git object ID")
+    elif content["latest_oid"]:
+        raise ValueError("Candidate metadata field latest_oid must be empty when latest is absent")
+    if not content["release_id"].isdigit() or int(content["release_id"]) <= 0:
+        raise ValueError("Candidate release ID must be a positive integer")
     if SHA256_PATTERN.fullmatch(content["firmware_sha256"]) is None:
         raise ValueError("Candidate firmware digest must be a SHA-256 digest")
     if SEMVER_TAG_PATTERN.fullmatch(content["release_tag"]) is None:

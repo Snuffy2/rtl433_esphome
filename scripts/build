@@ -10,19 +10,23 @@ cd "$(dirname "$0")/.."
 run_preflight=0
 update_global=0
 firmware_config="${FIRMWARE_CONFIG:-rtl433-esphome-heltec-lora-32-v2.yaml}"
+firmware_output=""
 rtl433_esphome_url="${RTL433_ESPHOME_URL:-}"
 rtl433_esphome_ref="${RTL433_ESPHOME_REF:-latest}"
 
+firmware_config_dir="$(cd "$(dirname "$firmware_config")" && pwd)"
+esphome_build_root="$firmware_config_dir/.esphome/build"
+
 usage() {
-  echo "Usage: ./scripts/build [--preflight] [--update-global]" >&2
+  echo "Usage: ./scripts/build [--preflight] [--update-global] [--firmware-output PATH]" >&2
 }
 
 generated_platformio_ini() {
   local candidate
   local latest=""
 
-  if [[ ! -d .esphome/build ]]; then
-    echo "No generated PlatformIO build directory found under .esphome/build." >&2
+  if [[ ! -d "$esphome_build_root" ]]; then
+    echo "No generated PlatformIO build directory found under $esphome_build_root." >&2
     exit 1
   fi
 
@@ -30,10 +34,10 @@ generated_platformio_ini() {
     if [[ -z "$latest" || "$candidate" -nt "$latest" ]]; then
       latest="$candidate"
     fi
-  done < <(find .esphome/build -mindepth 2 -maxdepth 2 -name platformio.ini -type f -print)
+  done < <(find "$esphome_build_root" -mindepth 2 -maxdepth 2 -name platformio.ini -type f -print)
 
   if [[ -z "$latest" ]]; then
-    echo "No generated PlatformIO config found under .esphome/build." >&2
+    echo "No generated PlatformIO config found under $esphome_build_root." >&2
     exit 1
   fi
 
@@ -48,6 +52,14 @@ while [[ "$#" -gt 0 ]]; do
     --update-global)
       run_preflight=1
       update_global=1
+      ;;
+    --firmware-output)
+      [[ "$#" -ge 2 ]] || {
+        usage
+        exit 2
+      }
+      firmware_output="$2"
+      shift
       ;;
     -h | --help)
       usage
@@ -86,3 +98,15 @@ if [[ "$run_preflight" -eq 1 ]]; then
 fi
 
 PLATFORMIO_BUILD_JOBS=1 "${esphome_command[@]}" compile "$firmware_config"
+
+if [[ -n "$firmware_output" ]]; then
+  firmware_files=()
+  while IFS= read -r candidate; do
+    firmware_files+=("$candidate")
+  done < <(find "$esphome_build_root" -type f -name firmware.bin -print | sort)
+  [[ "${#firmware_files[@]}" -eq 1 ]] || {
+    echo "Expected exactly one firmware.bin under $esphome_build_root; found ${#firmware_files[@]}." >&2
+    exit 1
+  }
+  printf '%s\n' "${firmware_files[0]}" > "$firmware_output"
+fi
