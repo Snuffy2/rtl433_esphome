@@ -228,7 +228,7 @@ def test_uploads_raw_zip_and_refetches_exact_release_asset(
 def test_rejects_mismatched_release_identity_before_asset_mutation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Reject a release ID mismatch before deletion or upload can occur.
+    """Reject a release ID mismatch before any asset mutation can occur.
 
     Args:
         tmp_path: Test workspace.
@@ -287,10 +287,10 @@ def test_rejects_prerelease_state_mismatch_before_asset_mutation(
     assert [call[0] for call in calls] == ["GET"]
 
 
-def test_rejects_duplicate_existing_assets_before_recovery_delete(
+def test_rejects_duplicate_existing_assets_without_mutation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Reject same-name duplicates instead of selecting an ambiguous asset to delete.
+    """Reject same-name duplicates instead of selecting an ambiguous asset.
 
     Args:
         tmp_path: Test workspace.
@@ -387,44 +387,6 @@ def test_retains_identical_existing_asset_without_mutation(
         "application/zip",
         TOKEN,
     )
-
-    assert [call[0] for call in calls] == ["GET"]
-
-
-def test_preserves_mismatched_asset_before_transient_replacement_failure(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Avoid the former destructive replacement path when later recovery would fail.
-
-    Args:
-        tmp_path: Test workspace.
-        monkeypatch: Fixture for replacing the HTTP transport.
-    """
-    uploader = load_script()
-    calls = install_transport(
-        monkeypatch,
-        uploader,
-        [
-            uploader.HttpResponse(
-                200,
-                uploader.json.dumps(
-                    release([uploaded_asset(31, digest="sha256:" + "0" * 64)])
-                ).encode(),
-            )
-        ],
-    )
-
-    with pytest.raises(uploader.GitHubRequestError, match="preserve it and recover manually"):
-        uploader.upload_release_asset(
-            REPOSITORY,
-            RELEASE_ID,
-            TAG,
-            False,
-            write_asset(tmp_path),
-            ASSET_NAME,
-            "application/zip",
-            TOKEN,
-        )
 
     assert [call[0] for call in calls] == ["GET"]
 

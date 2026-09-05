@@ -318,13 +318,16 @@ jobs:
         run: |
           set -euo pipefail
           stable_refs_mutated=false
+          verify_release_identity() {
+            python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
+              --repository "$GITHUB_REPOSITORY" \
+              --release-id "$RELEASE_ID" \
+              --expected-tag "$RELEASE_TAG" \
+              --expected-prerelease false \
+              --verify-only
+          }
           git fetch --force --no-tags origin "refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-          python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
-            --repository "$GITHUB_REPOSITORY" \
-            --release-id "$RELEASE_ID" \
-            --expected-tag "$RELEASE_TAG" \
-            --expected-prerelease false \
-            --verify-only
+          verify_release_identity
           python "$RUNNER_TEMP/trusted-release-scripts/update_release_version.py" "$RELEASE_TAG"
           git diff --quiet -- rtl433_esphome_version.py
           if [[ "$RESUME" == true ]]; then
@@ -351,20 +354,10 @@ jobs:
             git tag -fa "$RELEASE_TAG" -m "Release $RELEASE_TAG" "$CANDIDATE_SHA"
             promoted_tag_oid="$(git rev-parse "refs/tags/$RELEASE_TAG")"
             gh auth setup-git --hostname github.com
-            python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
-              --repository "$GITHUB_REPOSITORY" \
-              --release-id "$RELEASE_ID" \
-              --expected-tag "$RELEASE_TAG" \
-              --expected-prerelease false \
-              --verify-only
+            verify_release_identity
             git push --atomic --force-with-lease="refs/heads/$DEFAULT_BRANCH:$SOURCE_SHA" --force-with-lease="refs/tags/$RELEASE_TAG:$TAG_OID" origin "$CANDIDATE_SHA:refs/heads/$DEFAULT_BRANCH" "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
             stable_refs_mutated=true
-            if ! python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
-              --repository "$GITHUB_REPOSITORY" \
-              --release-id "$RELEASE_ID" \
-              --expected-tag "$RELEASE_TAG" \
-              --expected-prerelease false \
-              --verify-only; then
+            if ! verify_release_identity; then
               echo "::error::Release identity changed after stable ref promotion; compensating." >&2
               if ! git push --atomic --force-with-lease="refs/heads/$DEFAULT_BRANCH:$CANDIDATE_SHA" --force-with-lease="refs/tags/$RELEASE_TAG:$promoted_tag_oid" origin "$SOURCE_SHA:refs/heads/$DEFAULT_BRANCH" "$TAG_OID:refs/tags/$RELEASE_TAG"; then
                 echo "::error::Could not atomically compensate stable refs; they may have changed concurrently." >&2
@@ -428,6 +421,14 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          verify_release_identity() {
+            python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
+              --repository "$GITHUB_REPOSITORY" \
+              --release-id "$RELEASE_ID" \
+              --expected-tag "$RELEASE_TAG" \
+              --expected-prerelease false \
+              --verify-only
+          }
           verify_stable_refs() {
             refs="$(git ls-remote origin \
               "refs/heads/$DEFAULT_BRANCH" \
@@ -465,21 +466,11 @@ jobs:
             restore_latest=":refs/tags/latest"
           fi
           gh auth setup-git --hostname github.com
-          python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
-            --repository "$GITHUB_REPOSITORY" \
-            --release-id "$RELEASE_ID" \
-            --expected-tag "$RELEASE_TAG" \
-            --expected-prerelease false \
-            --verify-only
+          verify_release_identity
           git tag -f latest "$CANDIDATE_SHA"
           git push --force-with-lease="refs/tags/latest:$LATEST_OID" origin refs/tags/latest:refs/tags/latest
           release_identity_valid=true
-          if ! python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
-            --repository "$GITHUB_REPOSITORY" \
-            --release-id "$RELEASE_ID" \
-            --expected-tag "$RELEASE_TAG" \
-            --expected-prerelease false \
-            --verify-only; then
+          if ! verify_release_identity; then
             release_identity_valid=false
           fi
           stable_refs_owned=true
