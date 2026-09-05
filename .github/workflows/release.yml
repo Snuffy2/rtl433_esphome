@@ -317,6 +317,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          stable_refs_mutated=false
           git fetch --force --no-tags origin "refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
             --repository "$GITHUB_REPOSITORY" \
@@ -357,6 +358,7 @@ jobs:
               --expected-prerelease false \
               --verify-only
             git push --atomic --force-with-lease="refs/heads/$DEFAULT_BRANCH:$SOURCE_SHA" --force-with-lease="refs/tags/$RELEASE_TAG:$TAG_OID" origin "$CANDIDATE_SHA:refs/heads/$DEFAULT_BRANCH" "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            stable_refs_mutated=true
             if ! python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
               --repository "$GITHUB_REPOSITORY" \
               --release-id "$RELEASE_ID" \
@@ -381,6 +383,7 @@ jobs:
             fi
           fi
           echo "PROMOTED_TAG_OID=$promoted_tag_oid" >> "$GITHUB_ENV"
+          echo "STABLE_REFS_MUTATED=$stable_refs_mutated" >> "$GITHUB_ENV"
 
       - name: Verify release identity and upload the attested firmware
         env:
@@ -422,6 +425,7 @@ jobs:
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           verify_stable_refs() {
@@ -434,6 +438,22 @@ jobs:
             tag_sha="$(awk -v ref="refs/tags/$RELEASE_TAG^{}" '$2 == ref { print $1 }' <<< "$refs")"
             [[ "$main_oid" == "$CANDIDATE_SHA" && "$tag_oid" == "$PROMOTED_TAG_OID" && "$tag_sha" == "$CANDIDATE_SHA" ]]
           }
+          verify_original_stable_refs() {
+            git fetch --force --no-tags origin \
+              "refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" \
+              "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            [[ "$(git rev-parse "refs/remotes/origin/$DEFAULT_BRANCH")" == "$SOURCE_SHA" ]]
+            [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$TAG_OID" ]]
+            [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$SOURCE_SHA" ]]
+          }
+          verify_original_latest() {
+            current_latest="$(git ls-remote origin "refs/tags/latest" | awk '{ print $1 }')"
+            if [[ "$LATEST_EXISTS" == true ]]; then
+              [[ "$current_latest" == "$LATEST_OID" ]]
+            else
+              [[ -z "$current_latest" ]]
+            fi
+          }
           verify_stable_refs
           current_latest="$(git ls-remote origin "refs/tags/latest" | awk '{ print $1 }')"
           if [[ "$LATEST_EXISTS" == true ]]; then
@@ -444,15 +464,73 @@ jobs:
             [[ -z "$current_latest" ]]
             restore_latest=":refs/tags/latest"
           fi
-          git tag -f latest "$CANDIDATE_SHA"
           gh auth setup-git --hostname github.com
+          python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
+            --repository "$GITHUB_REPOSITORY" \
+            --release-id "$RELEASE_ID" \
+            --expected-tag "$RELEASE_TAG" \
+            --expected-prerelease false \
+            --verify-only
+          git tag -f latest "$CANDIDATE_SHA"
           git push --force-with-lease="refs/tags/latest:$LATEST_OID" origin refs/tags/latest:refs/tags/latest
+          release_identity_valid=true
+          if ! python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
+            --repository "$GITHUB_REPOSITORY" \
+            --release-id "$RELEASE_ID" \
+            --expected-tag "$RELEASE_TAG" \
+            --expected-prerelease false \
+            --verify-only; then
+            release_identity_valid=false
+          fi
+          stable_refs_owned=true
           if ! verify_stable_refs; then
-            git push --force-with-lease="refs/tags/latest:$CANDIDATE_SHA" origin "$restore_latest" || \
-              echo "Unable to restore latest after stable refs changed." >&2
+            stable_refs_owned=false
+          fi
+          latest_owned=true
+          if [[ "$(git ls-remote origin "refs/tags/latest" | awk '{ print $1 }')" != "$CANDIDATE_SHA" ]]; then
+            latest_owned=false
+          fi
+          if [[ "$release_identity_valid" == true && "$stable_refs_owned" == true && "$latest_owned" == true ]]; then
+            exit 0
+          fi
+          if [[ "$release_identity_valid" == false && "$STABLE_REFS_MUTATED" == true && "$stable_refs_owned" == true && "$latest_owned" == true ]]; then
+            if ! git push --atomic --force-with-lease="refs/heads/$DEFAULT_BRANCH:$CANDIDATE_SHA" --force-with-lease="refs/tags/$RELEASE_TAG:$PROMOTED_TAG_OID" --force-with-lease="refs/tags/latest:$CANDIDATE_SHA" origin "$SOURCE_SHA:refs/heads/$DEFAULT_BRANCH" "$TAG_OID:refs/tags/$RELEASE_TAG" "$restore_latest"; then
+              echo "::error::Could not atomically compensate refs after release identity changed." >&2
+              exit 1
+            fi
+            if ! verify_original_stable_refs || ! verify_original_latest; then
+              echo "::error::Could not confirm compensated stable refs and latest alias." >&2
+              exit 1
+            fi
+            echo "::error::Stable refs and latest were restored because release identity changed." >&2
             exit 1
           fi
-          [[ "$(git ls-remote origin "refs/tags/latest" | awk '{ print $1 }')" == "$CANDIDATE_SHA" ]]
+          if [[ "$release_identity_valid" == false && "$STABLE_REFS_MUTATED" == true && "$stable_refs_owned" == true ]]; then
+            if ! git push --atomic --force-with-lease="refs/heads/$DEFAULT_BRANCH:$CANDIDATE_SHA" --force-with-lease="refs/tags/$RELEASE_TAG:$PROMOTED_TAG_OID" origin "$SOURCE_SHA:refs/heads/$DEFAULT_BRANCH" "$TAG_OID:refs/tags/$RELEASE_TAG"; then
+              echo "::error::Could not atomically compensate stable refs after release identity changed." >&2
+              exit 1
+            fi
+            if ! verify_original_stable_refs; then
+              echo "::error::Could not confirm compensated stable refs." >&2
+              exit 1
+            fi
+          fi
+          if [[ "$latest_owned" == true ]]; then
+            if ! git push --force-with-lease="refs/tags/latest:$CANDIDATE_SHA" origin "$restore_latest"; then
+              echo "::error::Could not safely restore latest after final verification failed." >&2
+              exit 1
+            fi
+            if ! verify_original_latest; then
+              echo "::error::Could not confirm restored latest alias." >&2
+              exit 1
+            fi
+          fi
+          if [[ "$release_identity_valid" == false ]]; then
+            echo "::error::Release identity changed after latest mutation." >&2
+          else
+            echo "::error::Stable refs or latest changed after latest mutation." >&2
+          fi
+          exit 1
 
       - name: Delete validated temporary branch
         if: ${{ always() && steps.validation_ref.outcome == 'success' }}

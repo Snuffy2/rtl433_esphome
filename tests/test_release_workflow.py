@@ -230,16 +230,21 @@ def install_release_identity_stub(runner_temp: Path) -> Path:
         "counter = Path(os.environ['RELEASE_IDENTITY_COUNTER'])\n"
         "calls = int(counter.read_text() if counter.exists() else '0') + 1\n"
         "counter.write_text(str(calls))\n"
+        "drift_at = int(os.environ.get(\n"
+        "    'DRIFT_MAIN_AT',\n"
+        "    os.environ.get('FAIL_RELEASE_IDENTITY_AT', '0')\n"
+        "    if os.environ.get('DRIFT_MAIN') == 'true' else '0',\n"
+        "))\n"
+        "if calls == drift_at:\n"
+        "    subprocess.run(\n"
+        "        [\n"
+        "            'git', '--git-dir', os.environ['TEST_REMOTE'], 'update-ref',\n"
+        "            'refs/heads/main', os.environ['DRIFT_SHA'],\n"
+        "            os.environ['CANDIDATE_SHA'],\n"
+        "        ],\n"
+        "        check=True,\n"
+        "    )\n"
         "if calls == int(os.environ.get('FAIL_RELEASE_IDENTITY_AT', '0')):\n"
-        "    if os.environ.get('DRIFT_MAIN') == 'true':\n"
-        "        subprocess.run(\n"
-        "            [\n"
-        "                'git', '--git-dir', os.environ['TEST_REMOTE'], 'update-ref',\n"
-        "                'refs/heads/main', os.environ['DRIFT_SHA'],\n"
-        "                os.environ['CANDIDATE_SHA'],\n"
-        "            ],\n"
-        "            check=True,\n"
-        "        )\n"
         "    raise SystemExit('Simulated release identity change.')\n",
         encoding="utf-8",
     )
@@ -276,7 +281,9 @@ def run_stable_promotion_step(
         Completed workflow shell process.
     """
 
-    step = required_step(load_workflow("release.yml")["jobs"]["promote"], "git push --atomic")
+    step = required_step(
+        load_workflow("release.yml")["jobs"]["promote"], 'git tag -fa "$RELEASE_TAG"'
+    )
     counter = runner_temp / "release-identity-calls"
     return subprocess.run(
         ["bash", "-c", str(step["run"])],
@@ -424,7 +431,7 @@ def test_release_workflow_uses_real_artifact_and_protected_gate_contracts() -> N
     archive = required_step(candidate, "release_firmware_artifact.py create")
     trusted_helpers = required_step(promote, "trusted_scripts=")
     gates = required_step(promote, "--required-check")
-    promotion = required_step(promote, "git push --atomic")
+    promotion = required_step(promote, 'git tag -fa "$RELEASE_TAG"')
     upload = required_step(promote, "--asset-name")
     cleanup = required_step(promote, 'origin ":refs/heads/$TEMP_REF"')
 
@@ -553,6 +560,27 @@ def test_stable_promotion_refuses_compensation_after_a_concurrent_ref_change(
     assert git(remote, "rev-parse", "refs/tags/v1.2.3^{}") == candidate_sha
 
 
+def test_stable_promotion_exports_ref_ownership_after_a_fresh_atomic_push(tmp_path: Path) -> None:
+    """Only a successful fresh promotion should mark stable refs as owned by this run."""
+
+    worktree, _remote, source_sha, candidate_sha, tag_oid = prepare_fresh_stable_promotion(tmp_path)
+    runner_temp = tmp_path / "runner-temp"
+    bin_dir = install_release_identity_stub(runner_temp)
+
+    result = run_stable_promotion_step(
+        worktree,
+        source_sha,
+        candidate_sha,
+        tag_oid,
+        runner_temp,
+        resume=False,
+        extra_env={"PATH": f"{bin_dir}:{os.environ['PATH']}"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert read_outputs(runner_temp / "github-env")["STABLE_REFS_MUTATED"] == "true"
+
+
 @pytest.mark.parametrize("resume", [False, True])
 def test_stable_promotion_skips_compensation_when_no_refs_mutate(
     tmp_path: Path, resume: bool
@@ -590,6 +618,7 @@ def test_stable_promotion_skips_compensation_when_no_refs_mutate(
 
     assert result.returncode == 0, result.stderr
     assert (runner_temp / "release-identity-calls").read_text(encoding="utf-8") == "1"
+    assert read_outputs(runner_temp / "github-env")["STABLE_REFS_MUTATED"] == "false"
     assert git(remote, "rev-parse", "refs/heads/main") == candidate_sha
     assert git(remote, "rev-parse", "refs/tags/v1.2.3") == tag_oid
 
@@ -644,21 +673,29 @@ def prepare_promoted_release(
 
 def run_latest_step(
     worktree: Path,
+    source_sha: str,
     candidate_sha: str,
     promoted_tag_oid: str,
+    tag_oid: str,
     latest_oid: str,
+    runner_temp: Path,
     *,
     latest_exists: bool,
+    stable_refs_mutated: bool,
     extra_env: Mapping[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Execute the production stable latest transition with a stubbed GitHub CLI.
 
     Args:
         worktree: Release worktree.
+        source_sha: Original published release commit.
         candidate_sha: Verified release candidate SHA.
         promoted_tag_oid: Expected annotated release tag OID.
+        tag_oid: Original direct release-tag object ID.
         latest_oid: Previously observed latest OID, or empty when absent.
+        runner_temp: Temporary runner directory containing trusted test helpers.
         latest_exists: Whether latest existed when the candidate was built.
+        stable_refs_mutated: Whether this run advanced stable main and release-tag refs.
         extra_env: Optional environment additions for race simulation.
 
     Returns:
@@ -666,6 +703,7 @@ def run_latest_step(
     """
 
     step = required_step(load_workflow("release.yml")["jobs"]["promote"], "verify_stable_refs()")
+    counter = runner_temp / "release-identity-calls"
     return subprocess.run(
         ["bash", "-c", str(step["run"])],
         cwd=worktree,
@@ -677,10 +715,18 @@ def run_latest_step(
             "CANDIDATE_SHA": candidate_sha,
             "DEFAULT_BRANCH": "main",
             "GH_TOKEN": "test-token",
+            "GITHUB_REPOSITORY": "example/release-test",
+            "GITHUB_TOKEN": "test-token",
             "LATEST_EXISTS": str(latest_exists).lower(),
             "LATEST_OID": latest_oid,
             "PROMOTED_TAG_OID": promoted_tag_oid,
+            "RELEASE_ID": "12345",
+            "RELEASE_IDENTITY_COUNTER": str(counter),
             "RELEASE_TAG": "v1.2.3",
+            "RUNNER_TEMP": str(runner_temp),
+            "SOURCE_SHA": source_sha,
+            "STABLE_REFS_MUTATED": str(stable_refs_mutated).lower(),
+            "TAG_OID": tag_oid,
             **(extra_env or {}),
         },
     )
@@ -695,22 +741,24 @@ def test_stable_latest_update_supports_create_and_compare_and_swap(
     worktree, remote, source_sha, candidate_sha, tag_oid, latest_oid = prepare_promoted_release(
         tmp_path, latest=latest
     )
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    gh = bin_dir / "gh"
-    gh.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    gh.chmod(0o755)
+    runner_temp = tmp_path / "runner-temp"
+    bin_dir = install_release_identity_stub(runner_temp)
 
     result = run_latest_step(
         worktree,
+        source_sha,
         candidate_sha,
         tag_oid,
+        source_sha,
         latest_oid,
+        runner_temp,
         latest_exists=latest,
+        stable_refs_mutated=True,
         extra_env={"PATH": f"{bin_dir}:{os.environ['PATH']}"},
     )
 
     assert result.returncode == 0, result.stderr
+    assert (runner_temp / "release-identity-calls").read_text(encoding="utf-8") == "2"
     assert git(remote, "rev-parse", "refs/tags/latest") == candidate_sha
     assert git(remote, "rev-parse", "refs/heads/main") == candidate_sha
     assert source_sha != candidate_sha
@@ -723,23 +771,22 @@ def test_stable_latest_update_rolls_back_when_release_refs_drift(tmp_path: Path)
         tmp_path, latest=True
     )
     drift_sha = source_sha
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    gh = bin_dir / "gh"
-    gh.write_text(
-        "#!/usr/bin/env bash\n"
-        'git --git-dir="$TEST_REMOTE" update-ref refs/heads/main "$DRIFT_SHA"\n',
-        encoding="utf-8",
-    )
-    gh.chmod(0o755)
+    runner_temp = tmp_path / "runner-temp"
+    bin_dir = install_release_identity_stub(runner_temp)
 
     result = run_latest_step(
         worktree,
+        source_sha,
         candidate_sha,
         tag_oid,
+        source_sha,
         latest_oid,
+        runner_temp,
         latest_exists=True,
+        stable_refs_mutated=True,
         extra_env={
+            "DRIFT_MAIN": "true",
+            "DRIFT_MAIN_AT": "2",
             "DRIFT_SHA": drift_sha,
             "PATH": f"{bin_dir}:{os.environ['PATH']}",
             "TEST_REMOTE": str(remote),
@@ -749,3 +796,80 @@ def test_stable_latest_update_rolls_back_when_release_refs_drift(tmp_path: Path)
     assert result.returncode != 0
     assert git(remote, "rev-parse", "refs/tags/latest") == source_sha
     assert git(remote, "rev-parse", "refs/heads/main") == drift_sha
+    assert git(remote, "rev-parse", "refs/tags/v1.2.3") == tag_oid
+    assert git(remote, "rev-parse", "refs/tags/v1.2.3^{}") == candidate_sha
+
+
+@pytest.mark.parametrize("latest", [False, True])
+def test_stable_latest_compensates_when_final_release_identity_changes(
+    tmp_path: Path, latest: bool
+) -> None:
+    """A final release-object failure should restore stable refs and original latest state."""
+
+    worktree, remote, source_sha, candidate_sha, tag_oid, latest_oid = prepare_promoted_release(
+        tmp_path, latest=latest
+    )
+    runner_temp = tmp_path / "runner-temp"
+    bin_dir = install_release_identity_stub(runner_temp)
+
+    result = run_latest_step(
+        worktree,
+        source_sha,
+        candidate_sha,
+        tag_oid,
+        source_sha,
+        latest_oid,
+        runner_temp,
+        latest_exists=latest,
+        stable_refs_mutated=True,
+        extra_env={
+            "FAIL_RELEASE_IDENTITY_AT": "2",
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        },
+    )
+
+    assert result.returncode != 0
+    assert "Stable refs and latest were restored because release identity changed" in result.stderr
+    assert (runner_temp / "release-identity-calls").read_text(encoding="utf-8") == "2"
+    assert git(remote, "rev-parse", "refs/heads/main") == source_sha
+    assert git(remote, "rev-parse", "refs/tags/v1.2.3") == source_sha
+    assert git(remote, "rev-parse", "refs/tags/v1.2.3^{}") == source_sha
+    if latest:
+        assert git(remote, "rev-parse", "refs/tags/latest") == latest_oid
+    else:
+        assert git(remote, "for-each-ref", "--format=%(objectname)", "refs/tags/latest") == ""
+
+
+def test_stable_latest_resume_preserves_stable_refs_after_final_release_invalidation(
+    tmp_path: Path,
+) -> None:
+    """A resumed release must only roll back latest because this run did not promote stable refs."""
+
+    worktree, remote, source_sha, candidate_sha, tag_oid, latest_oid = prepare_promoted_release(
+        tmp_path, latest=False
+    )
+    runner_temp = tmp_path / "runner-temp"
+    bin_dir = install_release_identity_stub(runner_temp)
+
+    result = run_latest_step(
+        worktree,
+        source_sha,
+        candidate_sha,
+        tag_oid,
+        tag_oid,
+        latest_oid,
+        runner_temp,
+        latest_exists=False,
+        stable_refs_mutated=False,
+        extra_env={
+            "FAIL_RELEASE_IDENTITY_AT": "2",
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        },
+    )
+
+    assert result.returncode != 0
+    assert "Release identity changed after latest mutation" in result.stderr
+    assert git(remote, "rev-parse", "refs/heads/main") == candidate_sha
+    assert git(remote, "rev-parse", "refs/tags/v1.2.3") == tag_oid
+    assert git(remote, "rev-parse", "refs/tags/v1.2.3^{}") == candidate_sha
+    assert git(remote, "for-each-ref", "--format=%(objectname)", "refs/tags/latest") == ""

@@ -323,10 +323,10 @@ def test_rejects_duplicate_existing_assets_before_recovery_delete(
     assert [call[0] for call in calls] == ["GET"]
 
 
-def test_replaces_existing_asset_only_after_refetching_release_identity(
+def test_preserves_mismatched_existing_asset_without_mutation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Delete a rerun asset, re-prove release identity, then upload its replacement.
+    """Fail closed when a same-name asset does not match the candidate digest.
 
     Args:
         tmp_path: Test workspace.
@@ -342,27 +342,23 @@ def test_replaces_existing_asset_only_after_refetching_release_identity(
                 uploader.json.dumps(
                     release([uploaded_asset(31, digest="sha256:" + "0" * 64)])
                 ).encode(),
-            ),
-            uploader.HttpResponse(204, b""),
-            uploader.HttpResponse(200, uploader.json.dumps(release()).encode()),
-            uploader.HttpResponse(201, uploader.json.dumps(uploaded_asset()).encode()),
-            uploader.HttpResponse(200, uploader.json.dumps(release([uploaded_asset()])).encode()),
+            )
         ],
     )
 
-    uploader.upload_release_asset(
-        REPOSITORY,
-        RELEASE_ID,
-        TAG,
-        False,
-        write_asset(tmp_path),
-        ASSET_NAME,
-        "application/zip",
-        TOKEN,
-    )
+    with pytest.raises(uploader.GitHubRequestError, match="preserve it and recover manually"):
+        uploader.upload_release_asset(
+            REPOSITORY,
+            RELEASE_ID,
+            TAG,
+            False,
+            write_asset(tmp_path),
+            ASSET_NAME,
+            "application/zip",
+            TOKEN,
+        )
 
-    assert [call[0] for call in calls] == ["GET", "DELETE", "GET", "POST", "GET"]
-    assert calls[1][1].endswith("/releases/assets/31")
+    assert [call[0] for call in calls] == ["GET"]
 
 
 def test_retains_identical_existing_asset_without_mutation(
@@ -395,31 +391,14 @@ def test_retains_identical_existing_asset_without_mutation(
     assert [call[0] for call in calls] == ["GET"]
 
 
-@pytest.mark.parametrize(
-    ("replacement", "message"),
-    [
-        (lambda uploader: uploader.HttpResponse(404, b"{}"), "unexpected HTTP status"),
-        (
-            lambda uploader: uploader.HttpResponse(
-                200, uploader.json.dumps(release(tag_name="v9.9.9")).encode()
-            ),
-            "expected published identity",
-        ),
-    ],
-)
-def test_stops_after_delete_when_release_is_deleted_or_recreated(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    replacement: Any,
-    message: str,
+def test_preserves_mismatched_asset_before_transient_replacement_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Withhold upload if the release disappears or is replaced after deletion.
+    """Avoid the former destructive replacement path when later recovery would fail.
 
     Args:
         tmp_path: Test workspace.
         monkeypatch: Fixture for replacing the HTTP transport.
-        replacement: Deleted or replaced release response factory.
-        message: Expected fail-closed error text.
     """
     uploader = load_script()
     calls = install_transport(
@@ -431,13 +410,11 @@ def test_stops_after_delete_when_release_is_deleted_or_recreated(
                 uploader.json.dumps(
                     release([uploaded_asset(31, digest="sha256:" + "0" * 64)])
                 ).encode(),
-            ),
-            uploader.HttpResponse(204, b""),
-            replacement(uploader),
+            )
         ],
     )
 
-    with pytest.raises(uploader.GitHubRequestError, match=message):
+    with pytest.raises(uploader.GitHubRequestError, match="preserve it and recover manually"):
         uploader.upload_release_asset(
             REPOSITORY,
             RELEASE_ID,
@@ -449,7 +426,7 @@ def test_stops_after_delete_when_release_is_deleted_or_recreated(
             TOKEN,
         )
 
-    assert [call[0] for call in calls] == ["GET", "DELETE", "GET"]
+    assert [call[0] for call in calls] == ["GET"]
 
 
 @pytest.mark.parametrize(
