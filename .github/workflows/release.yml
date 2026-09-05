@@ -351,6 +351,8 @@ jobs:
             [[ "$(git rev-parse "refs/remotes/origin/$DEFAULT_BRANCH")" == "$SOURCE_SHA" ]]
             [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$TAG_OID" ]]
             [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$SOURCE_SHA" ]]
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git tag -fa "$RELEASE_TAG" -m "Release $RELEASE_TAG" "$CANDIDATE_SHA"
             promoted_tag_oid="$(git rev-parse "refs/tags/$RELEASE_TAG")"
             gh auth setup-git --hostname github.com

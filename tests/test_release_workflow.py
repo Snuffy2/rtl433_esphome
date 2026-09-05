@@ -75,7 +75,14 @@ def git(cwd: Path, *arguments: str, env: Mapping[str, str] | None = None) -> str
         check=True,
         capture_output=True,
         text=True,
-        env={**os.environ, **(env or {})},
+        env={
+            **os.environ,
+            "GIT_AUTHOR_NAME": "Release Test",
+            "GIT_AUTHOR_EMAIL": "release@example.invalid",
+            "GIT_COMMITTER_NAME": "Release Test",
+            "GIT_COMMITTER_EMAIL": "release@example.invalid",
+            **(env or {}),
+        },
     )
     return result.stdout.strip()
 
@@ -574,7 +581,11 @@ def test_stable_promotion_exports_ref_ownership_after_a_fresh_atomic_push(tmp_pa
         tag_oid,
         runner_temp,
         resume=False,
-        extra_env={"PATH": f"{bin_dir}:{os.environ['PATH']}"},
+        extra_env={
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        },
     )
 
     assert result.returncode == 0, result.stderr
