@@ -47,33 +47,54 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           EVENT_SHA: ${{ github.sha }}
           IS_PRERELEASE: ${{ github.event.release.prerelease }}
+          RELEASE_ID: ${{ github.event.release.id }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
           trusted_sha="$(git rev-parse HEAD)"
           git fetch --force --no-tags origin \
             "refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" \
-            "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG" \
-            "refs/tags/latest:refs/tags/latest"
+            "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           main_sha="$(git rev-parse "refs/remotes/origin/$DEFAULT_BRANCH")"
           tag_sha="$(git rev-parse "refs/tags/$RELEASE_TAG^{}")"
           tag_oid="$(git rev-parse "refs/tags/$RELEASE_TAG")"
-          latest_oid="$(git rev-parse refs/tags/latest)"
+          latest_exists=false
+          latest_oid=""
+          if git fetch --force --no-tags origin "refs/tags/latest:refs/tags/latest"; then
+            latest_exists=true
+            latest_oid="$(git rev-parse refs/tags/latest)"
+          fi
           resume=false
           source_sha="$EVENT_SHA"
           candidate_sha="$EVENT_SHA"
           [[ "$trusted_sha" == "$EVENT_SHA" ]] || { echo "Trusted checkout does not match the release event SHA." >&2; exit 1; }
+          [[ "$RELEASE_ID" =~ ^[1-9][0-9]*$ ]] || { echo "Release event did not provide a valid release ID." >&2; exit 1; }
+          version_without_build="${RELEASE_TAG%%+*}"
+          tag_is_prerelease=false
+          [[ "$version_without_build" == *-* ]] && tag_is_prerelease=true
+          [[ "$IS_PRERELEASE" == "$tag_is_prerelease" ]] || { echo "Release tag and published prerelease state disagree." >&2; exit 1; }
           if [[ "$IS_PRERELEASE" == true ]]; then
             [[ "$tag_sha" == "$EVENT_SHA" ]] || { echo "Prerelease tag does not match the immutable release event SHA." >&2; exit 1; }
             git merge-base --is-ancestor "$EVENT_SHA" "$main_sha" || { echo "Prerelease event SHA is not an ancestor of the default branch." >&2; exit 1; }
+            python .github/scripts/update_release_version.py "$RELEASE_TAG"
+            git add rtl433_esphome_version.py
+            git diff --cached --check
+            if ! git diff --cached --quiet; then
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git commit -m "Release $RELEASE_TAG"
+              candidate_sha="$(git rev-parse HEAD)"
+            fi
           elif [[ "$main_sha" == "$EVENT_SHA" && "$tag_sha" == "$EVENT_SHA" ]]; then
             python .github/scripts/update_release_version.py "$RELEASE_TAG"
             git add rtl433_esphome_version.py
             git diff --cached --check
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "Release $RELEASE_TAG"
-            candidate_sha="$(git rev-parse HEAD)"
+            if ! git diff --cached --quiet; then
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git commit -m "Release $RELEASE_TAG"
+              candidate_sha="$(git rev-parse HEAD)"
+            fi
           else
             [[ "$main_sha" == "$tag_sha" ]] || { echo "Release main and tag do not identify one resumable candidate." >&2; exit 1; }
             [[ "$(git rev-parse "${main_sha}^")" == "$EVENT_SHA" ]] || { echo "Resumed candidate is not based on the immutable release event SHA." >&2; exit 1; }
@@ -84,14 +105,16 @@ jobs:
             candidate_sha="$main_sha"
             resume=true
           fi
-          if [[ "$IS_PRERELEASE" == true ]]; then
-            python .github/scripts/update_release_version.py "$RELEASE_TAG"
-          fi
+          git diff --quiet
+          git diff --cached --quiet
           {
             echo "candidate-sha=$candidate_sha"
             echo "source-sha=$source_sha"
             echo "tag-oid=$tag_oid"
             echo "latest-oid=$latest_oid"
+            echo "latest-exists=$latest_exists"
+            echo "prerelease=$IS_PRERELEASE"
+            echo "release-id=$RELEASE_ID"
             echo "resume=$resume"
           } >> "$GITHUB_OUTPUT"
 
@@ -112,7 +135,7 @@ jobs:
           path: |
             ~/.platformio/.cache
             ~/.platformio/packages
-            .esphome/external_components
+            ${{ runner.temp }}/.esphome/external_components
           key: ${{ runner.os }}-release-esphome-pio-${{ steps.candidate.outputs.candidate-sha }}-${{ hashFiles('pyproject.toml', 'uv.lock', 'rtl433-esphome-heltec-lora-32-v2.yaml', 'components/rtl433_native/__init__.py', 'rtl433_esphome_version.py') }}
           restore-keys: |
             ${{ runner.os }}-release-esphome-pio-
@@ -126,12 +149,16 @@ jobs:
           cp secrets.yaml.example secrets.yaml
           cp secrets.yaml.example "$RUNNER_TEMP/secrets.yaml"
           python .github/scripts/prepare_release_firmware_config.py --source rtl433-esphome-heltec-lora-32-v2.yaml --destination "$FIRMWARE_CONFIG" --components components
-          ./scripts/build
+          ./scripts/build --firmware-output "$RUNNER_TEMP/firmware-path"
 
       - name: Archive and attest the candidate firmware
         env:
           CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate-sha }}
+          FIRMWARE_PATH_FILE: ${{ runner.temp }}/firmware-path
+          LATEST_EXISTS: ${{ steps.candidate.outputs.latest-exists }}
           LATEST_OID: ${{ steps.candidate.outputs.latest-oid }}
+          PRERELEASE: ${{ steps.candidate.outputs.prerelease }}
+          RELEASE_ID: ${{ steps.candidate.outputs.release-id }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RESUME: ${{ steps.candidate.outputs.resume }}
           SOURCE_SHA: ${{ steps.candidate.outputs.source-sha }}
@@ -140,11 +167,10 @@ jobs:
           set -euo pipefail
           candidate_dir="$RUNNER_TEMP/release-candidate"
           mkdir -p "$candidate_dir"
-          mapfile -t firmware_files < <(find .esphome/build -type f -name firmware.bin -print | sort)
-          [[ "${#firmware_files[@]}" -eq 1 ]] || { echo "Expected exactly one firmware.bin output." >&2; exit 1; }
+          firmware_file="$(< "$FIRMWARE_PATH_FILE")"
           git update-ref refs/release-candidate "$CANDIDATE_SHA"
           git bundle create "$candidate_dir/candidate.bundle" refs/release-candidate
-          python .github/scripts/release_firmware_artifact.py create --firmware "${firmware_files[0]}" --archive "$candidate_dir/firmware.zip" --candidate-sha "$CANDIDATE_SHA" --source-sha "$SOURCE_SHA" --release-tag "$RELEASE_TAG" --tag-oid "$TAG_OID" --latest-oid "$LATEST_OID" --resume "$RESUME" > "$candidate_dir/candidate.json"
+          python .github/scripts/release_firmware_artifact.py create --firmware "$firmware_file" --archive "$candidate_dir/firmware.zip" --candidate-sha "$CANDIDATE_SHA" --source-sha "$SOURCE_SHA" --release-id "$RELEASE_ID" --release-tag "$RELEASE_TAG" --prerelease "$PRERELEASE" --tag-oid "$TAG_OID" --latest-oid "$LATEST_OID" --latest-exists "$LATEST_EXISTS" --resume "$RESUME" > "$candidate_dir/candidate.json"
           python .github/scripts/release_firmware_artifact.py validate --candidate-dir "$candidate_dir" > /dev/null
 
       - name: Upload verified candidate
@@ -165,7 +191,10 @@ jobs:
     needs: candidate
     runs-on: ubuntu-latest
     permissions:
+      actions: write
+      checks: read
       contents: write
+      statuses: write
     steps:
       - name: Checkout trusted default-branch workflow revision
         uses: actions/checkout@v7
@@ -173,6 +202,20 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Stage trusted release helpers outside the candidate checkout
+        id: trusted
+        run: |
+          set -euo pipefail
+          trusted_scripts="$RUNNER_TEMP/trusted-release-scripts"
+          mkdir -p "$trusted_scripts"
+          cp \
+            .github/scripts/release_firmware_artifact.py \
+            .github/scripts/update_release_version.py \
+            .github/scripts/upload_release_asset.py \
+            .github/scripts/verify_release_checks.py \
+            "$trusted_scripts/"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Download the candidate into a bounded directory
         uses: actions/download-artifact@v4
@@ -183,20 +226,29 @@ jobs:
       - name: Validate complete candidate contents and export trusted metadata
         env:
           CANDIDATE_DIR: ${{ runner.temp }}/release-candidate
+          EVENT_PRERELEASE: ${{ github.event.release.prerelease }}
+          EVENT_RELEASE_ID: ${{ github.event.release.id }}
           EVENT_SHA: ${{ github.sha }}
           EVENT_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          python .github/scripts/release_firmware_artifact.py validate --candidate-dir "$CANDIDATE_DIR" > "$RUNNER_TEMP/candidate.json"
+          python "$RUNNER_TEMP/trusted-release-scripts/release_firmware_artifact.py" validate --candidate-dir "$CANDIDATE_DIR" > "$RUNNER_TEMP/candidate.json"
           python3 - "$RUNNER_TEMP/candidate.json" >> "$GITHUB_ENV" <<'PY'
           import json
           import os
           import sys
           manifest = json.load(open(sys.argv[1], encoding="utf-8"))
-          if manifest["source_sha"] != os.environ["EVENT_SHA"] or manifest["release_tag"] != os.environ["EVENT_TAG"]:
+          if (
+              manifest["source_sha"] != os.environ["EVENT_SHA"]
+              or manifest["release_tag"] != os.environ["EVENT_TAG"]
+              or manifest["release_id"] != os.environ["EVENT_RELEASE_ID"]
+              or manifest["prerelease"] != (os.environ["EVENT_PRERELEASE"] == "true")
+          ):
               raise SystemExit("Candidate metadata does not bind to this release event.")
-          for name, key in (("CANDIDATE_SHA", "candidate_sha"), ("LATEST_OID", "latest_oid"), ("RELEASE_TAG", "release_tag"), ("SOURCE_SHA", "source_sha"), ("TAG_OID", "tag_oid")):
+          for name, key in (("CANDIDATE_SHA", "candidate_sha"), ("LATEST_OID", "latest_oid"), ("RELEASE_ID", "release_id"), ("RELEASE_TAG", "release_tag"), ("SOURCE_SHA", "source_sha"), ("TAG_OID", "tag_oid")):
               print(f"{name}={manifest[key]}")
+          print(f"LATEST_EXISTS={'true' if manifest['latest_exists'] else 'false'}")
+          print(f"PRERELEASE={'true' if manifest['prerelease'] else 'false'}")
           print(f"RESUME={'true' if manifest['resume'] else 'false'}")
           PY
       - name: Import the validated candidate commit
@@ -218,57 +270,170 @@ jobs:
           set -euo pipefail
           gh attestation verify "$CANDIDATE_DIR/firmware.zip" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" --deny-self-hosted-runners
 
+      - name: Prove the candidate commit matches the release event
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/trusted-release-scripts/update_release_version.py" "$RELEASE_TAG"
+          git diff --quiet -- rtl433_esphome_version.py
+          if [[ "$CANDIDATE_SHA" != "$SOURCE_SHA" ]]; then
+            [[ "$(git rev-list --parents -n 1 "$CANDIDATE_SHA" | wc -w)" -eq 2 ]]
+            [[ "$(git rev-parse "$CANDIDATE_SHA^")" == "$SOURCE_SHA" ]]
+            [[ "$(git show -s --format=%s "$CANDIDATE_SHA")" == "Release $RELEASE_TAG" ]]
+            [[ "$(git diff --name-only "$SOURCE_SHA" "$CANDIDATE_SHA")" == "rtl433_esphome_version.py" ]]
+          fi
+
+      - name: Publish candidate to an isolated validation branch
+        id: validation_ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          temp_ref="release-validation/${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git check-ref-format --branch "$temp_ref"
+          gh auth setup-git --hostname github.com
+          git push origin "$CANDIDATE_SHA:refs/heads/$temp_ref"
+          echo "name=$temp_ref" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch and verify immutable release gates
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          TRUSTED_WORKFLOW_SHA: ${{ steps.trusted.outputs.sha }}
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/trusted-release-scripts/verify_release_checks.py" \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow-ref "$DEFAULT_BRANCH" \
+            --workflow-sha "$TRUSTED_WORKFLOW_SHA" \
+            --sha "$CANDIDATE_SHA" \
+            --required-check 'validation.yml::Test and build' \
+            --required-check 'prek-autofix-review.yml::review'
+
       - name: Prove candidate provenance and atomically advance stable refs
         if: github.event.release.prerelease == false
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git fetch --force --no-tags origin "refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-          [[ "$(git show -s --format=%s "$CANDIDATE_SHA")" == "Release $RELEASE_TAG" ]]
-          [[ "$(git diff --name-only "$SOURCE_SHA" "$CANDIDATE_SHA")" == "rtl433_esphome_version.py" ]]
-          python .github/scripts/update_release_version.py "$RELEASE_TAG"
+          python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
+            --repository "$GITHUB_REPOSITORY" \
+            --release-id "$RELEASE_ID" \
+            --expected-tag "$RELEASE_TAG" \
+            --expected-prerelease false \
+            --verify-only
+          python "$RUNNER_TEMP/trusted-release-scripts/update_release_version.py" "$RELEASE_TAG"
           git diff --quiet -- rtl433_esphome_version.py
           if [[ "$RESUME" == true ]]; then
+            [[ "$CANDIDATE_SHA" != "$SOURCE_SHA" ]]
+            [[ "$(git show -s --format=%s "$CANDIDATE_SHA")" == "Release $RELEASE_TAG" ]]
+            [[ "$(git diff --name-only "$SOURCE_SHA" "$CANDIDATE_SHA")" == "rtl433_esphome_version.py" ]]
             [[ "$(git rev-parse "refs/remotes/origin/$DEFAULT_BRANCH")" == "$CANDIDATE_SHA" ]]
             [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$CANDIDATE_SHA" ]]
+            [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$TAG_OID" ]]
+            promoted_tag_oid="$TAG_OID"
+          elif [[ "$CANDIDATE_SHA" == "$SOURCE_SHA" ]]; then
+            [[ "$(git rev-parse "refs/remotes/origin/$DEFAULT_BRANCH")" == "$SOURCE_SHA" ]]
+            [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$TAG_OID" ]]
+            [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$SOURCE_SHA" ]]
+            promoted_tag_oid="$TAG_OID"
           else
+            [[ "$(git show -s --format=%s "$CANDIDATE_SHA")" == "Release $RELEASE_TAG" ]]
+            [[ "$(git diff --name-only "$SOURCE_SHA" "$CANDIDATE_SHA")" == "rtl433_esphome_version.py" ]]
             [[ "$(git rev-list --parents -n 1 "$CANDIDATE_SHA" | wc -w)" -eq 2 ]]
             [[ "$(git rev-parse "$CANDIDATE_SHA^")" == "$SOURCE_SHA" ]]
             [[ "$(git rev-parse "refs/remotes/origin/$DEFAULT_BRANCH")" == "$SOURCE_SHA" ]]
             [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$TAG_OID" ]]
             [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$SOURCE_SHA" ]]
             git tag -fa "$RELEASE_TAG" -m "Release $RELEASE_TAG" "$CANDIDATE_SHA"
+            promoted_tag_oid="$(git rev-parse "refs/tags/$RELEASE_TAG")"
             gh auth setup-git --hostname github.com
             git push --atomic --force-with-lease="refs/heads/$DEFAULT_BRANCH:$SOURCE_SHA" --force-with-lease="refs/tags/$RELEASE_TAG:$TAG_OID" origin "$CANDIDATE_SHA:refs/heads/$DEFAULT_BRANCH" "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           fi
+          echo "PROMOTED_TAG_OID=$promoted_tag_oid" >> "$GITHUB_ENV"
 
       - name: Verify release identity and upload the attested firmware
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
           CANDIDATE_DIR: ${{ runner.temp }}/release-candidate
         run: |
           set -euo pipefail
           git fetch --force --no-tags origin "refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-          [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$CANDIDATE_SHA" ]]
-          if [[ "${{ github.event.release.prerelease }}" == false ]]; then
+          if [[ "$PRERELEASE" == false ]]; then
+            [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$CANDIDATE_SHA" ]]
             [[ "$(git rev-parse "refs/remotes/origin/$DEFAULT_BRANCH")" == "$CANDIDATE_SHA" ]]
+            [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$PROMOTED_TAG_OID" ]]
           else
             git merge-base --is-ancestor "$SOURCE_SHA" "refs/remotes/origin/$DEFAULT_BRANCH"
+            [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" == "$SOURCE_SHA" ]]
             [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$TAG_OID" ]]
           fi
-          gh release upload "$RELEASE_TAG" "$CANDIDATE_DIR/firmware.zip#rtl433_esphome-$RELEASE_TAG.zip" --clobber
+          python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
+            --repository "$GITHUB_REPOSITORY" \
+            --release-id "$RELEASE_ID" \
+            --expected-tag "$RELEASE_TAG" \
+            --expected-prerelease "$PRERELEASE" \
+            --asset "$CANDIDATE_DIR/firmware.zip" \
+            --asset-name "rtl433_esphome-$RELEASE_TAG.zip" \
+            --content-type application/zip
+          python "$RUNNER_TEMP/trusted-release-scripts/upload_release_asset.py" \
+            --repository "$GITHUB_REPOSITORY" \
+            --release-id "$RELEASE_ID" \
+            --expected-tag "$RELEASE_TAG" \
+            --expected-prerelease "$PRERELEASE" \
+            --asset "$CANDIDATE_DIR/candidate.bundle" \
+            --asset-name "rtl433_esphome-$RELEASE_TAG-source.bundle" \
+            --content-type application/octet-stream
 
       - name: Compare-and-swap the stable latest alias after upload
         if: github.event.release.prerelease == false
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git fetch --force --no-tags origin "refs/tags/latest:refs/tags/latest"
-          [[ "$(git rev-parse refs/tags/latest)" == "$LATEST_OID" ]]
+          verify_stable_refs() {
+            refs="$(git ls-remote origin \
+              "refs/heads/$DEFAULT_BRANCH" \
+              "refs/tags/$RELEASE_TAG" \
+              "refs/tags/$RELEASE_TAG^{}")"
+            main_oid="$(awk -v ref="refs/heads/$DEFAULT_BRANCH" '$2 == ref { print $1 }' <<< "$refs")"
+            tag_oid="$(awk -v ref="refs/tags/$RELEASE_TAG" '$2 == ref { print $1 }' <<< "$refs")"
+            tag_sha="$(awk -v ref="refs/tags/$RELEASE_TAG^{}" '$2 == ref { print $1 }' <<< "$refs")"
+            [[ "$main_oid" == "$CANDIDATE_SHA" && "$tag_oid" == "$PROMOTED_TAG_OID" && "$tag_sha" == "$CANDIDATE_SHA" ]]
+          }
+          verify_stable_refs
+          current_latest="$(git ls-remote origin "refs/tags/latest" | awk '{ print $1 }')"
+          if [[ "$LATEST_EXISTS" == true ]]; then
+            [[ "$current_latest" == "$LATEST_OID" ]]
+            git fetch --force --no-tags origin "refs/tags/latest:refs/tags/latest"
+            restore_latest="$LATEST_OID:refs/tags/latest"
+          else
+            [[ -z "$current_latest" ]]
+            restore_latest=":refs/tags/latest"
+          fi
           git tag -f latest "$CANDIDATE_SHA"
           gh auth setup-git --hostname github.com
           git push --force-with-lease="refs/tags/latest:$LATEST_OID" origin refs/tags/latest:refs/tags/latest
-          git fetch --force --no-tags origin "refs/tags/latest:refs/tags/latest"
-          [[ "$(git rev-parse "refs/tags/latest^{}")" == "$CANDIDATE_SHA" ]]
+          if ! verify_stable_refs; then
+            git push --force-with-lease="refs/tags/latest:$CANDIDATE_SHA" origin "$restore_latest" || \
+              echo "Unable to restore latest after stable refs changed." >&2
+            exit 1
+          fi
+          [[ "$(git ls-remote origin "refs/tags/latest" | awk '{ print $1 }')" == "$CANDIDATE_SHA" ]]
+
+      - name: Delete validated temporary branch
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TEMP_REF: ${{ steps.validation_ref.outputs.name }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git --hostname github.com
+          if ! git push --force-with-lease="refs/heads/$TEMP_REF:$CANDIDATE_SHA" origin ":refs/heads/$TEMP_REF"; then
+            echo "::warning::Validated temporary branch changed or could not be deleted safely."
+          fi

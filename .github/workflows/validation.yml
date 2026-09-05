@@ -6,6 +6,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Immutable commit SHA required by release orchestration
+        required: true
+        type: string
 
 concurrency:
   group: validation-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref }}
@@ -19,10 +24,27 @@ jobs:
     name: Test and build
     runs-on: ubuntu-latest
     steps:
+      - name: Require the dispatched release candidate SHA
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+
       - name: Checkout code
         uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.expected_sha || github.sha }}
           persist-credentials: false
+
+      - name: Verify the dispatched release candidate checkout
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_SHA" ]]
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -59,4 +81,4 @@ jobs:
         run: ./scripts/build
         env:
           RTL433_ESPHOME_URL: https://github.com/${{ github.event.pull_request.head.repo.full_name || github.repository }}.git
-          RTL433_ESPHOME_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+          RTL433_ESPHOME_REF: ${{ github.event.pull_request.head.sha || inputs.expected_sha || github.sha }}

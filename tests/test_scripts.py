@@ -40,6 +40,7 @@ def copy_script(tmp_path: Path, name: str) -> Path:
 def install_python_stub(
     tmp_path: Path,
     generated_platformio_ini: Path | None = None,
+    generated_firmware: Path | None = None,
     generated_component_ref: str = "latest",
 ) -> Path:
     """Install a fake venv Python executable that logs invocations.
@@ -48,6 +49,8 @@ def install_python_stub(
         tmp_path: Temporary repository root.
         generated_platformio_ini: Optional PlatformIO config to create when
             the fake ESPHome command generates build files.
+        generated_firmware: Optional firmware file to create when the fake
+            ESPHome command compiles.
         generated_component_ref: Component ref expected for the fake ESPHome
             command that generates build files.
 
@@ -75,6 +78,15 @@ def install_python_stub(
                     "'platform=https://example.invalid/generated.zip' "
                     f"> {shlex.quote(str(generated_platformio_ini))}"
                 ),
+                "fi",
+            ]
+        )
+    if generated_firmware is not None:
+        script_lines.extend(
+            [
+                'if [[ "$*" == *" compile "* ]]; then',
+                f"  mkdir -p {shlex.quote(str(generated_firmware.parent))}",
+                f"  printf 'firmware' > {shlex.quote(str(generated_firmware))}",
                 "fi",
             ]
         )
@@ -257,15 +269,67 @@ def test_build_accepts_explicit_component_source(
     assert python_log.read_text(encoding="utf-8").splitlines() == expected_invocations
 
 
+def test_build_exports_firmware_from_external_config_root(tmp_path: Path) -> None:
+    """Release builds should export firmware rooted beside their temporary config."""
+    script = copy_script(tmp_path, "build")
+    config_dir = tmp_path / "runner-temp"
+    config_dir.mkdir()
+    config = config_dir / "release-firmware.yaml"
+    config.write_text("esphome:\n  name: release-test\n", encoding="utf-8")
+    firmware = config_dir / ".esphome" / "build" / "release-test" / "firmware.bin"
+    install_python_stub(tmp_path, generated_firmware=firmware)
+    output = config_dir / "firmware-path"
+
+    result = run_script(
+        script,
+        "--firmware-output",
+        str(output),
+        env={"FIRMWARE_CONFIG": str(config)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert output.read_text(encoding="utf-8") == f"{firmware}\n"
+
+
+@pytest.mark.parametrize("firmware_count", [0, 2])
+def test_build_rejects_ambiguous_firmware_output(tmp_path: Path, firmware_count: int) -> None:
+    """Release builds should fail closed unless exactly one firmware file exists."""
+    script = copy_script(tmp_path, "build")
+    config_dir = tmp_path / "runner-temp"
+    config_dir.mkdir()
+    config = config_dir / "release-firmware.yaml"
+    config.write_text("esphome:\n  name: release-test\n", encoding="utf-8")
+    generated_firmware = (
+        config_dir / ".esphome" / "build" / "release-test" / "firmware.bin"
+        if firmware_count
+        else None
+    )
+    install_python_stub(tmp_path, generated_firmware=generated_firmware)
+    if firmware_count == 2:
+        second = config_dir / ".esphome" / "build" / "other-test" / "firmware.bin"
+        second.parent.mkdir(parents=True)
+        second.write_bytes(b"other firmware")
+
+    result = run_script(
+        script,
+        "--firmware-output",
+        str(config_dir / "firmware-path"),
+        env={"FIRMWARE_CONFIG": str(config)},
+    )
+
+    assert result.returncode == 1
+    assert f"found {firmware_count}" in result.stderr
+
+
 @pytest.mark.parametrize(
-    ("extra_args", "expected_preflight_args"),
+    ("extra_args", "update_global"),
     [
-        (("--update-global",), "--update-global .esphome/build/generated-node/platformio.ini"),
-        ((), ".esphome/build/generated-node/platformio.ini"),
+        (("--update-global",), True),
+        ((), False),
     ],
 )
 def test_build_preflight_modes(
-    tmp_path: Path, extra_args: tuple[str, ...], expected_preflight_args: str
+    tmp_path: Path, extra_args: tuple[str, ...], update_global: bool
 ) -> None:
     """Preflight builds should pass the freshly generated PlatformIO config."""
     script = copy_script(tmp_path, "build")
@@ -288,6 +352,9 @@ def test_build_preflight_modes(
         (f"-m esphome -s rtl433_esphome_ref latest compile --only-generate {FIRMWARE_CONFIG}"),
         f"-m esphome -s rtl433_esphome_ref latest compile {FIRMWARE_CONFIG}",
     ]
+    expected_preflight_args = str(generated_platformio_ini)
+    if update_global:
+        expected_preflight_args = f"--update-global {expected_preflight_args}"
     assert preflight_log.read_text(encoding="utf-8").splitlines() == [expected_preflight_args]
 
 
