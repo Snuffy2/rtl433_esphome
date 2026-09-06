@@ -207,6 +207,29 @@ def test_authorizes_existing_trusted_actions_files(tmp_path: Path) -> None:
         assert result.returncode == 0, result.stderr
 
 
+def test_authorizes_verified_update_branch_history(tmp_path: Path) -> None:
+    """A verified web-flow merge may advance a verified Dependabot update."""
+
+    dependabot_sha = "3" * 40
+    update_merge = {
+        "author": {"login": "Snuffy2"},
+        "commit": {"verification": {"verified": True}},
+        "committer": {"login": "web-flow"},
+        "parents": [{"sha": dependabot_sha}, {"sha": BASE_SHA}],
+        "sha": HEAD_SHA,
+    }
+    result = _authorize(
+        tmp_path,
+        "dependabot/uv/pytest-9.0.0",
+        ["uv.lock"],
+        ("uv.lock",),
+        actor="Snuffy2",
+        commits=[_dependabot_commit(dependabot_sha), update_merge],
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_rejects_invalid_update_branch_history(tmp_path: Path) -> None:
     """A non-web-flow commit cannot be smuggled into an Update branch chain."""
 
