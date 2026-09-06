@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -51,23 +52,31 @@ def _event(branch: str, action: str = "reopened") -> dict[str, object]:
     }
 
 
-def _dependabot_commit(sha: str = HEAD_SHA, verified: bool = True) -> dict[str, object]:
+def _dependabot_commit(
+    sha: str = HEAD_SHA,
+    verified: bool = True,
+    committer: str | None = "web-flow",
+) -> dict[str, object]:
     """Create a Dependabot commit response.
 
     Args:
         sha: Commit object identifier.
         verified: Whether GitHub reports a verified commit signature.
+        committer: GitHub committer login, or None when the field is absent.
 
     Returns:
         The API-like commit response.
     """
 
-    return {
+    commit: dict[str, object] = {
         "author": {"login": "dependabot[bot]"},
         "commit": {"verification": {"verified": verified}},
         "parents": [],
         "sha": sha,
     }
+    if committer is not None:
+        commit["committer"] = {"login": committer}
+    return commit
 
 
 def _update_commit(sha: str, previous: str, base: str) -> dict[str, object]:
@@ -150,6 +159,25 @@ def _mapping(value: object) -> dict[str, object]:
 
     assert isinstance(value, dict)
     return value
+
+
+def _fork_event() -> dict[str, object]:
+    """Create a Dependabot event whose head repository does not match the base.
+
+    Returns:
+        An event that must fail the helper's same-repository provenance check.
+    """
+
+    event = _event("dependabot/uv/pytest")
+    event["pull_request"] = {
+        **_mapping(event["pull_request"]),
+        "head": {
+            "ref": "dependabot/uv/pytest",
+            "repo": {"full_name": "fork/rtl433_esphome"},
+            "sha": HEAD_SHA,
+        },
+    }
+    return event
 
 
 def _run(
@@ -239,55 +267,109 @@ def test_authorizes_reopened_direct_update_and_update_branch_history(tmp_path: P
     assert updated.returncode == 0, updated.stderr
 
 
-def test_authorization_does_not_depend_on_trigger_actor_or_action(tmp_path: Path) -> None:
-    """Trigger metadata cannot change authorization of identical trusted PR history."""
-
-    for actor, action in (
+@pytest.mark.parametrize(
+    ("actor", "action"),
+    (
         ("dependabot[bot]", "opened"),
         ("Snuffy2", "synchronize"),
         ("untrusted-user", "reopened"),
-    ):
-        result = _run(tmp_path, actor=actor, action=action)
+    ),
+    ids=("dependabot-opened", "maintainer-synchronize", "user-reopened"),
+)
+def test_authorization_does_not_depend_on_trigger_actor_or_action(
+    tmp_path: Path, actor: str, action: str
+) -> None:
+    """Trigger metadata cannot change authorization of identical trusted PR history."""
 
-        assert result.returncode == 0, result.stderr
+    result = _run(tmp_path, actor=actor, action=action)
+
+    assert result.returncode == 0, result.stderr
 
 
-def test_rejects_incomplete_or_invalid_ancestry_evidence(tmp_path: Path) -> None:
-    """Absent, mismatched, diverged, or malformed ancestry evidence fails closed."""
-
-    invalid_sets: tuple[list[dict[str, object]], ...] = (
+@pytest.mark.parametrize(
+    "evidence",
+    (
         [],
         [{}, _proof(BASE_SHA, "identical")],
         [_proof(INTERMEDIATE_BASE_SHA), _proof("9" * 40)],
         [_proof(INTERMEDIATE_BASE_SHA, "diverged"), _proof(BASE_SHA, "identical")],
         [{**_proof(INTERMEDIATE_BASE_SHA), "head_commit": "8" * 40}, _proof(BASE_SHA, "identical")],
-    )
-    for evidence in invalid_sets:
-        result = _run(tmp_path, commits=_update_chain(), proofs=evidence)
+    ),
+    ids=(
+        "missing",
+        "malformed",
+        "mismatched-parent",
+        "diverged",
+        "mismatched-head",
+    ),
+)
+def test_rejects_incomplete_or_invalid_ancestry_evidence(
+    tmp_path: Path, evidence: list[dict[str, object]]
+) -> None:
+    """Absent, mismatched, diverged, or malformed ancestry evidence fails closed."""
 
-        assert result.returncode != 0
+    result = _run(tmp_path, commits=_update_chain(), proofs=evidence)
+
+    assert result.returncode != 0
 
 
-def test_rejects_untrusted_history_provenance_and_scope(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("commits", "event", "changed_files"),
+    (
+        ([_dependabot_commit(verified=False)], None, None),
+        (None, _fork_event(), None),
+        (None, None, ["README.md"]),
+    ),
+    ids=("unverified-root", "fork-head", "out-of-scope-file"),
+)
+def test_rejects_untrusted_history_provenance_and_scope(
+    tmp_path: Path,
+    commits: list[dict[str, object]] | None,
+    event: dict[str, object] | None,
+    changed_files: list[str] | None,
+) -> None:
     """Signature, web-flow history, repository provenance, and scope stay mandatory."""
 
-    untrusted_event = _event("dependabot/uv/pytest")
-    untrusted_event["pull_request"] = {
-        **_mapping(untrusted_event["pull_request"]),
-        "head": {
-            "ref": "dependabot/uv/pytest",
-            "repo": {"full_name": "fork/rtl433_esphome"},
-            "sha": HEAD_SHA,
-        },
-    }
-    for kwargs in (
-        {"commits": [_dependabot_commit(verified=False)]},
-        {"event": untrusted_event},
-        {"changed_files": ["README.md"]},
-    ):
-        result = _run(tmp_path, **kwargs)
+    result = _run(tmp_path, commits=commits, event=event, changed_files=changed_files)
 
-        assert result.returncode != 0
+    assert result.returncode != 0
+
+
+@pytest.mark.parametrize(
+    "committer",
+    (None, "Snuffy2"),
+    ids=("missing-committer", "maintainer-committer"),
+)
+def test_rejects_direct_root_without_web_flow_committer(
+    tmp_path: Path, committer: str | None
+) -> None:
+    """A direct root must be committed by GitHub's web-flow identity."""
+
+    result = _run(tmp_path, commits=[_dependabot_commit(committer=committer)])
+
+    assert result.returncode != 0
+
+
+@pytest.mark.parametrize(
+    "committer",
+    (None, "Snuffy2"),
+    ids=("missing-committer", "maintainer-committer"),
+)
+def test_rejects_update_root_without_web_flow_committer(
+    tmp_path: Path, committer: str | None
+) -> None:
+    """An update branch must start from a Dependabot root committed by web-flow."""
+
+    result = _run(
+        tmp_path,
+        commits=[
+            _dependabot_commit(DEPENDABOT_SHA, committer=committer),
+            _update_commit(HEAD_SHA, DEPENDABOT_SHA, BASE_SHA),
+        ],
+        proofs=[_proof(BASE_SHA, "identical")],
+    )
+
+    assert result.returncode != 0
 
 
 def test_rejects_non_web_flow_merge_in_an_update_branch(tmp_path: Path) -> None:
@@ -418,7 +500,7 @@ def _requires_author_only_dependabot_gate(condition: object) -> None:
 
     assert isinstance(condition, str)
     assert "github.event.pull_request.user.login == 'dependabot[bot]'" in condition
-    assert set(re.findall(r"github\\.[A-Za-z_.]+", condition)) <= {
+    assert set(re.findall(r"github\.[A-Za-z_.]+", condition)) <= {
         "github.event_name",
         "github.event.pull_request.user.login",
     }
@@ -470,6 +552,10 @@ def _assert_read_only_authorization(job: dict[str, object]) -> None:
     assert _mapping(trusted_checkout["with"]).get("persist-credentials") is False
     run = authorization["run"]
     assert isinstance(run, str)
+    authorization_env = _mapping(authorization["env"])
+    assert authorization_env["BASE_SHA"] == "${{ github.event.pull_request.base.sha }}"
+    assert 'base_sha="${BASE_SHA}"' in run
+    assert "${{" not in run
     for evidence in (
         "pulls/${PR_NUMBER}/files",
         "pulls/${PR_NUMBER}/commits",
