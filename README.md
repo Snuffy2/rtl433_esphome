@@ -10,7 +10,7 @@ The profile explicitly selects ESPHome's `platformio` toolchain because the comp
 
 Development and firmware builds from this repository do not support Intel (`x86_64`) macOS. Apple silicon macOS remains supported.
 
-Published releases include an attested firmware ZIP and source bundle. The firmware is
+Published releases include an attested firmware ZIP and a source bundle. The firmware is
 built from this profile with example secrets, but it retains the profile's device
 name, Home Assistant names, and sensor mappings. Review those values before
 installing a release artifact on your own device.

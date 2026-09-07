@@ -712,6 +712,42 @@ def test_release_gate_workflows_require_and_checkout_exact_sha(workflow_name: st
         assert "inputs.expected_sha" in str(compile_step["env"]["RTL433_ESPHOME_REF"])
 
 
+def test_release_gate_dispatch_concurrency_isolated_by_candidate_sha() -> None:
+    """Dispatches isolate candidates while preserving pull-request and push grouping."""
+    review = load_workflow("prek-autofix-review.yml")["concurrency"]
+    validation = load_workflow("validation.yml")["concurrency"]
+
+    assert review == {
+        "group": "prek-autofix-${{ github.event.pull_request.number || inputs.expected_sha || github.ref }}",
+        "cancel-in-progress": "true",
+    }
+    assert validation == {
+        "group": (
+            "validation-${{ github.event.pull_request.head.repo.full_name || github.repository }}-"
+            "${{ github.event.pull_request.head.ref || inputs.expected_sha || github.ref }}"
+        ),
+        "cancel-in-progress": "true",
+    }
+
+    def group(pull_request: str = "", expected_sha: str = "", ref: str = "") -> str:
+        """Resolve the ordered GitHub expression used by both asserted workflow keys.
+
+        Args:
+            pull_request (str): Optional pull request branch or number.
+            expected_sha (str): Optional immutable dispatched candidate SHA.
+            ref (str): Fallback branch or tag ref.
+
+        Returns:
+            str: The rendered key suffix.
+        """
+        return pull_request or expected_sha or ref
+
+    assert group(expected_sha="a" * 40) != group(expected_sha="b" * 40)
+    assert group(expected_sha="a" * 40) == group(expected_sha="a" * 40)
+    assert group(pull_request="37", expected_sha="a" * 40, ref="refs/heads/main") == "37"
+    assert group(ref="refs/heads/main") == "refs/heads/main"
+
+
 def prepare_promoted_release(
     tmp_path: Path, *, latest: bool
 ) -> tuple[Path, Path, str, str, str, str]:
