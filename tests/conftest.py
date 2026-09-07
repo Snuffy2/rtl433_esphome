@@ -3,12 +3,38 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import importlib.util
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
+from types import ModuleType
 
 import pytest
+
+SCRIPT_PATH = (
+    Path(__file__).resolve().parents[1] / ".github" / "scripts" / "upload_release_asset.py"
+)
+
+
+@pytest.fixture(scope="session")
+def uploader() -> ModuleType:
+    """Load the release uploader module once for the test session.
+
+    Returns:
+        Imported release uploader module.
+
+    Raises:
+        RuntimeError: If the helper cannot be imported from its assigned path.
+    """
+    spec = importlib.util.spec_from_file_location("upload_release_asset", SCRIPT_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load {SCRIPT_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.fixture
