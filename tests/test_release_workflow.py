@@ -643,7 +643,13 @@ def test_release_gate_workflows_require_and_checkout_exact_sha(workflow_name: st
     expected_sha = dispatch["inputs"]["expected_sha"]
     job = next(iter(workflow["jobs"].values()))
     guard = required_step(job, 'EXPECTED_SHA" =~')
-    checkout = required_step(job, "actions/checkout")
+    checkout = next(
+        step
+        for step in job["steps"]
+        if isinstance(step, dict)
+        and str(step.get("uses", "")).startswith("actions/checkout@")
+        and "inputs.expected_sha" in str(step.get("with", {}).get("ref", ""))
+    )
     checkout_verification = required_step(job, "git rev-parse HEAD")
 
     assert expected_sha["required"] == "true"

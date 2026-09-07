@@ -592,10 +592,9 @@ def test_workflows_authorize_before_head_checkout_with_read_only_permissions() -
     head_checkout = next(
         index
         for index, step in enumerate(validation_steps)
-        if _is_major_action_pin(step)
+        if step.get("name") == "Checkout code"
+        and _is_major_action_pin(step)
         and str(step.get("uses", "")).startswith("actions/checkout@")
-        and isinstance(step.get("with"), dict)
-        and "ref" not in _mapping(step["with"])
     )
     assert validation_steps.index(_authorization_step(validation_steps)) < head_checkout
 
