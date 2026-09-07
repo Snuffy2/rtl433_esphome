@@ -8,6 +8,8 @@ Start from the included `rtl433-esphome-heltec-lora-32-v2.yaml` file. It is the 
 
 The profile explicitly selects ESPHome's `platformio` toolchain because the component uses PlatformIO build hooks. Keep this setting when copying the profile; ESPHome 2026.7 and newer otherwise default ESP32 builds to the native ESP-IDF toolchain.
 
+Development and firmware builds from this repository do not support Intel (`x86_64`) macOS. Apple silicon macOS remains supported.
+
 Firmware binaries are not published because the YAML contains deployment-specific device names, Home Assistant names, and sensor mappings. Review those values before installing it on your own device.
 
 See [YAML Configuration](#yaml-configuration) below for details on the options.
