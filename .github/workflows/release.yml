@@ -69,6 +69,8 @@ jobs:
           candidate_sha="$EVENT_SHA"
           [[ "$trusted_sha" == "$EVENT_SHA" ]] || { echo "Trusted checkout does not match the release event SHA." >&2; exit 1; }
           [[ "$RELEASE_ID" =~ ^[1-9][0-9]*$ ]] || { echo "Release event did not provide a valid release ID." >&2; exit 1; }
+          release_tag_pattern='^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))?(\.(0|[1-9][0-9]*))?(-((0|[1-9][0-9]*)|[A-Za-z-][0-9A-Za-z-]*)(\.((0|[1-9][0-9]*)|[A-Za-z-][0-9A-Za-z-]*))*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          [[ "$RELEASE_TAG" =~ $release_tag_pattern ]] || { echo "Invalid release tag." >&2; exit 1; }
           version_without_build="${RELEASE_TAG%%+*}"
           tag_is_prerelease=false
           [[ "$version_without_build" == *-* ]] && tag_is_prerelease=true
@@ -546,7 +548,7 @@ jobs:
           exit 1
 
       - name: Delete validated temporary branch
-        if: ${{ always() && steps.validation_ref.outcome == 'success' }}
+        if: ${{ success() && steps.validation_ref.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
           TEMP_REF: ${{ steps.validation_ref.outputs.name }}

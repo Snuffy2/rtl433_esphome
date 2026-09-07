@@ -6,8 +6,8 @@ import argparse
 from pathlib import Path
 import re
 
-SEMVER_TAG_PATTERN = re.compile(
-    r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+RELEASE_TAG_PATTERN = re.compile(
+    r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?(?:\.(0|[1-9]\d*))?"
     r"(?:-(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*)"
     r"(?:\.(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*))*)?"
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
@@ -27,9 +27,11 @@ def parse_args() -> argparse.Namespace:
     """
 
     parser = argparse.ArgumentParser(
-        description="Update release-managed project metadata from a semver release tag."
+        description="Update release-managed project metadata from a supported release tag."
     )
-    parser.add_argument("tag", help="Semver release tag, with optional v prefix.")
+    parser.add_argument(
+        "tag", help="Two-, three-, or four-part release tag, with optional v prefix."
+    )
     parser.add_argument(
         "--version-file",
         type=Path,
@@ -40,7 +42,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def version_from_tag(tag: str) -> str:
-    """Return a project version string from a semver release tag.
+    """Return a project version string from a supported release tag.
 
     Args:
         tag: Release tag to validate and use as the version.
@@ -49,11 +51,15 @@ def version_from_tag(tag: str) -> str:
         The unchanged release tag.
 
     Raises:
-        ValueError: If the tag is not a semver tag with an optional v prefix.
+        ValueError: If the tag has an unsupported two-, three-, or four-part
+            release version with an optional v prefix.
     """
 
-    if SEMVER_TAG_PATTERN.fullmatch(tag) is None:
-        raise ValueError(f"Release tag is not semver with optional v prefix: {tag}")
+    if RELEASE_TAG_PATTERN.fullmatch(tag) is None:
+        raise ValueError(
+            "Release tag must use a two-, three-, or four-part version with an optional v prefix: "
+            f"{tag}"
+        )
     return tag
 
 

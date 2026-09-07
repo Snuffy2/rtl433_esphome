@@ -153,6 +153,62 @@ def test_release_candidate_supports_an_absent_latest_alias(tmp_path: Path) -> No
     assert artifact.validate_candidate(candidate_dir) == manifest
 
 
+@pytest.mark.parametrize("release_tag", ["v1.2", "v1.2.3", "v1.2.3.4"])
+def test_release_candidate_accepts_supported_stable_tag_parts(
+    tmp_path: Path, release_tag: str
+) -> None:
+    """Accept every stable tag shape supported by release version updates."""
+
+    artifact, candidate_dir, _manifest = create_candidate(tmp_path)
+    firmware = tmp_path / "firmware.bin"
+    firmware.write_bytes(b"firmware bytes")
+    args = argparse.Namespace(
+        firmware=firmware,
+        archive=candidate_dir / "firmware.zip",
+        candidate_sha=OID,
+        source_sha=OID,
+        release_id="12345",
+        release_tag=release_tag,
+        prerelease="false",
+        tag_oid=OID,
+        latest_oid=OID,
+        latest_exists="true",
+        resume="false",
+    )
+    manifest = artifact.create_archive(args)
+    (candidate_dir / "candidate.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert artifact.validate_candidate(candidate_dir) == manifest
+
+
+@pytest.mark.parametrize(
+    "release_tag",
+    [
+        "v1",
+        "v1.2.3.4.5",
+        "v01.2",
+        "v1.02.3",
+        "v1.2.03",
+        "v1.2.3.04",
+        "v01.2-beta.1",
+        "v1.02.3-beta.1",
+        "v1.2.03-beta.1",
+        "v1.2.3.04-beta.1",
+    ],
+)
+def test_release_candidate_rejects_unsupported_release_tag_parts(
+    tmp_path: Path, release_tag: str
+) -> None:
+    """Reject invalid numeric tag components before reading the firmware archive."""
+
+    artifact, candidate_dir, manifest = create_candidate(tmp_path)
+    manifest["release_tag"] = release_tag
+    (candidate_dir / "candidate.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="supported version format"):
+        artifact.validate_candidate(candidate_dir)
+
+
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [

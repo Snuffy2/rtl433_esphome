@@ -90,15 +90,20 @@ def test_update_release_version_errors_if_version_assignment_missing(tmp_path: P
 @pytest.mark.parametrize(
     "tag",
     [
+        "v1.2",
         "v1.2.3",
+        "v1.2.3.4",
+        "1.2.3.4",
         "1.2.3",
+        "v1.2-rc.1",
         "v1.2.3-rc.1",
+        "v1.2.3.4-rc.1",
         "v1.2.3-rc.1+build-7",
         "v1.2.3+build-7",
     ],
 )
-def test_version_from_tag_accepts_semver_boundaries(tag: str) -> None:
-    """Accept stable, prerelease, and build-metadata semantic versions."""
+def test_version_from_tag_accepts_supported_release_tag_boundaries(tag: str) -> None:
+    """Accept supported stable, prerelease, and build-metadata release tags."""
 
     module = load_release_version_script()
 
@@ -107,12 +112,26 @@ def test_version_from_tag_accepts_semver_boundaries(tag: str) -> None:
 
 @pytest.mark.parametrize(
     "tag",
-    ["latest", "v1.2", "v01.2.3", "v1.02.3", "v1.2.03", "v1.2.3-rc.01", "v1.2.3+"],
+    [
+        "latest",
+        "v1",
+        "v1.2.3.4.5",
+        "v01.2",
+        "v1.02.3",
+        "v1.2.03",
+        "v1.2.3.04",
+        "v01.2-beta.1",
+        "v1.02.3-beta.1",
+        "v1.2.03-beta.1",
+        "v1.2.3.04-beta.1",
+        "v1.2.3-rc.01",
+        "v1.2.3+",
+    ],
 )
-def test_version_from_tag_rejects_non_semver_release_tag(tag: str) -> None:
-    """Reject malformed tags and numeric identifiers with leading zeroes."""
+def test_version_from_tag_rejects_unsupported_release_tag(tag: str) -> None:
+    """Reject malformed tags, unsupported version parts, and leading zeroes."""
 
     module = load_release_version_script()
 
-    with pytest.raises(ValueError, match="Release tag is not semver"):
+    with pytest.raises(ValueError, match="Release tag must use"):
         module.version_from_tag(tag)

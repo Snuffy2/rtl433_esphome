@@ -20,8 +20,8 @@ MANIFEST_NAME = "release-manifest.json"
 REQUIRED_CANDIDATE_FILES = {"candidate.bundle", "candidate.json", "firmware.zip"}
 GIT_OID_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-SEMVER_TAG_PATTERN = re.compile(
-    r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+RELEASE_TAG_PATTERN = re.compile(
+    r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?(?:\.(0|[1-9]\d*))?"
     r"(?:-(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*))*)?"
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
@@ -201,8 +201,8 @@ def read_candidate_manifest(path: Path) -> dict[str, str | bool]:
         raise ValueError("Candidate release ID must be a positive integer")
     if SHA256_PATTERN.fullmatch(content["firmware_sha256"]) is None:
         raise ValueError("Candidate firmware digest must be a SHA-256 digest")
-    if SEMVER_TAG_PATTERN.fullmatch(content["release_tag"]) is None:
-        raise ValueError("Candidate release tag must be semantic version")
+    if RELEASE_TAG_PATTERN.fullmatch(content["release_tag"]) is None:
+        raise ValueError("Candidate release tag must use a supported version format")
     return content
 
 

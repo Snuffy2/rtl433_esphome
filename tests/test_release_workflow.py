@@ -393,6 +393,56 @@ def test_candidate_classifies_prerelease_before_build_metadata(
 
 @pytest.mark.parametrize(
     ("release_tag", "prerelease"),
+    [
+        ("v1.2", False),
+        ("v1.2.3", False),
+        ("v1.2.3.4", False),
+        ("v1.2-rc.1", True),
+        ("v1.2.3.4-rc.1", True),
+    ],
+)
+def test_candidate_accepts_supported_release_tag_versions(
+    tmp_path: Path, release_tag: str, prerelease: bool
+) -> None:
+    """Accept strict two-, three-, and four-part release tags before classification."""
+
+    worktree, _remote, source_sha, _latest_oid = initialize_release_remote(tmp_path, release_tag)
+
+    result = run_candidate_step(worktree, source_sha, release_tag, prerelease=prerelease)
+
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "release_tag",
+    [
+        "v01.2",
+        "v1.02.3",
+        "v1.2.03",
+        "v1.2.3.04",
+        "v01.2-beta.1",
+        "v1.02.3-beta.1",
+        "v1.2.03-beta.1",
+        "v1.2.3.04-beta.1",
+    ],
+)
+@pytest.mark.parametrize("prerelease", [False, True])
+def test_candidate_rejects_leading_zero_release_tag_before_classification(
+    tmp_path: Path, release_tag: str, prerelease: bool
+) -> None:
+    """Reject malformed numeric tags before trusting the release prerelease flag."""
+
+    worktree, remote, source_sha, _latest_oid = initialize_release_remote(tmp_path, release_tag)
+
+    result = run_candidate_step(worktree, source_sha, release_tag, prerelease=prerelease)
+
+    assert result.returncode != 0
+    assert "Invalid release tag." in result.stderr
+    assert git(remote, "rev-parse", "refs/heads/main") == source_sha
+
+
+@pytest.mark.parametrize(
+    ("release_tag", "prerelease"),
     [("v1.2.3-rc.1", False), ("v1.2.3", True)],
 )
 def test_candidate_rejects_tag_and_prerelease_state_disagreement(
@@ -475,8 +525,8 @@ def test_release_workflow_uses_real_artifact_and_protected_gate_contracts() -> N
     assert '"refs/tags/$RELEASE_TAG")" == "$TAG_OID"' in str(promotion["run"])
     assert "PROMOTED_TAG_OID=" in str(promotion["run"])
     cleanup_condition = str(cleanup["if"])
-    assert "success()" not in cleanup_condition
-    assert "always()" in cleanup_condition
+    assert "success()" in cleanup_condition
+    assert "always()" not in cleanup_condition
     assert "steps.validation_ref.outcome == 'success'" in cleanup_condition
     assert '--force-with-lease="refs/heads/$TEMP_REF:$CANDIDATE_SHA"' in str(cleanup["run"])
 

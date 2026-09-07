@@ -10,7 +10,10 @@ The profile explicitly selects ESPHome's `platformio` toolchain because the comp
 
 Development and firmware builds from this repository do not support Intel (`x86_64`) macOS. Apple silicon macOS remains supported.
 
-Firmware binaries are not published because the YAML contains deployment-specific device names, Home Assistant names, and sensor mappings. Review those values before installing it on your own device.
+Published releases include an attested firmware ZIP and source bundle. The firmware is
+built from this profile with example secrets, but it retains the profile's device
+name, Home Assistant names, and sensor mappings. Review those values before
+installing a release artifact on your own device.
 
 See [YAML Configuration](#yaml-configuration) below for details on the options.
 
