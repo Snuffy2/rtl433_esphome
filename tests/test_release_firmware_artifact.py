@@ -194,6 +194,8 @@ def test_release_candidate_accepts_supported_stable_tag_parts(
         "v1.02.3-beta.1",
         "v1.2.03-beta.1",
         "v1.2.3.04-beta.1",
+        "v1.2٢",
+        "v1.2.3-1٢",
     ],
 )
 def test_release_candidate_rejects_unsupported_release_tag_parts(

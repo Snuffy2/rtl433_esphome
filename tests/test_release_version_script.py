@@ -125,11 +125,13 @@ def test_version_from_tag_accepts_supported_release_tag_boundaries(tag: str) -> 
         "v1.2.03-beta.1",
         "v1.2.3.04-beta.1",
         "v1.2.3-rc.01",
+        "v1.2٢",
+        "v1.2.3-1٢",
         "v1.2.3+",
     ],
 )
 def test_version_from_tag_rejects_unsupported_release_tag(tag: str) -> None:
-    """Reject malformed tags, unsupported version parts, and leading zeroes."""
+    """Reject malformed tags, unsupported version parts, and non-ASCII numerals."""
 
     module = load_release_version_script()
 
