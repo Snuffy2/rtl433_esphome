@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: prek-autofix-${{ github.event.pull_request.number || inputs.expected_sha || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.number || 'push' }}-${{ github.event.pull_request.head.ref || inputs.expected_sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -63,10 +63,7 @@ jobs:
 
       - name: Verify prek without pull-request context
         if: github.event_name == 'workflow_dispatch'
-        uses: j178/prek-action@v2
-        env:
-          UV_LOCKED: "1"
-
-      - name: Require a clean review result
-        if: github.event_name == 'workflow_dispatch'
-        run: git diff --exit-code
+        run: |
+          set -euo pipefail
+          UV_LOCKED=1 uv run --locked --group dev prek run --all-files
+          test -z "$(git status --porcelain)"

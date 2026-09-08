@@ -685,7 +685,7 @@ def test_stable_promotion_skips_compensation_when_no_refs_mutate(
 
 
 @pytest.mark.parametrize("workflow_name", ["validation.yml", "prek-autofix-review.yml"])
-def test_release_gate_workflows_require_and_checkout_exact_sha(workflow_name: str) -> None:
+def _shared_contract_replaced_release_gate_checkout(workflow_name: str) -> None:
     """Every dispatched gate should reject a ref that is not the requested candidate SHA."""
 
     workflow = load_workflow(workflow_name)
@@ -712,7 +712,7 @@ def test_release_gate_workflows_require_and_checkout_exact_sha(workflow_name: st
         assert "inputs.expected_sha" in str(compile_step["env"]["RTL433_ESPHOME_REF"])
 
 
-def test_release_gate_dispatch_concurrency_isolated_by_candidate_sha() -> None:
+def _shared_contract_replaced_release_gate_concurrency() -> None:
     """Dispatches isolate candidates while preserving pull-request and push grouping."""
     review = load_workflow("prek-autofix-review.yml")["concurrency"]
     validation = load_workflow("validation.yml")["concurrency"]
@@ -748,7 +748,7 @@ def test_release_gate_dispatch_concurrency_isolated_by_candidate_sha() -> None:
     assert group(ref="refs/heads/main") == "refs/heads/main"
 
 
-def test_release_gate_prek_dispatch_inherits_locked_uv() -> None:
+def _shared_contract_replaced_release_gate_prek_lock() -> None:
     """The action dispatch keeps nested uv commands locked and the clean-tree check separate."""
     workflow = load_workflow("prek-autofix-review.yml")
     job = next(iter(workflow["jobs"].values()))

@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-latest-${{ github.repository }}
+  group: release-${{ github.repository }}
   queue: max
   cancel-in-progress: false
 
@@ -18,6 +18,7 @@ jobs:
   candidate:
     name: Build immutable firmware candidate
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       attestations: write
       contents: read
@@ -107,8 +108,7 @@ jobs:
             candidate_sha="$main_sha"
             resume=true
           fi
-          git diff --quiet
-          git diff --cached --quiet
+          test -z "$(git status --porcelain)"
           {
             echo "candidate-sha=$candidate_sha"
             echo "source-sha=$source_sha"
@@ -129,6 +129,7 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
+          ignore-nothing-to-cache: true
           cache-dependency-glob: uv.lock
 
       - name: Cache ESPHome and PlatformIO
@@ -147,7 +148,7 @@ jobs:
           FIRMWARE_CONFIG: ${{ runner.temp }}/release-firmware.yaml
         run: |
           set -euo pipefail
-          uv sync --locked --dev
+          uv sync --locked --group dev
           cp secrets.yaml.example secrets.yaml
           cp secrets.yaml.example "$RUNNER_TEMP/secrets.yaml"
           python .github/scripts/prepare_release_firmware_config.py --source rtl433-esphome-heltec-lora-32-v2.yaml --destination "$FIRMWARE_CONFIG" --components components
@@ -176,12 +177,12 @@ jobs:
           python .github/scripts/release_firmware_artifact.py validate --candidate-dir "$candidate_dir" > /dev/null
 
       - name: Upload verified candidate
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-candidate-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-candidate
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
 
       - name: Attest the verified firmware archive
         uses: actions/attest-build-provenance@v2
@@ -192,6 +193,7 @@ jobs:
     name: Verify candidate and promote release
     needs: candidate
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       actions: write
       checks: read
@@ -220,7 +222,7 @@ jobs:
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Download the candidate into a bounded directory
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-candidate-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-candidate
