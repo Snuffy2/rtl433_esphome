@@ -748,6 +748,23 @@ def test_release_gate_dispatch_concurrency_isolated_by_candidate_sha() -> None:
     assert group(ref="refs/heads/main") == "refs/heads/main"
 
 
+def test_release_gate_prek_dispatch_inherits_locked_uv() -> None:
+    """The action dispatch keeps nested uv commands locked and the clean-tree check separate."""
+    workflow = load_workflow("prek-autofix-review.yml")
+    job = next(iter(workflow["jobs"].values()))
+    dispatch = next(
+        step
+        for step in job["steps"]
+        if isinstance(step, dict) and step.get("name") == "Verify prek without pull-request context"
+    )
+
+    assert dispatch["if"] == "github.event_name == 'workflow_dispatch'"
+    assert dispatch["uses"] == "j178/prek-action@v2"
+    assert dispatch["env"] == {"UV_LOCKED": "1"}
+    clean_tree = required_step(job, "git diff --exit-code")
+    assert clean_tree["if"] == "github.event_name == 'workflow_dispatch'"
+
+
 def prepare_promoted_release(
     tmp_path: Path, *, latest: bool
 ) -> tuple[Path, Path, str, str, str, str]:

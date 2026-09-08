@@ -64,6 +64,8 @@ jobs:
       - name: Verify prek without pull-request context
         if: github.event_name == 'workflow_dispatch'
         uses: j178/prek-action@v2
+        env:
+          UV_LOCKED: "1"
 
       - name: Require a clean review result
         if: github.event_name == 'workflow_dispatch'
