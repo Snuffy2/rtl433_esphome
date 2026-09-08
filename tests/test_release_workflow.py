@@ -377,34 +377,29 @@ def test_fresh_stable_candidate_accepts_an_already_versioned_source(tmp_path: Pa
 
 @pytest.mark.parametrize(
     ("release_tag", "prerelease"),
-    [("v1.2.3+build-7", False), ("v1.2.3-rc.1+build-7", True)],
-)
-def test_candidate_classifies_prerelease_before_build_metadata(
-    tmp_path: Path, release_tag: str, prerelease: bool
-) -> None:
-    """Hyphens in build metadata must not be mistaken for prerelease syntax."""
-
-    worktree, _remote, source_sha, _latest_oid = initialize_release_remote(tmp_path, release_tag)
-
-    result = run_candidate_step(worktree, source_sha, release_tag, prerelease=prerelease)
-
-    assert result.returncode == 0, result.stderr
-
-
-@pytest.mark.parametrize(
-    ("release_tag", "prerelease"),
     [
         ("v1.2", False),
         ("v1.2.3", False),
         ("v1.2.3.4", False),
         ("v1.2-rc.1", True),
         ("v1.2.3.4-rc.1", True),
+        ("v1.2.3+build-7", False),
+        ("v1.2.3-rc.1+build-7", True),
     ],
+    ids=(
+        "two-part",
+        "three-part",
+        "four-part",
+        "two-part-prerelease",
+        "four-part-prerelease",
+        "stable-build-metadata",
+        "prerelease-build-metadata",
+    ),
 )
-def test_candidate_accepts_supported_release_tag_versions(
+def test_candidate_accepts_supported_release_tag_and_classification(
     tmp_path: Path, release_tag: str, prerelease: bool
 ) -> None:
-    """Accept strict two-, three-, and four-part release tags before classification."""
+    """Accept supported tags and classify prerelease syntax before build metadata."""
 
     worktree, _remote, source_sha, _latest_oid = initialize_release_remote(tmp_path, release_tag)
 
