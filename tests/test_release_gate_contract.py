@@ -29,7 +29,7 @@ PRODUCT_COMMANDS: Final = {
     ),
     "lock": ("uv lock --check",),
     "prek": ("UV_LOCKED=1 uv run --locked --group dev prek run --all-files",),
-    "firmware": ("uv sync --locked --dev", "./scripts/build"),
+    "firmware": ("uv sync --locked --group dev", "./scripts/build"),
 }
 CONCURRENCY_TOKENS: Final = (
     "github.workflow",

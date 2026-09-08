@@ -486,6 +486,12 @@ def test_release_workflow_uses_real_artifact_and_protected_gate_contracts() -> N
     workflow = load_workflow("release.yml")
     candidate = workflow["jobs"]["candidate"]
     promote = workflow["jobs"]["promote"]
+    candidate_upload = next(
+        step for step in candidate["steps"] if step.get("uses") == "actions/upload-artifact@v7"
+    )
+    candidate_download = next(
+        step for step in promote["steps"] if step.get("uses") == "actions/download-artifact@v8"
+    )
     build = required_step(candidate, "--firmware-output")
     archive = required_step(candidate, "release_firmware_artifact.py create")
     trusted_helpers = required_step(promote, "trusted_scripts=")
@@ -498,6 +504,8 @@ def test_release_workflow_uses_real_artifact_and_protected_gate_contracts() -> N
     assert "$RUNNER_TEMP/firmware-path" in str(build["run"])
     assert "FIRMWARE_PATH_FILE" in archive["env"]
     assert ".esphome/build" not in str(archive["run"])
+    assert candidate_upload["with"]["name"] == "release-candidate"
+    assert candidate_download["with"]["name"] == candidate_upload["with"]["name"]
     assert promote["permissions"] == {
         "actions": "write",
         "checks": "read",

@@ -74,7 +74,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 if [[ ! -x ./.venv/bin/python ]]; then
-  echo "Missing ./.venv/bin/python. Run uv sync --dev first." >&2
+  echo "Missing ./.venv/bin/python. Run uv sync --group dev first." >&2
   exit 1
 fi
 

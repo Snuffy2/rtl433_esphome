@@ -179,7 +179,7 @@ jobs:
       - name: Upload verified candidate
         uses: actions/upload-artifact@v7
         with:
-          name: release-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          name: release-candidate
           path: ${{ runner.temp }}/release-candidate
           if-no-files-found: error
           retention-days: 30
@@ -224,7 +224,7 @@ jobs:
       - name: Download the candidate into a bounded directory
         uses: actions/download-artifact@v8
         with:
-          name: release-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          name: release-candidate
           path: ${{ runner.temp }}/release-candidate
 
       - name: Validate complete candidate contents and export trusted metadata
