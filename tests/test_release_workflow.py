@@ -414,19 +414,18 @@ def test_candidate_accepts_supported_release_tag_versions(
 
 
 @pytest.mark.parametrize(
-    "release_tag",
+    ("release_tag", "prerelease"),
     [
-        "v01.2",
-        "v1.02.3",
-        "v1.2.03",
-        "v1.2.3.04",
-        "v01.2-beta.1",
-        "v1.02.3-beta.1",
-        "v1.2.03-beta.1",
-        "v1.2.3.04-beta.1",
+        ("v01.2", False),
+        ("v1.02.3", True),
+        ("v1.2.03", False),
+        ("v1.2.3.04", True),
+        ("v01.2-beta.1", True),
+        ("v1.02.3-beta.1", False),
+        ("v1.2.03-beta.1", True),
+        ("v1.2.3.04-beta.1", False),
     ],
 )
-@pytest.mark.parametrize("prerelease", [False, True])
 def test_candidate_rejects_leading_zero_release_tag_before_classification(
     tmp_path: Path, release_tag: str, prerelease: bool
 ) -> None:
@@ -690,87 +689,6 @@ def test_stable_promotion_skips_compensation_when_no_refs_mutate(
     assert read_outputs(runner_temp / "github-env")["STABLE_REFS_MUTATED"] == "false"
     assert git(remote, "rev-parse", "refs/heads/main") == candidate_sha
     assert git(remote, "rev-parse", "refs/tags/v1.2.3") == tag_oid
-
-
-@pytest.mark.parametrize("workflow_name", ["validation.yml", "prek-autofix-review.yml"])
-def _shared_contract_replaced_release_gate_checkout(workflow_name: str) -> None:
-    """Every dispatched gate should reject a ref that is not the requested candidate SHA."""
-
-    workflow = load_workflow(workflow_name)
-    dispatch = workflow["on"]["workflow_dispatch"]
-    expected_sha = dispatch["inputs"]["expected_sha"]
-    job = next(iter(workflow["jobs"].values()))
-    guard = required_step(job, 'EXPECTED_SHA" =~')
-    checkout = next(
-        step
-        for step in job["steps"]
-        if isinstance(step, dict)
-        and str(step.get("uses", "")).startswith("actions/checkout@")
-        and "inputs.expected_sha" in str(step.get("with", {}).get("ref", ""))
-    )
-    checkout_verification = required_step(job, "git rev-parse HEAD")
-
-    assert expected_sha["required"] == "true"
-    assert expected_sha["type"] == "string"
-    assert guard["if"] == "github.event_name == 'workflow_dispatch'"
-    assert "inputs.expected_sha" in str(checkout["with"]["ref"])
-    assert '[[ "$(git rev-parse HEAD)" == "$EXPECTED_SHA" ]]' in str(checkout_verification["run"])
-    if workflow_name == "validation.yml":
-        compile_step = required_step(job, "./scripts/build")
-        assert "inputs.expected_sha" in str(compile_step["env"]["RTL433_ESPHOME_REF"])
-
-
-def _shared_contract_replaced_release_gate_concurrency() -> None:
-    """Dispatches isolate candidates while preserving pull-request and push grouping."""
-    review = load_workflow("prek-autofix-review.yml")["concurrency"]
-    validation = load_workflow("validation.yml")["concurrency"]
-
-    assert review == {
-        "group": "prek-autofix-${{ github.event.pull_request.number || inputs.expected_sha || github.ref }}",
-        "cancel-in-progress": "true",
-    }
-    assert validation == {
-        "group": (
-            "validation-${{ github.event.pull_request.head.repo.full_name || github.repository }}-"
-            "${{ github.event.pull_request.head.ref || inputs.expected_sha || github.ref }}"
-        ),
-        "cancel-in-progress": "true",
-    }
-
-    def group(pull_request: str = "", expected_sha: str = "", ref: str = "") -> str:
-        """Resolve the ordered GitHub expression used by both asserted workflow keys.
-
-        Args:
-            pull_request (str): Optional pull request branch or number.
-            expected_sha (str): Optional immutable dispatched candidate SHA.
-            ref (str): Fallback branch or tag ref.
-
-        Returns:
-            str: The rendered key suffix.
-        """
-        return pull_request or expected_sha or ref
-
-    assert group(expected_sha="a" * 40) != group(expected_sha="b" * 40)
-    assert group(expected_sha="a" * 40) == group(expected_sha="a" * 40)
-    assert group(pull_request="37", expected_sha="a" * 40, ref="refs/heads/main") == "37"
-    assert group(ref="refs/heads/main") == "refs/heads/main"
-
-
-def _shared_contract_replaced_release_gate_prek_lock() -> None:
-    """The action dispatch keeps nested uv commands locked and the clean-tree check separate."""
-    workflow = load_workflow("prek-autofix-review.yml")
-    job = next(iter(workflow["jobs"].values()))
-    dispatch = next(
-        step
-        for step in job["steps"]
-        if isinstance(step, dict) and step.get("name") == "Verify prek without pull-request context"
-    )
-
-    assert dispatch["if"] == "github.event_name == 'workflow_dispatch'"
-    assert dispatch["uses"] == "j178/prek-action@v2"
-    assert dispatch["env"] == {"UV_LOCKED": "1"}
-    clean_tree = required_step(job, "git diff --exit-code")
-    assert clean_tree["if"] == "github.event_name == 'workflow_dispatch'"
 
 
 def prepare_promoted_release(

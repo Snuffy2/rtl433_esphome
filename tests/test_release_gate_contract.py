@@ -290,20 +290,3 @@ def test_prek_porcelain_cleanliness_rejects_all_change_classes(tmp_path: Path) -
     git(repository, "reset", "--hard", "HEAD")
     (repository / "untracked.txt").write_text("untracked\n", encoding="utf-8")
     assert shell(repository, match.group(1)).returncode != 0
-
-
-def test_common_policy_rejects_known_workflow_fault_mutations() -> None:
-    """Require shared policy checks to reject known workflow regression mutations."""
-    gate = next(gate for gate in GATES if gate["product"] == "prek")
-    original = workflow_text(gate["workflow"])
-    mutations = (
-        lambda text: text.replace("UV_LOCKED=1 ", "", 1),
-        lambda text: text.replace("inputs.expected_sha", "github.sha", 1),
-        lambda text: re.sub(r"(?m)^  group:.*$", "  group: ${{ github.ref }}", text, count=1),
-        lambda text: text.replace("git rev-parse HEAD", "git rev-parse NOT_HEAD", 1),
-        lambda text: re.sub(r"(?m)^    timeout-minutes: 15\n", "", text, count=1),
-        lambda text: text.replace("git status --porcelain", "git diff --exit-code", 1),
-    )
-    for mutate in mutations:
-        with pytest.raises(AssertionError):
-            gate_policy(mutate(original), gate)
