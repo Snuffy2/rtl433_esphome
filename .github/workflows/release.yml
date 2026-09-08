@@ -182,7 +182,7 @@ jobs:
           retention-days: 1
 
       - name: Attest the verified firmware archive
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: ${{ runner.temp }}/release-candidate/firmware.zip
 
