@@ -52,7 +52,7 @@ require_serial = true
 
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
-rev = "v0.16.1"
+rev = "v0.16.5"
 
 [[repos.hooks]]
 id = "ruff-check"
