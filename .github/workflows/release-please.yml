@@ -63,9 +63,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-release-esphome-pio-
 
-      - name: Build and upload the firmware archive
+      - name: Build the firmware archive
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
           FIRMWARE_CONFIG: ${{ runner.temp }}/release-firmware.yaml
         run: |
@@ -80,6 +79,13 @@ jobs:
           mkdir -p "$archive_dir"
           cp "$(< "$RUNNER_TEMP/firmware-path")" "$archive_dir/firmware.bin"
           (cd "$archive_dir" && zip "$RUNNER_TEMP/rtl433_esphome-$RELEASE_TAG.zip" firmware.bin)
+
+      - name: Upload the firmware archive
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
           gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/rtl433_esphome-$RELEASE_TAG.zip" \
             --clobber --repo "$GITHUB_REPOSITORY"
 
