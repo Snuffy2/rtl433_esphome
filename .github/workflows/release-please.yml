@@ -1,0 +1,90 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    if: github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create or update the release pull request
+        id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Checkout the released tag
+        if: steps.release.outputs.release_created == 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.release.outputs.tag_name }}
+          persist-credentials: false
+
+      - name: Set up Python
+        if: steps.release.outputs.release_created == 'true'
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        if: steps.release.outputs.release_created == 'true'
+        uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Cache ESPHome and PlatformIO
+        if: steps.release.outputs.release_created == 'true'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ${{ runner.temp }}/.esphome/external_components
+          key: ${{ runner.os }}-release-esphome-pio-${{ hashFiles('pyproject.toml', 'uv.lock', 'rtl433-esphome-heltec-lora-32-v2.yaml', 'components/rtl433_native/__init__.py', 'rtl433_esphome_version.py') }}
+          restore-keys: |
+            ${{ runner.os }}-release-esphome-pio-
+
+      - name: Build and upload the firmware archive
+        if: steps.release.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+          FIRMWARE_CONFIG: ${{ runner.temp }}/release-firmware.yaml
+        run: |
+          set -euo pipefail
+          uv sync --locked --dev
+          test "$(./.venv/bin/python -c 'from rtl433_esphome_version import VERSION; print(VERSION)')" = "$RELEASE_TAG"
+          cp secrets.yaml.example secrets.yaml
+          cp secrets.yaml.example "$RUNNER_TEMP/secrets.yaml"
+          ./.venv/bin/python .github/scripts/prepare_release_firmware_config.py --source rtl433-esphome-heltec-lora-32-v2.yaml --destination "$FIRMWARE_CONFIG" --components components
+          ./scripts/build --firmware-output "$RUNNER_TEMP/firmware-path"
+          archive_dir="$RUNNER_TEMP/release-firmware"
+          mkdir -p "$archive_dir"
+          cp "$(< "$RUNNER_TEMP/firmware-path")" "$archive_dir/firmware.bin"
+          (cd "$archive_dir" && zip "$RUNNER_TEMP/rtl433_esphome-$RELEASE_TAG.zip" firmware.bin)
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/rtl433_esphome-$RELEASE_TAG.zip" \
+            --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Update the latest component tag
+        if: steps.release.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          git tag -f latest
+          gh auth setup-git --hostname github.com
+          git push --force origin refs/tags/latest

@@ -68,6 +68,8 @@
 ## PR & branch behavior
 
 - Create branches or PRs only when explicitly requested. Do not open PRs autonomously.
+- All PR titles must use a Conventional Commit prefix, such as `feat:`, `fix:`,
+  `deps:`, or `chore:`. Use the types allowed by the PR title lint workflow.
 
 ## Network / install consent
 

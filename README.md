@@ -251,6 +251,16 @@ uv sync --dev
 - Passes `rtl433_esphome_ref` through to ESPHome as the external component Git ref.
 - Uses the moving `latest` Git tag by default.
 
+### Releases
+
+Release Please manages release PRs and version tags from Conventional Commit PR
+titles merged into `main`. Use prefixes such as `feat:`, `fix:`, and `deps:`.
+Merging a release PR publishes the release, builds its firmware archive, and moves
+`latest` to the released component after the upload succeeds.
+
+The workflow requires a `RELEASE_PLEASE_TOKEN` repository secret with contents and
+pull-request write access, matching the setup in places.
+
 ### Build from a specific component release or Git ref
 
 ```bash
