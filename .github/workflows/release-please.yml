@@ -1,0 +1,123 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    if: github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Create or update the release pull request
+        id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish-firmware:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the released tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Cache ESPHome and PlatformIO
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ${{ runner.temp }}/.esphome/external_components
+          key: ${{ runner.os }}-release-esphome-pio-${{ hashFiles('pyproject.toml', 'uv.lock', 'rtl433-esphome-heltec-lora-32-v2.yaml', 'components/rtl433_native/__init__.py', 'rtl433_esphome_version.py') }}
+          restore-keys: |
+            ${{ runner.os }}-release-esphome-pio-
+
+      - name: Build the firmware archive
+        env:
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+          FIRMWARE_CONFIG: ${{ runner.temp }}/release-firmware.yaml
+        run: |
+          set -euo pipefail
+          uv sync --locked --dev
+          test "$(./.venv/bin/python -c 'from rtl433_esphome_version import VERSION; print(VERSION)')" = "$RELEASE_TAG"
+          cp secrets.yaml.example secrets.yaml
+          cp secrets.yaml.example "$RUNNER_TEMP/secrets.yaml"
+          ./.venv/bin/python .github/scripts/prepare_release_firmware_config.py --source rtl433-esphome-heltec-lora-32-v2.yaml --destination "$FIRMWARE_CONFIG" --components components
+          ./scripts/build --firmware-output "$RUNNER_TEMP/firmware-path"
+          archive_dir="$RUNNER_TEMP/release-firmware"
+          mkdir -p "$archive_dir"
+          cp "$(< "$RUNNER_TEMP/firmware-path")" "$archive_dir/firmware.bin"
+          (cd "$archive_dir" && zip "$RUNNER_TEMP/rtl433_esphome-$RELEASE_TAG.zip" firmware.bin)
+
+      - name: Upload the firmware archive
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/rtl433_esphome-$RELEASE_TAG.zip" \
+            --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Update the latest component tag
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git --hostname github.com
+          latest_ref="$(git ls-remote --refs origin refs/tags/latest)"
+          latest_oid="${latest_ref%%$'\t'*}"
+
+          if [ -n "$latest_oid" ]; then
+            git fetch --no-tags origin refs/tags/latest
+            fetched_oid="$(git rev-parse FETCH_HEAD)"
+            if [ "$fetched_oid" != "$latest_oid" ]; then
+              echo "latest changed while reading it; refusing to publish" >&2
+              exit 1
+            fi
+
+            latest_commit="$(git rev-parse "${fetched_oid}^{commit}")"
+            if git merge-base --is-ancestor "$latest_commit" HEAD; then
+              :
+            else
+              ancestry_status=$?
+              if [ "$ancestry_status" -eq 1 ]; then
+                echo "Skipping latest update because this release is not newer"
+                exit 0
+              fi
+              exit "$ancestry_status"
+            fi
+          fi
+
+          git push --force-with-lease="refs/tags/latest:${latest_oid}" \
+            origin HEAD:refs/tags/latest
