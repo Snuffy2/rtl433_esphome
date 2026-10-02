@@ -38,6 +38,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Python
@@ -87,6 +88,30 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
         run: |
           set -euo pipefail
-          git tag -f latest
           gh auth setup-git --hostname github.com
-          git push --force origin refs/tags/latest
+          latest_ref="$(git ls-remote --refs origin refs/tags/latest)"
+          latest_oid="${latest_ref%%$'\t'*}"
+
+          if [ -n "$latest_oid" ]; then
+            git fetch --no-tags origin refs/tags/latest
+            fetched_oid="$(git rev-parse FETCH_HEAD)"
+            if [ "$fetched_oid" != "$latest_oid" ]; then
+              echo "latest changed while reading it; refusing to publish" >&2
+              exit 1
+            fi
+
+            latest_commit="$(git rev-parse "${fetched_oid}^{commit}")"
+            if git merge-base --is-ancestor "$latest_commit" HEAD; then
+              :
+            else
+              ancestry_status=$?
+              if [ "$ancestry_status" -eq 1 ]; then
+                echo "Skipping latest update because this release is not newer"
+                exit 0
+              fi
+              exit "$ancestry_status"
+            fi
+          fi
+
+          git push --force-with-lease="refs/tags/latest:${latest_oid}" \
+            origin HEAD:refs/tags/latest
