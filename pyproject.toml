@@ -37,8 +37,17 @@ dev = [
 [tool.uv]
 required-version = ">=0.11.0"
 environments = ["sys_platform != 'darwin' or platform_machine != 'x86_64'"]
+# Keep transitive dependencies at patched versions when regenerating the lockfile.
+constraint-dependencies = [
+    "brotli>=1.2.1",
+    "brotlicffi>=1.2.1.0",
+    "certifi>=2026.10.19",
+    "urllib3>=2.8.0",
+]
 # Security overrides replace ESPHome's vulnerable transitive pins pending upstream releases.
 override-dependencies = [
+    "filelock>=4.2.1",
+    "pillow>=13.0.0",
     "starlette>=1.3.1",
     "cryptography>=50.0.0",
 ]
