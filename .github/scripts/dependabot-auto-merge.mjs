@@ -106,7 +106,6 @@ function assertMergeParentAncestry(event, commits, ancestryProofs) {
       proof?.parent_sha !== secondParent ||
       proof?.base_sha !== currentBase ||
       proof?.base_commit !== secondParent ||
-      proof?.head_commit !== currentBase ||
       proof?.merge_base_commit !== secondParent ||
       !["ahead", "identical"].includes(proof?.status) ||
       !Number.isInteger(proof?.ahead_by) ||

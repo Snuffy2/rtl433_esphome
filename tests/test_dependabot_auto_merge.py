@@ -116,7 +116,6 @@ def _proof(parent: str, status: str = "ahead") -> dict[str, object]:
         "base_commit": parent,
         "base_sha": BASE_SHA,
         "behind_by": 0,
-        "head_commit": BASE_SHA,
         "merge_base_commit": parent,
         "parent_sha": parent,
         "status": status,
@@ -293,14 +292,14 @@ def test_authorization_does_not_depend_on_trigger_actor_or_action(
         [{}, _proof(BASE_SHA, "identical")],
         [_proof(INTERMEDIATE_BASE_SHA), _proof("9" * 40)],
         [_proof(INTERMEDIATE_BASE_SHA, "diverged"), _proof(BASE_SHA, "identical")],
-        [{**_proof(INTERMEDIATE_BASE_SHA), "head_commit": "8" * 40}, _proof(BASE_SHA, "identical")],
+        [{**_proof(INTERMEDIATE_BASE_SHA), "base_sha": "8" * 40}, _proof(BASE_SHA, "identical")],
     ),
     ids=(
         "missing",
         "malformed",
         "mismatched-parent",
         "diverged",
-        "mismatched-head",
+        "mismatched-requested-base",
     ),
 )
 def test_rejects_incomplete_or_invalid_ancestry_evidence(
@@ -597,6 +596,70 @@ def test_workflows_authorize_before_head_checkout_with_read_only_permissions() -
         and str(step.get("uses", "")).startswith("actions/checkout@")
     )
     assert validation_steps.index(_authorization_step(validation_steps)) < head_checkout
+
+
+@pytest.mark.parametrize("workflow", (AUTO_MERGE_WORKFLOW, VALIDATION_WORKFLOW))
+def test_workflow_authorizes_update_branch_from_compare_api(tmp_path: Path, workflow: Path) -> None:
+    """Run workflow evidence collection with real compare response shapes.
+
+    Args:
+        tmp_path: Temporary API fixtures and executables.
+        workflow: Workflow whose authorization shell step is exercised.
+    """
+
+    event_path = tmp_path / "event.json"
+    event_path.write_text(json.dumps(_event("dependabot/uv/pytest")), encoding="utf-8")
+    (tmp_path / "commits.json").write_text(json.dumps([_update_chain()]), encoding="utf-8")
+    for parent, status in ((INTERMEDIATE_BASE_SHA, "ahead"), (BASE_SHA, "identical")):
+        response = {
+            "base_commit": {"sha": parent},
+            "merge_base_commit": {"sha": parent},
+            "status": status,
+            "ahead_by": 1 if status == "ahead" else 0,
+            "behind_by": 0,
+            "commits": [{"sha": BASE_SHA}] if status == "ahead" else [],
+        }
+        (tmp_path / f"{parent}.json").write_text(json.dumps(response), encoding="utf-8")
+    gh = tmp_path / "gh"
+    gh.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+  *"/files?"*) printf '%s\\n' uv.lock ;;
+  *"/commits?"*) cat "$TEST_API_DIR/commits.json" ;;
+  *"/compare/"*)
+    parent="${*: -1}"
+    parent="${parent##*/}"
+    parent="${parent%%...*}"
+    cat "$TEST_API_DIR/$parent.json" ;;
+  *) echo "Unexpected GitHub request: $*" >&2; exit 1 ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    _, job = _authorization_job(_mapping(_workflow(workflow)["jobs"]))
+    step = _authorization_step(_steps(job))
+    result = subprocess.run(
+        ["bash", "-e", "-o", "pipefail", "-c", str(step["run"])],
+        cwd=REPO_ROOT,
+        env={
+            **os.environ,
+            "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}",
+            "TEST_API_DIR": str(tmp_path),
+            "RUNNER_TEMP": str(tmp_path),
+            "GITHUB_EVENT_PATH": str(event_path),
+            "BASE_SHA": BASE_SHA,
+            "PR_NUMBER": "1",
+            "REPOSITORY": "Snuffy2/rtl433_esphome",
+        },
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Authorized dependency update" in result.stdout
 
 
 def test_dependabot_write_jobs_remain_checkout_free_and_guarded() -> None:

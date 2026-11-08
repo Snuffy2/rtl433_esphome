@@ -53,10 +53,11 @@ jobs:
             "repos/${REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=100" \
             > "${commits}"
           : > "${ancestry_proof_items}"
+          # The compare endpoint binds both immutable SHAs; its response has no head_commit.
           while IFS= read -r second_parent; do
             gh api "repos/${REPOSITORY}/compare/${second_parent}...${base_sha}" |
               jq -c --arg parent_sha "${second_parent}" --arg base_sha "${base_sha}" \
-                '{parent_sha, base_sha, base_commit: .base_commit.sha, head_commit: .head_commit.sha, merge_base_commit: .merge_base_commit.sha, status, ahead_by, behind_by}' \
+                '{parent_sha: $parent_sha, base_sha: $base_sha, base_commit: .base_commit.sha, merge_base_commit: .merge_base_commit.sha, status, ahead_by, behind_by}' \
                 >> "${ancestry_proof_items}"
           done < <(jq -r '.[].[] | select(.parents | length == 2) | .parents[1].sha' "${commits}")
           jq -s . "${ancestry_proof_items}" > "${ancestry_proofs}"
