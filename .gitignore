@@ -1,4 +1,4 @@
-.venv/
+.venv
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
@@ -7,7 +7,11 @@ __pycache__/
 *.pyc
 *.egg-info/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
+/build/
+/dist/
 
 .esphome/
 secrets.yaml
