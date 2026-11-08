@@ -2,8 +2,6 @@ version: 2
 updates:
   - package-ecosystem: "uv"
     directory: "/"
-    commit-message:
-      prefix: "deps"
     schedule:
       interval: "weekly"
     cooldown:
@@ -17,10 +15,12 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/"
-    commit-message:
-      prefix: "deps"
     schedule:
       interval: "weekly"
     cooldown:
       default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - "*"
     open-pull-requests-limit: 10
