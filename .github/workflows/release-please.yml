@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing published release tag whose firmware should be rebuilt (for example, v0.1.13)
+        description: Existing published release version to rebuild (for example, 0.1.13 or v0.1.13)
         required: true
         type: string
 
@@ -52,13 +52,15 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
         run: |
           set -euo pipefail
+          RELEASE_TAG="v${RELEASE_TAG#v}"
           if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Expected a version tag such as v0.1.13" >&2
+            echo "Expected a version such as 0.1.13 or v0.1.13" >&2
             exit 1
           fi
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft |
             jq --exit-status --arg tag "$RELEASE_TAG" \
               '.tagName == $tag and .isDraft == false' > /dev/null
+          printf 'RELEASE_TAG=%s\n' "$RELEASE_TAG" >> "$GITHUB_ENV"
 
       - name: Checkout the released tag
         uses: actions/checkout@v7
